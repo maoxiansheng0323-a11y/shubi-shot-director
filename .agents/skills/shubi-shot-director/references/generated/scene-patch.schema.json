@@ -1,0 +1,1666 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "patchId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "sceneId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "baseRevision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "natural-language",
+        "system"
+      ]
+    },
+    "operations": {
+      "minItems": 1,
+      "maxItems": 128,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "entity.add"
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "parentId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "transform": {
+                        "type": "object",
+                        "properties": {
+                          "positionM": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "rotation": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "scale": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "positionM",
+                          "rotation",
+                          "scale"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "visible": {
+                        "type": "boolean"
+                      },
+                      "locked": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "environment"
+                      },
+                      "preset": {
+                        "type": "object",
+                        "properties": {
+                          "registry": {
+                            "type": "string",
+                            "const": "builtin"
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 80,
+                            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "parameters": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string",
+                              "maxLength": 80
+                            },
+                            "additionalProperties": {
+                              "$ref": "#/$defs/__schema0"
+                            }
+                          }
+                        },
+                        "required": [
+                          "registry",
+                          "id",
+                          "version",
+                          "parameters"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "color": {
+                        "type": "string",
+                        "pattern": "^#[0-9a-fA-F]{6}$"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "parentId",
+                      "transform",
+                      "visible",
+                      "locked",
+                      "kind",
+                      "preset",
+                      "color"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "parentId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "transform": {
+                        "type": "object",
+                        "properties": {
+                          "positionM": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "rotation": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "scale": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "positionM",
+                          "rotation",
+                          "scale"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "visible": {
+                        "type": "boolean"
+                      },
+                      "locked": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "prop"
+                      },
+                      "preset": {
+                        "type": "object",
+                        "properties": {
+                          "registry": {
+                            "type": "string",
+                            "const": "builtin"
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 80,
+                            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "parameters": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string",
+                              "maxLength": 80
+                            },
+                            "additionalProperties": {
+                              "$ref": "#/$defs/__schema0"
+                            }
+                          }
+                        },
+                        "required": [
+                          "registry",
+                          "id",
+                          "version",
+                          "parameters"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "geometry": {
+                        "type": "object",
+                        "properties": {
+                          "primitive": {
+                            "type": "string",
+                            "enum": [
+                              "box",
+                              "cylinder",
+                              "plane",
+                              "capsule"
+                            ]
+                          },
+                          "sizeM": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "primitive",
+                          "sizeM"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "color": {
+                        "type": "string",
+                        "pattern": "^#[0-9a-fA-F]{6}$"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "parentId",
+                      "transform",
+                      "visible",
+                      "locked",
+                      "kind",
+                      "preset",
+                      "geometry",
+                      "color"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "parentId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "transform": {
+                        "type": "object",
+                        "properties": {
+                          "positionM": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "rotation": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "scale": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "positionM",
+                          "rotation",
+                          "scale"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "visible": {
+                        "type": "boolean"
+                      },
+                      "locked": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "actor"
+                      },
+                      "slot": {
+                        "type": "string",
+                        "minLength": 12,
+                        "maxLength": 46,
+                        "pattern": "^actor_(male|female|generic)_[1-9][0-9]*$"
+                      },
+                      "rig": {
+                        "type": "object",
+                        "properties": {
+                          "registry": {
+                            "type": "string",
+                            "const": "builtin"
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 80,
+                            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "parameters": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string",
+                              "maxLength": 80
+                            },
+                            "additionalProperties": {
+                              "$ref": "#/$defs/__schema0"
+                            }
+                          }
+                        },
+                        "required": [
+                          "registry",
+                          "id",
+                          "version",
+                          "parameters"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "body": {
+                        "type": "object",
+                        "properties": {
+                          "heightM": {
+                            "type": "number",
+                            "minimum": 1,
+                            "maximum": 2.4
+                          },
+                          "shoulderWidthM": {
+                            "type": "number",
+                            "minimum": 0.25,
+                            "maximum": 0.8
+                          },
+                          "build": {
+                            "type": "string",
+                            "enum": [
+                              "slim",
+                              "average",
+                              "broad"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "heightM",
+                          "shoulderWidthM",
+                          "build"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "pose": {
+                        "type": "object",
+                        "properties": {
+                          "preset": {
+                            "type": "object",
+                            "properties": {
+                              "registry": {
+                                "type": "string",
+                                "const": "builtin"
+                              },
+                              "id": {
+                                "type": "string",
+                                "minLength": 3,
+                                "maxLength": 80,
+                                "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                              },
+                              "version": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "parameters": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "additionalProperties": {
+                                  "$ref": "#/$defs/__schema0"
+                                }
+                              }
+                            },
+                            "required": [
+                              "registry",
+                              "id",
+                              "version",
+                              "parameters"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "joints": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string",
+                              "minLength": 2,
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_-]*$"
+                            },
+                            "additionalProperties": {
+                              "type": "array",
+                              "prefixItems": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "preset",
+                          "joints"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "color": {
+                        "type": "string",
+                        "pattern": "^#[0-9a-fA-F]{6}$"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "parentId",
+                      "transform",
+                      "visible",
+                      "locked",
+                      "kind",
+                      "slot",
+                      "rig",
+                      "body",
+                      "pose",
+                      "color"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "parentId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "transform": {
+                        "type": "object",
+                        "properties": {
+                          "positionM": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "rotation": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "scale": {
+                            "type": "array",
+                            "prefixItems": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "positionM",
+                          "rotation",
+                          "scale"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "visible": {
+                        "type": "boolean"
+                      },
+                      "locked": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "camera"
+                      },
+                      "lens": {
+                        "type": "object",
+                        "properties": {
+                          "projection": {
+                            "type": "string",
+                            "const": "perspective"
+                          },
+                          "focalLengthMm": {
+                            "type": "number",
+                            "minimum": 12,
+                            "maximum": 300
+                          },
+                          "sensorWidthMm": {
+                            "type": "number",
+                            "minimum": 10,
+                            "maximum": 100
+                          },
+                          "nearM": {
+                            "type": "number",
+                            "minimum": 0.001,
+                            "maximum": 10
+                          },
+                          "farM": {
+                            "type": "number",
+                            "minimum": 1,
+                            "maximum": 10000
+                          }
+                        },
+                        "required": [
+                          "projection",
+                          "focalLengthMm",
+                          "sensorWidthMm",
+                          "nearM",
+                          "farM"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "parentId",
+                      "transform",
+                      "visible",
+                      "locked",
+                      "kind",
+                      "lens"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "entity.remove"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            },
+            "required": [
+              "op",
+              "entityId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "entity.transform.set"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "value": {
+                "type": "object",
+                "properties": {
+                  "positionM": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "rotation": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "scale": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "positionM",
+                  "rotation",
+                  "scale"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "op",
+              "entityId",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "entity.transform.translate"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "deltaM": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "referenceSpace": {
+                "type": "string",
+                "enum": [
+                  "world",
+                  "local",
+                  "camera"
+                ]
+              },
+              "referenceCameraId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            },
+            "required": [
+              "op",
+              "entityId",
+              "deltaM",
+              "referenceSpace"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "entity.transform.rotate"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "deltaRotation": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "referenceSpace": {
+                "type": "string",
+                "enum": [
+                  "world",
+                  "local"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "entityId",
+              "deltaRotation",
+              "referenceSpace"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "entity.flags.set"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "locked": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "entityId",
+              "visible",
+              "locked"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "entity.preset.parameters.set"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "value": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            },
+            "required": [
+              "op",
+              "entityId",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "actor.pose.set"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "value": {
+                "type": "object",
+                "properties": {
+                  "preset": {
+                    "type": "object",
+                    "properties": {
+                      "registry": {
+                        "type": "string",
+                        "const": "builtin"
+                      },
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 80,
+                        "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                      },
+                      "version": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "parameters": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "maxLength": 80
+                        },
+                        "additionalProperties": {
+                          "$ref": "#/$defs/__schema0"
+                        }
+                      }
+                    },
+                    "required": [
+                      "registry",
+                      "id",
+                      "version",
+                      "parameters"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "joints": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "minLength": 2,
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "preset",
+                  "joints"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "op",
+              "entityId",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "camera.lens.set"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "value": {
+                "type": "object",
+                "properties": {
+                  "projection": {
+                    "type": "string",
+                    "const": "perspective"
+                  },
+                  "focalLengthMm": {
+                    "type": "number",
+                    "minimum": 12,
+                    "maximum": 300
+                  },
+                  "sensorWidthMm": {
+                    "type": "number",
+                    "minimum": 10,
+                    "maximum": 100
+                  },
+                  "nearM": {
+                    "type": "number",
+                    "minimum": 0.001,
+                    "maximum": 10
+                  },
+                  "farM": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 10000
+                  }
+                },
+                "required": [
+                  "projection",
+                  "focalLengthMm",
+                  "sensorWidthMm",
+                  "nearM",
+                  "farM"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "op",
+              "entityId",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "camera.look-at"
+              },
+              "entityId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "target": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "point"
+                      },
+                      "pointM": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "pointM"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "entity-anchor"
+                      },
+                      "entityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "anchor": {
+                        "type": "string",
+                        "enum": [
+                          "face",
+                          "head",
+                          "chest",
+                          "pelvis",
+                          "root"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "entityId",
+                      "anchor"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "entityId",
+              "target"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "constraint.set"
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "ground-contact"
+                      },
+                      "entityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "surfaceEntityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "type",
+                      "entityId",
+                      "surfaceEntityId",
+                      "enabled"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "keep-visible"
+                      },
+                      "cameraId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "subjectEntityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "anchor": {
+                        "type": "string",
+                        "enum": [
+                          "face",
+                          "head",
+                          "chest",
+                          "pelvis",
+                          "root"
+                        ]
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "type",
+                      "cameraId",
+                      "subjectEntityId",
+                      "anchor",
+                      "enabled"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "constraint.remove"
+              },
+              "constraintId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            },
+            "required": [
+              "op",
+              "constraintId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "scene.active-camera.set"
+              },
+              "cameraId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            },
+            "required": [
+              "op",
+              "cameraId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "scene.output.set"
+              },
+              "value": {
+                "type": "object",
+                "properties": {
+                  "aspect": {
+                    "type": "object",
+                    "properties": {
+                      "width": {
+                        "type": "number",
+                        "const": 16
+                      },
+                      "height": {
+                        "type": "number",
+                        "const": 9
+                      }
+                    },
+                    "required": [
+                      "width",
+                      "height"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "resolutionPx": {
+                    "type": "object",
+                    "properties": {
+                      "width": {
+                        "type": "integer",
+                        "minimum": 640,
+                        "maximum": 7680
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 360,
+                        "maximum": 4320
+                      }
+                    },
+                    "required": [
+                      "width",
+                      "height"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "aspect",
+                  "resolutionPx"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "scene.composition-goals.set"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "framing": {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "close",
+                              "medium-close",
+                              "medium",
+                              "full",
+                              "whole-prop"
+                            ]
+                          },
+                          "targetEntityIds": {
+                            "minItems": 1,
+                            "maxItems": 16,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 3,
+                              "maxLength": 64,
+                              "pattern": "^[a-z][a-z0-9_-]*$"
+                            }
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "targetEntityIds"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "captionZone": {
+                        "type": "object",
+                        "properties": {
+                          "bottomFraction": {
+                            "type": "number",
+                            "minimum": 0.05,
+                            "maximum": 0.45
+                          }
+                        },
+                        "required": [
+                          "bottomFraction"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "sideUiZone": {
+                        "type": "object",
+                        "properties": {
+                          "side": {
+                            "type": "string",
+                            "enum": [
+                              "left",
+                              "right",
+                              "both"
+                            ]
+                          },
+                          "widthFraction": {
+                            "type": "number",
+                            "minimum": 0.05,
+                            "maximum": 0.4
+                          }
+                        },
+                        "required": [
+                          "side",
+                          "widthFraction"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "criticalEntityIds": {
+                        "minItems": 1,
+                        "maxItems": 32,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 64,
+                          "pattern": "^[a-z][a-z0-9_-]*$"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "scene.title.set"
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              }
+            },
+            "required": [
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "patchId",
+    "sceneId",
+    "baseRevision",
+    "source",
+    "operations"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 500
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "maxItems": 128,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,153 @@
+import { describe, expect, it } from "vitest";
+import { SceneDomainError } from "../src/domain/apply-scene-patch";
+import { SceneSession } from "../server/scene-session";
+import { createDefaultScene } from "../src/domain/default-scene";
+import { buildRelationshipOperations } from "../src/domain/presets";
+import { createStructuredTwoActorScene } from "./helpers/structured-fixtures";
+
+describe("SceneSession history", () => {
+  it("undoes and redoes a patch while keeping revisions monotonic", () => {
+    const session = new SceneSession(createDefaultScene());
+    session.applyPatch({
+      schemaVersion: 1,
+      patchId: "patch_title",
+      sceneId: "scene_starter",
+      baseRevision: 0,
+      source: "manual",
+      operations: [
+        {
+          op: "scene.title.set",
+          value: "Changed title",
+        },
+      ],
+    });
+    expect(session.snapshot().title).toBe("Changed title");
+    expect(session.snapshot().revision).toBe(1);
+
+    expect(session.undo()?.title).toBe("Starter Graybox");
+    expect(session.snapshot().revision).toBe(2);
+
+    expect(session.redo()?.title).toBe("Changed title");
+    expect(session.snapshot().revision).toBe(3);
+  });
+
+  it("treats a multi-actor relationship as one undoable revision", () => {
+    const initial = createStructuredTwoActorScene();
+    const session = new SceneSession(initial);
+    const operations = buildRelationshipOperations(
+      session.snapshot(),
+      "relationship.over-under-focus-lower-v1",
+      {
+        primaryActorId: "actor_generic_1",
+        secondaryActorId: "actor_generic_2",
+        surfaceEntityId: "prop_platform_1",
+      },
+    );
+
+    const changed = session.applyPatch({
+      schemaVersion: 1,
+      patchId: "patch_relationship_history",
+      sceneId: initial.sceneId,
+      baseRevision: initial.revision,
+      source: "manual",
+      operations,
+    });
+    expect(changed.revision).toBe(initial.revision + 1);
+    expect(
+      changed.entities.find(
+        (entity) => entity.id === "actor_generic_2",
+      ),
+    ).toMatchObject({
+      kind: "actor",
+      pose: {
+        preset: { id: "pose.lying-supine-v1" },
+      },
+    });
+
+    const undone = session.undo();
+    expect(undone?.revision).toBe(initial.revision + 2);
+    expect(undone?.entities).toEqual(initial.entities);
+    expect(undone?.constraints).toEqual(initial.constraints);
+
+    const redone = session.redo();
+    expect(redone?.revision).toBe(initial.revision + 3);
+    expect(redone?.entities).toEqual(changed.entities);
+    expect(redone?.constraints).toEqual(changed.constraints);
+  });
+
+  it("undoes and redoes whole-scene replacements across scene ids", () => {
+    const initial = createDefaultScene();
+    const session = new SceneSession(initial);
+    const replacement = {
+      ...structuredClone(initial),
+      sceneId: "scene_replacement",
+      revision: 0,
+      title: "Replacement scene",
+    };
+
+    const replaced = session.replaceScene(replacement);
+    expect(replaced).toMatchObject({
+      sceneId: "scene_replacement",
+      revision: 1,
+      title: "Replacement scene",
+    });
+    expect(session.historyStatus()).toEqual({
+      canUndo: true,
+      canRedo: false,
+    });
+
+    const undone = session.undo();
+    expect(undone).toMatchObject({
+      sceneId: initial.sceneId,
+      revision: 2,
+      title: initial.title,
+    });
+
+    const redone = session.redo();
+    expect(redone).toMatchObject({
+      sceneId: "scene_replacement",
+      revision: 3,
+      title: "Replacement scene",
+    });
+  });
+
+  it("keeps replacement revisions monotonic so stale patches cannot hit an ABA scene", () => {
+    const initial = createDefaultScene();
+    const session = new SceneSession(initial);
+    const firstB = session.replaceScene({
+      ...structuredClone(initial),
+      sceneId: "scene_b",
+      revision: 0,
+      title: "Scene B first instance",
+    });
+    const delayedPatch = {
+      schemaVersion: 1 as const,
+      patchId: "patch_delayed_scene_b",
+      sceneId: firstB.sceneId,
+      baseRevision: firstB.revision,
+      source: "natural-language" as const,
+      operations: [
+        {
+          op: "scene.title.set" as const,
+          value: "Delayed stale edit",
+        },
+      ],
+    };
+
+    expect(session.replaceScene(initial).revision).toBe(2);
+    const secondB = session.replaceScene({
+      ...structuredClone(firstB),
+      title: "Scene B second instance",
+    });
+    expect(secondB.revision).toBe(3);
+
+    expect(() => session.applyPatch(delayedPatch)).toThrowError(
+      SceneDomainError,
+    );
+    expect(session.snapshot()).toMatchObject({
+      sceneId: "scene_b",
+      revision: 3,
+      title: "Scene B second instance",
+    });
+  });
+});

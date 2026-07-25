@@ -1,0 +1,316 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "create",
+        "modify"
+      ]
+    },
+    "allowPartial": {
+      "type": "boolean"
+    },
+    "recognizedConstraints": {
+      "maxItems": 128,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "environment",
+              "entity-presence",
+              "entity-removal",
+              "actor-slot",
+              "pose",
+              "relationship",
+              "contact",
+              "position",
+              "rotation",
+              "scale",
+              "visibility",
+              "camera-height",
+              "camera-angle",
+              "camera-target",
+              "focal-length",
+              "framing",
+              "output",
+              "composition-safety"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "targets": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            }
+          },
+          "evidence": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "entity"
+                    },
+                    "entityId": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 64,
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "entityId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "entity-property"
+                    },
+                    "entityId": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 64,
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    "path": {
+                      "type": "string",
+                      "enum": [
+                        "entity.kind",
+                        "entity.parentId",
+                        "entity.transform.positionM",
+                        "entity.transform.rotation",
+                        "entity.transform.scale",
+                        "entity.visible",
+                        "entity.locked",
+                        "actor.slot",
+                        "actor.pose",
+                        "camera.heightM",
+                        "camera.lens.focalLengthMm",
+                        "camera.lens.sensorWidthMm"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "entityId",
+                    "path"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "scene-property"
+                    },
+                    "path": {
+                      "type": "string",
+                      "enum": [
+                        "scene.activeCameraId",
+                        "scene.output",
+                        "scene.compositionGoals",
+                        "scene.compositionGoals.framing",
+                        "scene.compositionGoals.captionZone",
+                        "scene.compositionGoals.sideUiZone",
+                        "scene.compositionGoals.criticalEntityIds"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "path"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "scene-constraint"
+                    },
+                    "constraintId": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 64,
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "constraintId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "patch-operation"
+                    },
+                    "operationIndex": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 127
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "operationIndex"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "required",
+          "targets",
+          "evidence"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "unsupportedConstraints": {
+      "maxItems": 128,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "UNSUPPORTED_CONSTRAINT",
+              "UNRESOLVED_RELATION",
+              "UNAPPLIED_CONSTRAINT"
+            ]
+          },
+          "targetIds": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            }
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "unresolvedRelations": {
+      "maxItems": 128,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "UNSUPPORTED_CONSTRAINT",
+              "UNRESOLVED_RELATION",
+              "UNAPPLIED_CONSTRAINT"
+            ]
+          },
+          "targetIds": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            }
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "warnings": {
+      "maxItems": 128,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "PARTIAL_APPLICATION",
+              "APPROXIMATE_PLACEMENT"
+            ]
+          },
+          "targetIds": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            }
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "canApplySafely": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "operation",
+    "allowPartial",
+    "recognizedConstraints",
+    "unsupportedConstraints",
+    "unresolvedRelations",
+    "warnings",
+    "canApplySafely"
+  ],
+  "additionalProperties": false
+}

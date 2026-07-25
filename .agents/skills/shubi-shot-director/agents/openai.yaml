@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shubi Shot Director"
+  short_description: "Stage editable graybox camera previews"
+  default_prompt: "Use $shubi-shot-director to stage this shot as an editable graybox preview in the local 3D editor."

@@ -1,0 +1,51 @@
+node_modules/
+dist/
+coverage/
+.vite/
+.tools/
+.DS_Store
+Thumbs.db
+
+# Preserve the pre-repository local draft without publishing the duplicate file.
+/agent.md
+
+# Runtime scene data and external project configuration must never be committed.
+.shubi-shot/
+project-profile.json
+*.project-profile.json
+
+# Local scenes, captures, exports, reports, and traces.
+/exports/
+/scenes/
+/screenshots/
+/reports/
+/artifacts/
+*.scene.json
+!examples/*.scene.json
+*.scene-submission.json
+!examples/*.scene-submission.json
+/perspective*.png
+*.trace
+*.trace.json
+
+# Local environment and editor state.
+.env
+.env.*
+!.env.example
+*.local
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test output.
+test-results/
+playwright-report/
+*.log
+*.pid
+*.tsbuildinfo
+
+# Credentials and signing material are never repository assets.
+*.pem
+*.key
+*.p12
+*.pfx

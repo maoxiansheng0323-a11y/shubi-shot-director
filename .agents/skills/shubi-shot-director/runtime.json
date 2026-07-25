@@ -1,0 +1,15 @@
+{
+  "locatorContractVersion": 1,
+  "relativeRoot": "../../..",
+  "entrypoint": "scripts/director.mjs",
+  "capabilitiesContractVersion": 2,
+  "bridgeProtocolVersion": 1,
+  "sceneSchemaVersion": 1,
+  "patchSchemaVersion": 1,
+  "intentReportSchemaVersion": 1,
+  "semanticAuthority": "host",
+  "inputContract": "structured-only",
+  "modelIntegration": "none",
+  "credentialPolicy": "forbidden",
+  "networkPolicy": "loopback-only"
+}
