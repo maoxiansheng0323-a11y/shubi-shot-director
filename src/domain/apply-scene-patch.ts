@@ -5,6 +5,10 @@ import {
   rotateVector,
 } from "./scene-math";
 import {
+  ActorLimbPresenceError,
+  resolveActorLimbPresenceUpdates,
+} from "./actor-anatomy";
+import {
   actorAnchorWorldPoint,
   type ActorAnchor,
 } from "./humanoid-rig";
@@ -13,10 +17,15 @@ import {
   enforceGroundContacts,
 } from "./contact-constraints";
 import {
-  scenePatchSchema,
+  isLocked,
+  mutationBlockedByLock,
+  type EntityLockMode,
+} from "./entity-lock";
+import {
   type SceneOperation,
   type ScenePatch,
 } from "./scene-patch";
+import { parseScenePatchInput } from "./scene-migrations";
 import {
   sceneSpecSchema,
   type SceneEntity,
@@ -45,12 +54,149 @@ const findEntity = (scene: SceneSpec, entityId: string): SceneEntity => {
   return entity;
 };
 
-const requireUnlocked = (entity: SceneEntity): void => {
-  if (entity.locked) {
+const requireSpatialLayout = (
+  scene: SceneSpec,
+): NonNullable<SceneSpec["spatialLayout"]> => {
+  if (scene.spatialLayout === null) {
     throw new SceneDomainError(
-      "ENTITY_LOCKED",
-      `Entity is locked: ${entity.id}`,
+      "SPATIAL_LAYOUT_REQUIRED",
+      "The scene does not contain a spatial layout.",
     );
+  }
+  return scene.spatialLayout;
+};
+
+const upsertById = <Value extends { id: string }>(
+  values: Value[],
+  value: Value,
+): void => {
+  const existingIndex = values.findIndex(
+    (candidate) => candidate.id === value.id,
+  );
+  if (existingIndex === -1) {
+    values.push(value);
+  } else {
+    values[existingIndex] = value;
+  }
+};
+
+const removeById = <Value extends { id: string }>(
+  values: Value[],
+  id: string,
+  code: string,
+  label: string,
+): void => {
+  const existingIndex = values.findIndex(
+    (candidate) => candidate.id === id,
+  );
+  if (existingIndex === -1) {
+    throw new SceneDomainError(code, `${label} does not exist: ${id}`);
+  }
+  values.splice(existingIndex, 1);
+};
+
+const requireMutable = (
+  entity: SceneEntity,
+  preserveLock: boolean,
+): void => {
+  const code = mutationBlockedByLock(entity.lockMode, preserveLock);
+  if (code !== null) {
+    throw new SceneDomainError(
+      code,
+      `Entity mutation is blocked by its lock: ${entity.id}`,
+    );
+  }
+};
+
+type EntityLockMap = ReadonlyMap<string, EntityLockMode>;
+
+const lockPreservationConflict = (
+  message: string,
+): SceneDomainError =>
+  new SceneDomainError("LOCK_PRESERVATION_CONFLICT", message);
+
+const preflightPreservedLocks = (
+  current: SceneSpec,
+  patch: ScenePatch,
+): EntityLockMap => {
+  const originalLocks = new Map(
+    current.entities.map(
+      ({ id, lockMode }) => [id, lockMode] as const,
+    ),
+  );
+  if (!patch.preserveLock) {
+    return originalLocks;
+  }
+
+  const workingLocks = new Map(originalLocks);
+  for (const operation of patch.operations) {
+    if (operation.op === "entity.add") {
+      if (isLocked(operation.value.lockMode)) {
+        throw lockPreservationConflict(
+          `A locked entity cannot be added while preserving locks: ${operation.value.id}`,
+        );
+      }
+      if (!workingLocks.has(operation.value.id)) {
+        workingLocks.set(operation.value.id, operation.value.lockMode);
+      }
+      continue;
+    }
+
+    if (operation.op === "entity.remove") {
+      const originalLock = originalLocks.get(operation.entityId);
+      if (originalLock !== undefined && isLocked(originalLock)) {
+        throw lockPreservationConflict(
+          `A locked entity cannot be removed while preserving locks: ${operation.entityId}`,
+        );
+      }
+      workingLocks.delete(operation.entityId);
+      continue;
+    }
+
+    if (
+      operation.op === "entity.flags.set" &&
+      operation.lockMode !== undefined
+    ) {
+      const workingLock = workingLocks.get(operation.entityId);
+      if (
+        workingLock !== undefined &&
+        operation.lockMode !== workingLock
+      ) {
+        throw lockPreservationConflict(
+          `Entity lock mode cannot change while preserving locks: ${operation.entityId}`,
+        );
+      }
+    }
+  }
+  return originalLocks;
+};
+
+const assertPreservedLocks = (
+  next: SceneSpec,
+  originalLocks: EntityLockMap,
+): void => {
+  for (const [entityId, lockMode] of originalLocks) {
+    const entity = next.entities.find(
+      (candidate) => candidate.id === entityId,
+    );
+    if (!entity && isLocked(lockMode)) {
+      throw lockPreservationConflict(
+        `A locked entity was removed: ${entityId}`,
+      );
+    }
+    if (entity && entity.lockMode !== lockMode) {
+      throw lockPreservationConflict(
+        `Entity lock mode changed: ${entityId}`,
+      );
+    }
+  }
+
+  for (const entity of next.entities) {
+    if (!originalLocks.has(entity.id) && isLocked(entity.lockMode)) {
+      throw lockPreservationConflict(
+        `A newly added entity is locked: ${entity.id}`,
+      );
+    }
   }
 };
 
@@ -106,10 +252,11 @@ const contactAffectedEntityIds = (
     case "entity.transform.set":
     case "entity.transform.translate":
     case "entity.transform.rotate":
-    case "entity.flags.set":
     case "entity.preset.parameters.set":
     case "actor.pose.set":
       return new Set([operation.entityId]);
+    case "actor.limb-presence.set":
+      return new Set([operation.actorId]);
     case "constraint.set":
       return operation.value.type === "ground-contact"
         ? new Set(
@@ -129,13 +276,14 @@ const contactAffectedEntityIds = (
 const enforceContactsForOperation = (
   scene: SceneSpec,
   operation: SceneOperation,
+  preserveLock: boolean,
 ): SceneSpec => {
   const affectedIds = contactAffectedEntityIds(operation);
   if (affectedIds.size === 0) {
     return scene;
   }
   try {
-    return enforceGroundContacts(scene, affectedIds);
+    return enforceGroundContacts(scene, affectedIds, { preserveLock });
   } catch (error) {
     if (error instanceof ContactConstraintError) {
       throw new SceneDomainError(error.code, error.message);
@@ -144,7 +292,11 @@ const enforceContactsForOperation = (
   }
 };
 
-const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
+const applyOperation = (
+  scene: SceneSpec,
+  operation: SceneOperation,
+  preserveLock: boolean,
+): void => {
   switch (operation.op) {
     case "entity.add": {
       if (scene.entities.some((entity) => entity.id === operation.value.id)) {
@@ -158,7 +310,7 @@ const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
     }
     case "entity.remove": {
       const entity = findEntity(scene, operation.entityId);
-      requireUnlocked(entity);
+      requireMutable(entity, preserveLock);
       if (scene.activeCameraId === entity.id) {
         throw new SceneDomainError(
           "ACTIVE_CAMERA_REMOVE_FORBIDDEN",
@@ -170,7 +322,10 @@ const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
         scene.constraints.some((constraint) =>
           constraintReferencesEntity(constraint, entity.id),
         ) ||
-        compositionGoalsReferenceEntity(scene, entity.id)
+        compositionGoalsReferenceEntity(scene, entity.id) ||
+        scene.spatialLayout?.memberships.some(
+          (membership) => membership.entityId === entity.id,
+        ) === true
       ) {
         throw new SceneDomainError(
           "ENTITY_STILL_REFERENCED",
@@ -184,13 +339,13 @@ const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
     }
     case "entity.transform.set": {
       const entity = findEntity(scene, operation.entityId);
-      requireUnlocked(entity);
+      requireMutable(entity, preserveLock);
       entity.transform = operation.value;
       return;
     }
     case "entity.transform.translate": {
       const entity = findEntity(scene, operation.entityId);
-      requireUnlocked(entity);
+      requireMutable(entity, preserveLock);
       let worldDelta = operation.deltaM;
       if (operation.referenceSpace === "local") {
         worldDelta = rotateVector(operation.deltaM, entity.transform.rotation);
@@ -215,7 +370,7 @@ const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
     }
     case "entity.transform.rotate": {
       const entity = findEntity(scene, operation.entityId);
-      requireUnlocked(entity);
+      requireMutable(entity, preserveLock);
       entity.transform.rotation =
         operation.referenceSpace === "world"
           ? multiplyQuaternions(
@@ -230,19 +385,29 @@ const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
     }
     case "entity.flags.set": {
       const entity = findEntity(scene, operation.entityId);
-      entity.visible = operation.visible;
-      entity.locked = operation.locked;
+      const changesLockMode =
+        operation.lockMode !== undefined &&
+        operation.lockMode !== entity.lockMode;
+      if (operation.visible !== undefined && !changesLockMode) {
+        requireMutable(entity, preserveLock);
+      }
+      if (operation.visible !== undefined) {
+        entity.visible = operation.visible;
+      }
+      if (operation.lockMode !== undefined) {
+        entity.lockMode = operation.lockMode;
+      }
       return;
     }
     case "entity.preset.parameters.set": {
       const entity = findEntity(scene, operation.entityId);
-      requireUnlocked(entity);
+      requireMutable(entity, preserveLock);
       updatePresetParameters(entity, operation.value);
       return;
     }
     case "actor.pose.set": {
       const entity = findEntity(scene, operation.entityId);
-      requireUnlocked(entity);
+      requireMutable(entity, preserveLock);
       if (entity.kind !== "actor") {
         throw new SceneDomainError(
           "ENTITY_KIND_MISMATCH",
@@ -252,9 +417,33 @@ const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
       entity.pose = operation.value;
       return;
     }
+    case "actor.limb-presence.set": {
+      const entity = scene.entities.find(
+        (candidate) => candidate.id === operation.actorId,
+      );
+      if (!entity || entity.kind !== "actor") {
+        throw new SceneDomainError(
+          "ACTOR_LIMB_TARGET_INVALID",
+          `Actor limb target is not editable: ${operation.actorId}`,
+        );
+      }
+      requireMutable(entity, preserveLock);
+      try {
+        entity.body.limbPresence = resolveActorLimbPresenceUpdates(
+          entity.body.limbPresence,
+          operation.updates,
+        );
+      } catch (error) {
+        if (error instanceof ActorLimbPresenceError) {
+          throw new SceneDomainError(error.code, error.message);
+        }
+        throw error;
+      }
+      return;
+    }
     case "camera.lens.set": {
       const entity = findEntity(scene, operation.entityId);
-      requireUnlocked(entity);
+      requireMutable(entity, preserveLock);
       if (entity.kind !== "camera") {
         throw new SceneDomainError(
           "ENTITY_KIND_MISMATCH",
@@ -266,7 +455,7 @@ const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
     }
     case "camera.look-at": {
       const entity = findEntity(scene, operation.entityId);
-      requireUnlocked(entity);
+      requireMutable(entity, preserveLock);
       if (entity.kind !== "camera") {
         throw new SceneDomainError(
           "ENTITY_KIND_MISMATCH",
@@ -338,6 +527,112 @@ const applyOperation = (scene: SceneSpec, operation: SceneOperation): void => {
       scene.title = operation.value;
       return;
     }
+    case "spatial.region.visibility.set": {
+      const layout = requireSpatialLayout(scene);
+      const region = layout.regions.find(
+        (candidate) => candidate.id === operation.regionId,
+      );
+      if (!region) {
+        throw new SceneDomainError(
+          "SPATIAL_REGION_NOT_FOUND",
+          `Spatial region does not exist: ${operation.regionId}`,
+        );
+      }
+      region.visible = operation.visible;
+      return;
+    }
+    case "spatial.region.upsert": {
+      upsertById(requireSpatialLayout(scene).regions, operation.value);
+      return;
+    }
+    case "spatial.region.remove": {
+      removeById(
+        requireSpatialLayout(scene).regions,
+        operation.regionId,
+        "SPATIAL_REGION_NOT_FOUND",
+        "Spatial region",
+      );
+      return;
+    }
+    case "spatial.boundary.upsert": {
+      upsertById(requireSpatialLayout(scene).boundaries, operation.value);
+      return;
+    }
+    case "spatial.boundary.visibility.set": {
+      const boundary = requireSpatialLayout(scene).boundaries.find(
+        (candidate) => candidate.id === operation.boundaryId,
+      );
+      if (!boundary) {
+        throw new SceneDomainError(
+          "SPATIAL_BOUNDARY_NOT_FOUND",
+          `Spatial boundary does not exist: ${operation.boundaryId}`,
+        );
+      }
+      boundary.visible = operation.visible;
+      return;
+    }
+    case "spatial.boundary.remove": {
+      removeById(
+        requireSpatialLayout(scene).boundaries,
+        operation.boundaryId,
+        "SPATIAL_BOUNDARY_NOT_FOUND",
+        "Spatial boundary",
+      );
+      return;
+    }
+    case "spatial.opening.upsert": {
+      upsertById(requireSpatialLayout(scene).openings, operation.value);
+      return;
+    }
+    case "spatial.opening.remove": {
+      removeById(
+        requireSpatialLayout(scene).openings,
+        operation.openingId,
+        "SPATIAL_OPENING_NOT_FOUND",
+        "Spatial opening",
+      );
+      return;
+    }
+    case "spatial.connection.upsert": {
+      upsertById(requireSpatialLayout(scene).connections, operation.value);
+      return;
+    }
+    case "spatial.connection.remove": {
+      removeById(
+        requireSpatialLayout(scene).connections,
+        operation.connectionId,
+        "SPATIAL_CONNECTION_NOT_FOUND",
+        "Spatial connection",
+      );
+      return;
+    }
+    case "spatial.membership.set": {
+      const memberships = requireSpatialLayout(scene).memberships;
+      const existingIndex = memberships.findIndex(
+        (candidate) =>
+          candidate.entityId === operation.value.entityId,
+      );
+      if (existingIndex === -1) {
+        memberships.push(operation.value);
+      } else {
+        memberships[existingIndex] = operation.value;
+      }
+      return;
+    }
+    case "spatial.membership.remove": {
+      const memberships = requireSpatialLayout(scene).memberships;
+      const existingIndex = memberships.findIndex(
+        (candidate) => candidate.entityId === operation.entityId,
+      );
+      if (existingIndex === -1) {
+        throw new SceneDomainError(
+          "SPATIAL_MEMBERSHIP_NOT_FOUND",
+          `Spatial membership does not exist: ${operation.entityId}`,
+        );
+      }
+      memberships.splice(existingIndex, 1);
+      return;
+    }
   }
 };
 
@@ -352,7 +647,7 @@ export const applyScenePatch = (
   patchInput: unknown,
 ): AppliedScenePatch => {
   const current = sceneSpecSchema.parse(currentInput);
-  const patch = scenePatchSchema.parse(patchInput);
+  const patch = parseScenePatchInput(patchInput);
 
   if (patch.sceneId !== current.sceneId) {
     throw new SceneDomainError(
@@ -367,10 +662,18 @@ export const applyScenePatch = (
     );
   }
 
+  const originalLocks = preflightPreservedLocks(current, patch);
   let next = structuredClone(current);
   for (const operation of patch.operations) {
-    applyOperation(next, operation);
-    next = enforceContactsForOperation(next, operation);
+    applyOperation(next, operation, patch.preserveLock);
+    next = enforceContactsForOperation(
+      next,
+      operation,
+      patch.preserveLock,
+    );
+  }
+  if (patch.preserveLock) {
+    assertPreservedLocks(next, originalLocks);
   }
   next.revision = current.revision + 1;
 

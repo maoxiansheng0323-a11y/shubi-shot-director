@@ -13,7 +13,12 @@ import {
   ScenePersistence,
   ScenePersistenceError,
 } from "../server/scene-persistence";
+import { resolveActorLimbPresenceUpdates } from "../src/domain/actor-anatomy";
 import { createDefaultScene } from "../src/domain/default-scene";
+import {
+  parseSceneFile,
+  serializeSceneFile,
+} from "../src/editor/scene-files";
 import type { SceneSpec } from "../src/domain/scene-schema";
 
 const temporaryDirectories: string[] = [];
@@ -35,6 +40,60 @@ afterEach(async () => {
 });
 
 describe("ScenePersistence", () => {
+  it("serializes and reparses the exact canonical v4 limb map", async () => {
+    const scene = createDefaultScene();
+    const actor = scene.entities.find((entity) => entity.kind === "actor");
+    if (!actor || actor.kind !== "actor") {
+      throw new Error("Missing generic actor fixture.");
+    }
+    actor.body.limbPresence = resolveActorLimbPresenceUpdates(
+      actor.body.limbPresence,
+      { upper_arm_r: "absent", lower_leg_l: "absent" },
+    );
+    const expectedPresence = structuredClone(actor.body.limbPresence);
+
+    const serialized = serializeSceneFile(scene);
+    const reparsed = await parseSceneFile(new Blob([serialized]));
+    const reparsedActor = reparsed.entities.find(
+      (entity) => entity.kind === "actor",
+    );
+
+    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: 4 });
+    expect(reparsedActor).toMatchObject({
+      body: { limbPresence: expectedPresence },
+    });
+  });
+
+  it("persists limb absences without mutating anatomy or creating locks", async () => {
+    const runtimeDirectory = await createRuntimeDirectory();
+    const persistence = new ScenePersistence(runtimeDirectory);
+    const scene = createDefaultScene();
+    const actor = scene.entities.find((entity) => entity.kind === "actor");
+    if (!actor || actor.kind !== "actor") {
+      throw new Error("Missing generic actor fixture.");
+    }
+    actor.body.limbPresence = resolveActorLimbPresenceUpdates(
+      actor.body.limbPresence,
+      { hand_l: "absent", foot_r: "absent" },
+    );
+    const before = structuredClone(scene);
+
+    await persistence.persist(scene);
+    const restored = await persistence.load();
+    const restoredActor = restored.entities.find(
+      (entity) => entity.kind === "actor",
+    );
+
+    expect(scene).toEqual(before);
+    expect(restoredActor).toMatchObject({
+      lockMode: "none",
+      body: { limbPresence: actor.body.limbPresence },
+    });
+    expect(restored.entities.every(({ lockMode }) => lockMode === "none")).toBe(
+      true,
+    );
+  });
+
   it("serializes concurrent writes and restarts from the final scene", async () => {
     const runtimeDirectory = await createRuntimeDirectory();
     const persistence = new ScenePersistence(runtimeDirectory);

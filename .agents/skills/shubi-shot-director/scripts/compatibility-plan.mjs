@@ -91,6 +91,35 @@ const REQUIRED_FEATURE_IDS = Object.freeze([
   "export.software-png",
   "composition.segmented-report",
   "bridge.safe-shutdown",
+  "actor.limb-presence",
+]);
+const ENTITY_LOCK_MODES = Object.freeze(["none", "workflow", "user"]);
+const PATCH_POLICY_FIELDS = Object.freeze(["preserveLock"]);
+const LOCK_ERROR_CODES = Object.freeze([
+  "USER_LOCKED",
+  "WORKFLOW_LOCKED",
+  "LOCK_PRESERVATION_CONFLICT",
+]);
+const ACTOR_LIMB_PART_IDS = Object.freeze([
+  "upper_arm_l",
+  "forearm_l",
+  "hand_l",
+  "upper_arm_r",
+  "forearm_r",
+  "hand_r",
+  "upper_leg_l",
+  "lower_leg_l",
+  "foot_l",
+  "upper_leg_r",
+  "lower_leg_r",
+  "foot_r",
+]);
+const ACTOR_LIMB_PRESENCE_MODES = Object.freeze([
+  "present",
+  "absent",
+]);
+const ACTOR_LIMB_ERROR_CODES = Object.freeze([
+  "LIMB_HIERARCHY_CONFLICT",
 ]);
 const REMOVED_COMMAND_IDS = new Set([
   "shot.create",
@@ -133,12 +162,98 @@ const compatibilityError = (code) => ({
 const invalid = (code) => ({ error: compatibilityError(code) });
 const isRecord = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+const plainOwnRecord = (value) => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null
+    ? value
+    : undefined;
+};
+const hasOwnDataProperty = (input, key) => {
+  const descriptor = Object.getOwnPropertyDescriptor(input, key);
+  return descriptor !== undefined && "value" in descriptor;
+};
+const snapshotOwnDataRecord = (input) => {
+  try {
+    const snapshots = new WeakMap();
+    const visit = (value) => {
+      if (typeof value !== "object" || value === null) {
+        return value;
+      }
+      const existing = snapshots.get(value);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const isArray = Array.isArray(value);
+      const prototype = Object.getPrototypeOf(value);
+      if (
+        (isArray && prototype !== Array.prototype) ||
+        (!isArray &&
+          prototype !== Object.prototype &&
+          prototype !== null)
+      ) {
+        throw new Error("Invalid capability snapshot.");
+      }
+      const descriptors = new Map();
+      for (const key of Reflect.ownKeys(value)) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor === undefined || !("value" in descriptor)) {
+          throw new Error("Invalid capability snapshot.");
+        }
+        descriptors.set(key, descriptor);
+      }
+
+      const snapshot = isArray
+        ? []
+        : Object.create(
+            prototype === null ? null : Object.prototype,
+          );
+      snapshots.set(value, snapshot);
+      for (const [key, descriptor] of descriptors) {
+        if (isArray && key === "length") {
+          continue;
+        }
+        Object.defineProperty(snapshot, key, {
+          configurable: true,
+          enumerable: descriptor.enumerable,
+          value: visit(descriptor.value),
+          writable: true,
+        });
+      }
+      if (isArray) {
+        const lengthDescriptor = descriptors.get("length");
+        if (
+          lengthDescriptor === undefined ||
+          typeof lengthDescriptor.value !== "number"
+        ) {
+          throw new Error("Invalid capability snapshot.");
+        }
+        Object.defineProperty(snapshot, "length", {
+          value: lengthDescriptor.value,
+          writable: true,
+        });
+      }
+      return snapshot;
+    };
+
+    const snapshot = visit(input);
+    return plainOwnRecord(snapshot);
+  } catch {
+    return undefined;
+  }
+};
 const isPositiveInteger = (value) =>
   typeof value === "number" && Number.isInteger(value) && value > 0;
 const isUniqueStringArray = (value) =>
   Array.isArray(value) &&
   value.every((item) => typeof item === "string" && item.length > 0) &&
   new Set(value).size === value.length;
+const isNonEmptyUniqueStringArray = (value) =>
+  isUniqueStringArray(value) &&
+  value.length > 0 &&
+  value.every((item) => item.trim().length > 0);
 const stringSetsEqual = (left, right) =>
   left.length === right.length &&
   left.every((value) => right.includes(value));
@@ -158,6 +273,15 @@ const MANIFEST_ROOT_KEYS = new Set([
   "networkPolicy",
   "commands",
   "features",
+  "entityLockModes",
+  "patchPolicyFields",
+  "lockErrorCodes",
+  "actorLimbPartIds",
+  "actorLimbPresenceModes",
+  "actorLimbErrorCodes",
+]);
+const MANIFEST_REQUIRED_FIELDS = Object.freeze([
+  ...MANIFEST_ROOT_KEYS,
 ]);
 const FORBIDDEN_COMPACT_KEYS = new Set([
   "requiresapikey",
@@ -296,68 +420,137 @@ const hasSensitiveConfiguration = (input) => {
 const includesRemovedId = (values, removedIds) =>
   Array.isArray(values) && values.some((value) => removedIds.has(value));
 
+const inspectCapabilitiesBoundary = (input) => {
+  try {
+    const record = plainOwnRecord(input);
+    if (record === undefined) {
+      return invalid("CAPABILITIES_INVALID");
+    }
+    const contractDescriptor = Object.getOwnPropertyDescriptor(
+      record,
+      "capabilitiesContractVersion",
+    );
+    const contractVersion =
+      contractDescriptor !== undefined && "value" in contractDescriptor
+        ? contractDescriptor.value
+        : undefined;
+    if (contractVersion === undefined || contractVersion === 1) {
+      return invalid("CAPABILITIES_CONTRACT_UNSUPPORTED");
+    }
+    if (!isPositiveInteger(contractVersion)) {
+      return invalid("CAPABILITIES_INVALID");
+    }
+    if (contractVersion !== CAPABILITIES_CONTRACT_VERSION) {
+      return invalid("CAPABILITIES_CONTRACT_UNSUPPORTED");
+    }
+    if (
+      hasSensitiveConfiguration(record) ||
+      includesRemovedId(record.commands, REMOVED_COMMAND_IDS) ||
+      includesRemovedId(record.features, REMOVED_FEATURE_IDS)
+    ) {
+      return invalid("SEMANTIC_BOUNDARY_VIOLATION");
+    }
+    const headerFields = [
+      "service",
+      "bridgeProtocolVersion",
+      "sceneSchemaVersion",
+      "patchSchemaVersion",
+      "intentReportSchemaVersion",
+      ...Object.keys(EXPECTED_BOUNDARY),
+    ];
+    if (!headerFields.every((field) => hasOwnDataProperty(record, field))) {
+      return invalid("CAPABILITIES_INVALID");
+    }
+    if (record.service !== RUNTIME_SERVICE) {
+      return invalid("BRIDGE_IDENTITY_MISMATCH");
+    }
+    if (
+      !isPositiveInteger(record.bridgeProtocolVersion) ||
+      !isPositiveInteger(record.sceneSchemaVersion) ||
+      !isPositiveInteger(record.patchSchemaVersion) ||
+      !isPositiveInteger(record.intentReportSchemaVersion) ||
+      Object.keys(EXPECTED_BOUNDARY).some(
+        (field) => typeof record[field] !== "string",
+      )
+    ) {
+      return invalid("CAPABILITIES_INVALID");
+    }
+    if (
+      Object.entries(EXPECTED_BOUNDARY).some(
+        ([field, expected]) => record[field] !== expected,
+      )
+    ) {
+      return invalid("SEMANTIC_BOUNDARY_VIOLATION");
+    }
+    return {
+      record,
+      header: {
+        capabilitiesContractVersion: contractVersion,
+        bridgeProtocolVersion: record.bridgeProtocolVersion,
+        sceneSchemaVersion: record.sceneSchemaVersion,
+        patchSchemaVersion: record.patchSchemaVersion,
+        intentReportSchemaVersion: record.intentReportSchemaVersion,
+      },
+    };
+  } catch {
+    return invalid("CAPABILITIES_INVALID");
+  }
+};
+
+const validateCapabilitiesSnapshot = (input) => {
+  const inspected = inspectCapabilitiesBoundary(input);
+  if (inspected.error !== undefined) {
+    return inspected;
+  }
+  const record = inspected.record;
+  try {
+    if (
+      !MANIFEST_REQUIRED_FIELDS.every((field) =>
+        hasOwnDataProperty(record, field),
+      ) ||
+      typeof record.applicationVersion !== "string" ||
+      record.applicationVersion.length === 0 ||
+      !isUniqueStringArray(record.commands) ||
+      !isUniqueStringArray(record.features) ||
+      !isNonEmptyUniqueStringArray(record.entityLockModes) ||
+      !isNonEmptyUniqueStringArray(record.patchPolicyFields) ||
+      !isNonEmptyUniqueStringArray(record.lockErrorCodes) ||
+      !isNonEmptyUniqueStringArray(record.actorLimbPartIds) ||
+      !isNonEmptyUniqueStringArray(record.actorLimbPresenceModes) ||
+      !isNonEmptyUniqueStringArray(record.actorLimbErrorCodes)
+    ) {
+      return invalid("CAPABILITIES_INVALID");
+    }
+    return {
+      manifest: {
+        service: RUNTIME_SERVICE,
+        capabilitiesContractVersion: CAPABILITIES_CONTRACT_VERSION,
+        applicationVersion: record.applicationVersion,
+        bridgeProtocolVersion: record.bridgeProtocolVersion,
+        sceneSchemaVersion: record.sceneSchemaVersion,
+        patchSchemaVersion: record.patchSchemaVersion,
+        intentReportSchemaVersion: record.intentReportSchemaVersion,
+        ...EXPECTED_BOUNDARY,
+        commands: [...record.commands],
+        features: [...record.features],
+        entityLockModes: [...record.entityLockModes],
+        patchPolicyFields: [...record.patchPolicyFields],
+        lockErrorCodes: [...record.lockErrorCodes],
+        actorLimbPartIds: [...record.actorLimbPartIds],
+        actorLimbPresenceModes: [...record.actorLimbPresenceModes],
+        actorLimbErrorCodes: [...record.actorLimbErrorCodes],
+      },
+    };
+  } catch {
+    return invalid("CAPABILITIES_INVALID");
+  }
+};
+
 export const validateCapabilitiesManifest = (input) => {
-  if (!isRecord(input)) {
-    return invalid("CAPABILITIES_INVALID");
-  }
-
-  const contractVersion = input.capabilitiesContractVersion;
-  if (contractVersion === undefined || contractVersion === 1) {
-    return invalid("CAPABILITIES_CONTRACT_UNSUPPORTED");
-  }
-  if (!isPositiveInteger(contractVersion)) {
-    return invalid("CAPABILITIES_INVALID");
-  }
-  if (contractVersion !== CAPABILITIES_CONTRACT_VERSION) {
-    return invalid("CAPABILITIES_CONTRACT_UNSUPPORTED");
-  }
-  if (
-    hasSensitiveConfiguration(input) ||
-    includesRemovedId(input.commands, REMOVED_COMMAND_IDS) ||
-    includesRemovedId(input.features, REMOVED_FEATURE_IDS)
-  ) {
-    return invalid("SEMANTIC_BOUNDARY_VIOLATION");
-  }
-  if (input.service !== RUNTIME_SERVICE) {
-    return invalid("BRIDGE_IDENTITY_MISMATCH");
-  }
-  if (
-    typeof input.applicationVersion !== "string" ||
-    input.applicationVersion.length === 0 ||
-    !isPositiveInteger(input.bridgeProtocolVersion) ||
-    !isPositiveInteger(input.sceneSchemaVersion) ||
-    !isPositiveInteger(input.patchSchemaVersion) ||
-    !isPositiveInteger(input.intentReportSchemaVersion) ||
-    !isUniqueStringArray(input.commands) ||
-    !isUniqueStringArray(input.features) ||
-    Object.keys(EXPECTED_BOUNDARY).some(
-      (field) => typeof input[field] !== "string",
-    )
-  ) {
-    return invalid("CAPABILITIES_INVALID");
-  }
-  if (
-    Object.entries(EXPECTED_BOUNDARY).some(
-      ([field, expected]) => input[field] !== expected,
-    )
-  ) {
-    return invalid("SEMANTIC_BOUNDARY_VIOLATION");
-  }
-
-  return {
-    manifest: {
-      service: RUNTIME_SERVICE,
-      capabilitiesContractVersion: CAPABILITIES_CONTRACT_VERSION,
-      applicationVersion: input.applicationVersion,
-      bridgeProtocolVersion: input.bridgeProtocolVersion,
-      sceneSchemaVersion: input.sceneSchemaVersion,
-      patchSchemaVersion: input.patchSchemaVersion,
-      intentReportSchemaVersion: input.intentReportSchemaVersion,
-      ...EXPECTED_BOUNDARY,
-      commands: [...input.commands],
-      features: [...input.features],
-    },
-  };
+  const snapshot = snapshotOwnDataRecord(input);
+  return snapshot === undefined
+    ? invalid("CAPABILITIES_INVALID")
+    : validateCapabilitiesSnapshot(snapshot);
 };
 
 const compareLiveManifest = (
@@ -365,31 +558,52 @@ const compareLiveManifest = (
   input,
   skillBridgeProtocolVersion,
 ) => {
-  const parsed = validateCapabilitiesManifest(input);
+  const inspected = inspectCapabilitiesBoundary(input);
+  if (inspected.error !== undefined) {
+    return inspected;
+  }
+  const liveHeader = inspected.header;
+  if (
+    liveHeader.bridgeProtocolVersion !== offline.bridgeProtocolVersion ||
+    liveHeader.bridgeProtocolVersion !== skillBridgeProtocolVersion
+  ) {
+    return invalid("BRIDGE_PROTOCOL_UNSUPPORTED");
+  }
+  if (liveHeader.sceneSchemaVersion !== offline.sceneSchemaVersion) {
+    return invalid("SCENE_SCHEMA_UNSUPPORTED");
+  }
+  if (liveHeader.patchSchemaVersion !== offline.patchSchemaVersion) {
+    return invalid("PATCH_SCHEMA_UNSUPPORTED");
+  }
+  if (
+    liveHeader.intentReportSchemaVersion !==
+    offline.intentReportSchemaVersion
+  ) {
+    return invalid("INTENT_REPORT_SCHEMA_UNSUPPORTED");
+  }
+  const parsed = validateCapabilitiesSnapshot(input);
   if (parsed.error !== undefined) {
     return parsed;
   }
   const live = parsed.manifest;
   if (
-    live.bridgeProtocolVersion !== offline.bridgeProtocolVersion ||
-    live.bridgeProtocolVersion !== skillBridgeProtocolVersion
-  ) {
-    return invalid("BRIDGE_PROTOCOL_UNSUPPORTED");
-  }
-  if (live.sceneSchemaVersion !== offline.sceneSchemaVersion) {
-    return invalid("SCENE_SCHEMA_UNSUPPORTED");
-  }
-  if (live.patchSchemaVersion !== offline.patchSchemaVersion) {
-    return invalid("PATCH_SCHEMA_UNSUPPORTED");
-  }
-  if (
-    live.intentReportSchemaVersion !== offline.intentReportSchemaVersion
-  ) {
-    return invalid("INTENT_REPORT_SCHEMA_UNSUPPORTED");
-  }
-  if (
     !stringSetsEqual(live.commands, offline.commands) ||
-    !stringSetsEqual(live.features, offline.features)
+    !stringSetsEqual(live.features, offline.features) ||
+    !stringSetsEqual(
+      live.entityLockModes,
+      offline.entityLockModes,
+    ) ||
+    !stringSetsEqual(
+      live.patchPolicyFields,
+      offline.patchPolicyFields,
+    ) ||
+    !stringSetsEqual(live.lockErrorCodes, offline.lockErrorCodes) ||
+    !stringSetsEqual(live.actorLimbPartIds, offline.actorLimbPartIds) ||
+    !stringSetsEqual(
+      live.actorLimbPresenceModes,
+      offline.actorLimbPresenceModes,
+    ) ||
+    !stringSetsEqual(live.actorLimbErrorCodes, offline.actorLimbErrorCodes)
   ) {
     return invalid("CAPABILITIES_INVALID");
   }
@@ -447,7 +661,7 @@ const diagnosticsFor = (manifest, schemas) => {
   return diagnostics;
 };
 
-const actionBlockingError = (requestedAction, schemas) => {
+const schemaBlockingError = (requestedAction, schemas) => {
   const action = ACTION_POLICY[requestedAction];
   if (action.schemas.includes("scene") && !schemas.scene) {
     return compatibilityError("SCENE_SCHEMA_UNSUPPORTED");
@@ -458,8 +672,23 @@ const actionBlockingError = (requestedAction, schemas) => {
   if (action.schemas.includes("intent") && !schemas.intent) {
     return compatibilityError("INTENT_REPORT_SCHEMA_UNSUPPORTED");
   }
-  return compatibilityError("CAPABILITY_NOT_AVAILABLE");
+  return null;
 };
+const firstSchemaCompatibilityError = (schemas) => {
+  if (!schemas.scene) {
+    return compatibilityError("SCENE_SCHEMA_UNSUPPORTED");
+  }
+  if (!schemas.patch) {
+    return compatibilityError("PATCH_SCHEMA_UNSUPPORTED");
+  }
+  if (!schemas.intent) {
+    return compatibilityError("INTENT_REPORT_SCHEMA_UNSUPPORTED");
+  }
+  return null;
+};
+const actionBlockingError = (requestedAction, schemas) =>
+  schemaBlockingError(requestedAction, schemas) ??
+  compatibilityError("CAPABILITY_NOT_AVAILABLE");
 
 const incompatiblePlan = (requestedAction, error) => ({
   planContractVersion: PLAN_CONTRACT_VERSION,
@@ -492,7 +721,28 @@ export const buildCompatibilityPlan = (input) => {
     !isPositiveInteger(input.skillBridgeProtocolVersion) ||
     !isPositiveInteger(input.skillSceneSchemaVersion) ||
     !isPositiveInteger(input.skillPatchSchemaVersion) ||
-    !isPositiveInteger(input.skillIntentReportSchemaVersion)
+    !isPositiveInteger(input.skillIntentReportSchemaVersion) ||
+    !isNonEmptyUniqueStringArray(input.skillEntityLockModes) ||
+    !isNonEmptyUniqueStringArray(input.skillPatchPolicyFields) ||
+    !isNonEmptyUniqueStringArray(input.skillLockErrorCodes) ||
+    !isNonEmptyUniqueStringArray(input.skillActorLimbPartIds) ||
+    !isNonEmptyUniqueStringArray(input.skillActorLimbPresenceModes) ||
+    !isNonEmptyUniqueStringArray(input.skillActorLimbErrorCodes) ||
+    !stringSetsEqual(input.skillEntityLockModes, ENTITY_LOCK_MODES) ||
+    !stringSetsEqual(
+      input.skillPatchPolicyFields,
+      PATCH_POLICY_FIELDS,
+    ) ||
+    !stringSetsEqual(input.skillLockErrorCodes, LOCK_ERROR_CODES) ||
+    !stringSetsEqual(input.skillActorLimbPartIds, ACTOR_LIMB_PART_IDS) ||
+    !stringSetsEqual(
+      input.skillActorLimbPresenceModes,
+      ACTOR_LIMB_PRESENCE_MODES,
+    ) ||
+    !stringSetsEqual(
+      input.skillActorLimbErrorCodes,
+      ACTOR_LIMB_ERROR_CODES,
+    )
   ) {
     return incompatiblePlan(
       requestedAction,
@@ -500,20 +750,68 @@ export const buildCompatibilityPlan = (input) => {
     );
   }
 
-  const parsed = validateCapabilitiesManifest(input.doctorData);
-  if (parsed.error !== undefined) {
-    return incompatiblePlan(requestedAction, parsed.error);
+  const doctorData = snapshotOwnDataRecord(input.doctorData);
+  if (doctorData === undefined) {
+    return incompatiblePlan(
+      requestedAction,
+      compatibilityError("CAPABILITIES_INVALID"),
+    );
   }
-  const manifest = parsed.manifest;
+  const inspected = inspectCapabilitiesBoundary(doctorData);
+  if (inspected.error !== undefined) {
+    return incompatiblePlan(requestedAction, inspected.error);
+  }
   if (
-    manifest.bridgeProtocolVersion !== input.skillBridgeProtocolVersion
+    inspected.header.bridgeProtocolVersion !==
+    input.skillBridgeProtocolVersion
   ) {
     return incompatiblePlan(
       requestedAction,
       compatibilityError("BRIDGE_PROTOCOL_UNSUPPORTED"),
     );
   }
-  const schemas = schemaCompatibility(manifest, input);
+  const schemas = schemaCompatibility(inspected.header, input);
+  const firstSchemaError = firstSchemaCompatibilityError(schemas);
+  const parsed = validateCapabilitiesSnapshot(doctorData);
+  if (parsed.error !== undefined) {
+    return incompatiblePlan(
+      requestedAction,
+      firstSchemaError ?? parsed.error,
+    );
+  }
+  const manifest = parsed.manifest;
+  if (
+    !stringSetsEqual(
+      manifest.entityLockModes,
+      input.skillEntityLockModes,
+    ) ||
+      !stringSetsEqual(
+        manifest.patchPolicyFields,
+        input.skillPatchPolicyFields,
+      ) ||
+      !stringSetsEqual(
+        manifest.lockErrorCodes,
+        input.skillLockErrorCodes,
+      ) ||
+      !stringSetsEqual(
+        manifest.actorLimbPartIds,
+        input.skillActorLimbPartIds,
+      ) ||
+      !stringSetsEqual(
+        manifest.actorLimbPresenceModes,
+        input.skillActorLimbPresenceModes,
+      ) ||
+      !stringSetsEqual(
+        manifest.actorLimbErrorCodes,
+        input.skillActorLimbErrorCodes,
+      )
+  ) {
+    return incompatiblePlan(
+      requestedAction,
+      firstSchemaError ??
+        compatibilityError("CAPABILITIES_INVALID"),
+    );
+  }
   const allowedActions = ACTION_IDS.filter((actionId) =>
     actionIsAvailable(actionId, manifest, schemas),
   );
@@ -526,9 +824,16 @@ export const buildCompatibilityPlan = (input) => {
       liveAvailable = false;
       diagnostics.push("LIVE_CAPABILITIES_UNVERIFIED");
     } else {
+      const healthData = snapshotOwnDataRecord(input.healthData);
+      if (healthData === undefined) {
+        return incompatiblePlan(
+          requestedAction,
+          compatibilityError("CAPABILITIES_INVALID"),
+        );
+      }
       const compared = compareLiveManifest(
         manifest,
-        input.healthData,
+        healthData,
         input.skillBridgeProtocolVersion,
       );
       if (compared.error !== undefined) {

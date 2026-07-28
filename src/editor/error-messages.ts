@@ -8,6 +8,15 @@ const localizedByCode: Readonly<Record<string, string>> = {
   STALE_REVISION: "场景已被其他操作更新，请基于最新 revision 重试",
   SCENE_ID_MISMATCH: "这次修改属于另一个场景，未执行",
   ENTITY_LOCKED: "目标已锁定，未执行修改",
+  USER_LOCKED: "目标受到用户保护，需要先确认解锁",
+  WORKFLOW_LOCKED: "目标处于流程锁定，请使用保留锁定的修改",
+  LOCK_PRESERVATION_CONFLICT:
+    "修改会改变应保留的锁定状态，未执行修改",
+  ACTOR_LIMB_TARGET_INVALID: "目标不是可编辑的人偶，未执行肢体修改",
+  LIMB_HIERARCHY_CONFLICT:
+    "同一次修改中的肢体上下游状态互相冲突，未执行修改",
+  WORKFLOW_LOCK_CHECKPOINT_INVALID:
+    "保存检查点响应无效，未生成场景文件",
   ENTITY_NOT_FOUND: "目标元素不存在，请重新选择",
   SCHEMA_VALIDATION_FAILED: "提交内容不符合 SceneSpec / ScenePatch 结构",
   SURFACE_NOT_FOUND: "接触表面不存在，请重新选择",

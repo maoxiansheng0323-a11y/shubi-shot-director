@@ -11,6 +11,38 @@ import { fileURLToPath } from "node:url";
 const EXPECTED_RUNTIME_NAME = "shubi-shot-director";
 const DEFAULT_ENTRYPOINT = path.join("scripts", "director.mjs");
 const BUNDLED_BRIDGE_PROTOCOL_VERSION = 1;
+const BUNDLED_ENTITY_LOCK_MODES = Object.freeze([
+  "none",
+  "workflow",
+  "user",
+]);
+const BUNDLED_PATCH_POLICY_FIELDS = Object.freeze(["preserveLock"]);
+const BUNDLED_LOCK_ERROR_CODES = Object.freeze([
+  "USER_LOCKED",
+  "WORKFLOW_LOCKED",
+  "LOCK_PRESERVATION_CONFLICT",
+]);
+const BUNDLED_ACTOR_LIMB_PART_IDS = Object.freeze([
+  "upper_arm_l",
+  "forearm_l",
+  "hand_l",
+  "upper_arm_r",
+  "forearm_r",
+  "hand_r",
+  "upper_leg_l",
+  "lower_leg_l",
+  "foot_l",
+  "upper_leg_r",
+  "lower_leg_r",
+  "foot_r",
+]);
+const BUNDLED_ACTOR_LIMB_PRESENCE_MODES = Object.freeze([
+  "present",
+  "absent",
+]);
+const BUNDLED_ACTOR_LIMB_ERROR_CODES = Object.freeze([
+  "LIMB_HIERARCHY_CONFLICT",
+]);
 const RELEASE_METADATA_KEYS = new Set([
   "locatorContractVersion",
   "relativeRoot",
@@ -25,6 +57,12 @@ const RELEASE_METADATA_KEYS = new Set([
   "modelIntegration",
   "credentialPolicy",
   "networkPolicy",
+  "entityLockModes",
+  "patchPolicyFields",
+  "lockErrorCodes",
+  "actorLimbPartIds",
+  "actorLimbPresenceModes",
+  "actorLimbErrorCodes",
 ]);
 const RUNTIME_NOT_FOUND_MESSAGE =
   "A compatible Shubi Shot Director runtime was not found.";
@@ -42,6 +80,17 @@ export class SkillRuntimeError extends Error {
 }
 
 const runtimeNotFound = () => new SkillRuntimeError();
+const isUniqueStringArray = (value) =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.every(
+    (item) => typeof item === "string" && item.trim().length > 0,
+  ) &&
+  new Set(value).size === value.length;
+const stringSetsEqual = (left, right) =>
+  isUniqueStringArray(left) &&
+  left.length === right.length &&
+  left.every((value) => right.includes(value));
 
 const isContainedPath = (root, candidate) => {
   const relative = path.relative(root, candidate);
@@ -149,14 +198,38 @@ const readReleaseMetadata = async (skillDirectory) => {
       metadata.capabilitiesContractVersion !== 2 ||
       metadata.bridgeProtocolVersion !==
         BUNDLED_BRIDGE_PROTOCOL_VERSION ||
-      metadata.sceneSchemaVersion !== 1 ||
-      metadata.patchSchemaVersion !== 1 ||
-      metadata.intentReportSchemaVersion !== 1 ||
+      metadata.sceneSchemaVersion !== 4 ||
+      metadata.patchSchemaVersion !== 4 ||
+      metadata.intentReportSchemaVersion !== 4 ||
       metadata.semanticAuthority !== "host" ||
       metadata.inputContract !== "structured-only" ||
       metadata.modelIntegration !== "none" ||
       metadata.credentialPolicy !== "forbidden" ||
-      metadata.networkPolicy !== "loopback-only"
+      metadata.networkPolicy !== "loopback-only" ||
+      !stringSetsEqual(
+        metadata.entityLockModes,
+        BUNDLED_ENTITY_LOCK_MODES,
+      ) ||
+      !stringSetsEqual(
+        metadata.patchPolicyFields,
+        BUNDLED_PATCH_POLICY_FIELDS,
+      ) ||
+      !stringSetsEqual(
+        metadata.lockErrorCodes,
+        BUNDLED_LOCK_ERROR_CODES,
+      ) ||
+      !stringSetsEqual(
+        metadata.actorLimbPartIds,
+        BUNDLED_ACTOR_LIMB_PART_IDS,
+      ) ||
+      !stringSetsEqual(
+        metadata.actorLimbPresenceModes,
+        BUNDLED_ACTOR_LIMB_PRESENCE_MODES,
+      ) ||
+      !stringSetsEqual(
+        metadata.actorLimbErrorCodes,
+        BUNDLED_ACTOR_LIMB_ERROR_CODES,
+      )
     ) {
       throw runtimeNotFound();
     }

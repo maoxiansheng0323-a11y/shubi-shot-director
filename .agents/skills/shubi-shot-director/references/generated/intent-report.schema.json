@@ -4,7 +4,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 1
+      "const": 4
     },
     "operation": {
       "type": "string",
@@ -48,7 +48,15 @@
               "focal-length",
               "framing",
               "output",
-              "composition-safety"
+              "composition-safety",
+              "spatial-region",
+              "spatial-boundary",
+              "spatial-opening",
+              "spatial-connection",
+              "entity-region-membership",
+              "region-visibility",
+              "lock-protection",
+              "actor-limb-presence"
             ]
           },
           "required": {
@@ -111,12 +119,24 @@
                         "entity.transform.rotation",
                         "entity.transform.scale",
                         "entity.visible",
-                        "entity.locked",
+                        "entity.lockMode",
                         "actor.slot",
                         "actor.pose",
                         "camera.heightM",
                         "camera.lens.focalLengthMm",
-                        "camera.lens.sensorWidthMm"
+                        "camera.lens.sensorWidthMm",
+                        "entity.body.limbPresence.upper_arm_l",
+                        "entity.body.limbPresence.forearm_l",
+                        "entity.body.limbPresence.hand_l",
+                        "entity.body.limbPresence.upper_arm_r",
+                        "entity.body.limbPresence.forearm_r",
+                        "entity.body.limbPresence.hand_r",
+                        "entity.body.limbPresence.upper_leg_l",
+                        "entity.body.limbPresence.lower_leg_l",
+                        "entity.body.limbPresence.foot_l",
+                        "entity.body.limbPresence.upper_leg_r",
+                        "entity.body.limbPresence.lower_leg_r",
+                        "entity.body.limbPresence.foot_r"
                       ]
                     }
                   },
@@ -143,7 +163,12 @@
                         "scene.compositionGoals.framing",
                         "scene.compositionGoals.captionZone",
                         "scene.compositionGoals.sideUiZone",
-                        "scene.compositionGoals.criticalEntityIds"
+                        "scene.compositionGoals.criticalEntityIds",
+                        "scene.spatialLayout.regions",
+                        "scene.spatialLayout.boundaries",
+                        "scene.spatialLayout.openings",
+                        "scene.spatialLayout.connections",
+                        "scene.spatialLayout.memberships"
                       ]
                     }
                   },
@@ -183,7 +208,7 @@
                     "operationIndex": {
                       "type": "integer",
                       "minimum": 0,
-                      "maximum": 127
+                      "maximum": 255
                     }
                   },
                   "required": [

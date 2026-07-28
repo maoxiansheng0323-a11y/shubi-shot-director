@@ -53,6 +53,12 @@ describe("public onboarding", () => {
     expect(readme).toContain("scene submit --file");
     expect(readme).toContain("export png --file");
     expect(readme).toMatch(/open connected Shot Preview/iu);
+    expect(readme).toMatch(
+      /镜头预览[\s\S]*without an activation toggle/iu,
+    );
+    expect(readme).toMatch(/six[\s-]*button[\s\S]*movement/iu);
+    expect(readme).toContain("PageUp");
+    expect(readme).toContain("PageDown");
     expect(readme).toContain("pnpm verify");
     expect(readme).toContain(
       "![Generic Quick Start perspective preview](docs/assets/quickstart-perspective.png)",
@@ -65,8 +71,10 @@ describe("public onboarding", () => {
       "Verified on Windows 11 Pro, 64-bit (build 26200).",
     );
     expect(readme).toContain(
-      "macOS and Linux have not yet been verified for v0.2.1.",
+      "macOS and Linux have not yet been verified for v0.4.0.",
     );
+    expect(readme).toMatch(/generic editable limb presence/iu);
+    expect(readme).not.toMatch(/Task 6[\s\S]*browser gate[\s\S]*(?:complete|passed)/iu);
     const approvedOriginTitle = ["売り札", "の塔"].join("");
     expect(readme).toContain(
       `Originally developed during the production of the visual novel “${approvedOriginTitle}”.`,
@@ -104,7 +112,8 @@ describe("public onboarding", () => {
     expect(releaseGuide).toContain(
       "New-Item -ItemType Directory -Force .shubi-shot",
     );
-    expect(releaseGuide).toMatch(/new public repository/iu);
+    expect(releaseGuide).toMatch(/existing public repository/iu);
+    expect(releaseGuide).toMatch(/history-free source snapshot/iu);
     expect(releaseGuide).toMatch(
       /never push the existing internal branches or tags/iu,
     );
@@ -117,10 +126,39 @@ describe("public onboarding", () => {
     );
     expect(releaseGuide).toContain("Visibility: `public`");
     expect(releaseGuide).toContain("Default branch: `main`");
-    expect(releaseGuide).toContain("Initial version: `v0.2.1`");
+    expect(releaseGuide).toContain(
+      "## Fixed v0.4.0 publication parameters",
+    );
+    expect(releaseGuide).toContain("Release version: `v0.4.0`");
+    expect(releaseGuide).toContain("git tag -a v0.4.0");
+    expect(releaseGuide).not.toContain("git tag v0.3.0");
     expect(releaseGuide).toContain("License: `MIT`");
-    expect(releaseGuide).toContain("git init -b main");
+    expect(releaseGuide).not.toContain("git init -b main");
     expect(releaseGuide).toMatch(/do not publish to npm/iu);
+  });
+
+  it("ships reusable v0.4.0 public release notes", async () => {
+    const [readme, releaseNotes] = await Promise.all([
+      readRepositoryFile("README.md"),
+      readRepositoryFile("docs/releases/v0.4.0.md"),
+    ]);
+
+    expect(readme).toContain(
+      "[v0.4.0 release notes](docs/releases/v0.4.0.md)",
+    );
+    expect(readme).not.toMatch(/release candidate/iu);
+    expect(releaseNotes).toContain("# Shubi Shot Director v0.4.0");
+    expect(releaseNotes).toMatch(/connected[\s-]*region/iu);
+    expect(releaseNotes).toMatch(/lock provenance/iu);
+    expect(releaseNotes).toMatch(/limb presence/iu);
+    expect(releaseNotes).toMatch(/camera controls/iu);
+    expect(releaseNotes).toMatch(
+      /user-protected[\s\S]*in-preview unlock/iu,
+    );
+    expect(releaseNotes).toMatch(
+      /right-button[\s\S]*context[\s-]*menu/iu,
+    );
+    expect(releaseNotes).toMatch(/1,506 tests/iu);
   });
 
   it("locks the public package metadata without enabling npm publication", async () => {
@@ -135,7 +173,7 @@ describe("public onboarding", () => {
 
     expect(packageJson).toMatchObject({
       name: "shubi-shot-director",
-      version: "0.2.1",
+      version: "0.4.0",
       private: true,
       license: "MIT",
     });

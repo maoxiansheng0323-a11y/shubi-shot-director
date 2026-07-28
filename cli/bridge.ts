@@ -8,8 +8,10 @@ import {
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_SERVICE,
   getRuntimeCapabilityManifest,
+  parseRuntimeCapabilityCompatibilityHeader,
   parseRuntimeCapabilityManifest,
   RuntimeCapabilityError,
+  type RuntimeCapabilityCompatibilityHeader,
   type RuntimeCapabilityManifest,
 } from "./runtime-capabilities";
 
@@ -30,6 +32,10 @@ export interface BridgeHealth extends RuntimeCapabilityManifest {
   sceneId: string;
   revision: number;
   uiUrl: string;
+  instanceId?: string;
+}
+
+interface BridgeControlHealth {
   instanceId?: string;
 }
 
@@ -76,6 +82,12 @@ const safeBridgeMessage = (code: string): string => {
       return "A requested scene entity was not found.";
     case "ENTITY_LOCKED":
       return "A requested scene entity is locked.";
+    case "USER_LOCKED":
+      return "A requested scene entity is user-locked.";
+    case "WORKFLOW_LOCKED":
+      return "A requested scene entity is workflow-locked.";
+    case "LOCK_PRESERVATION_CONFLICT":
+      return "The requested change conflicts with lock preservation.";
     case "CONTACT_CONSTRAINT_ACTIVE":
       return "An active contact constraint prevents this change.";
     case "EXPORT_PREVIEW_UNAVAILABLE":
@@ -270,6 +282,97 @@ export const bridgeConfigurationIsLoopback = (
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+const inspectOwnDataProperty = (
+  input: Record<string, unknown>,
+  key: string,
+): { found: boolean; value: unknown } => {
+  const descriptor = Object.getOwnPropertyDescriptor(input, key);
+  if (descriptor === undefined) {
+    return { found: false, value: undefined };
+  }
+  if (!("value" in descriptor)) {
+    return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+  }
+  return { found: true, value: descriptor.value };
+};
+
+const snapshotOwnDataRecord = (
+  input: Record<string, unknown>,
+): Record<string, unknown> => {
+  const snapshots = new WeakMap<object, object>();
+  const visit = (value: unknown): unknown => {
+    if (typeof value !== "object" || value === null) {
+      return value;
+    }
+    const existing = snapshots.get(value);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const isArray = Array.isArray(value);
+    const prototype = Object.getPrototypeOf(value);
+    if (
+      (isArray && prototype !== Array.prototype) ||
+      (!isArray &&
+        prototype !== Object.prototype &&
+        prototype !== null)
+    ) {
+      return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+    }
+    const keys = Reflect.ownKeys(value);
+    const descriptors = new Map<
+      PropertyKey,
+      PropertyDescriptor
+    >();
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) {
+        return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+      }
+      descriptors.set(key, descriptor);
+    }
+
+    const snapshot = isArray
+      ? []
+      : Object.create(prototype === null ? null : Object.prototype);
+    snapshots.set(value, snapshot);
+    for (const [key, descriptor] of descriptors) {
+      if (isArray && key === "length") {
+        continue;
+      }
+      Object.defineProperty(snapshot, key, {
+        configurable: true,
+        enumerable: descriptor.enumerable,
+        value: visit(descriptor.value),
+        writable: true,
+      });
+    }
+    if (isArray) {
+      const lengthDescriptor = descriptors.get("length");
+      if (
+        lengthDescriptor === undefined ||
+        typeof lengthDescriptor.value !== "number"
+      ) {
+        return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+      }
+      Object.defineProperty(snapshot, "length", {
+        value: lengthDescriptor.value,
+        writable: true,
+      });
+    }
+    return snapshot;
+  };
+
+  const snapshot = visit(input);
+  if (
+    typeof snapshot !== "object" ||
+    snapshot === null ||
+    Array.isArray(snapshot)
+  ) {
+    return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+  }
+  return snapshot as Record<string, unknown>;
+};
+
 const validateLoopbackUiUrl = (source: unknown): string => {
   if (typeof source !== "string") {
     throw new BridgeError(
@@ -306,37 +409,137 @@ const stringSetsEqual = (left: string[], right: string[]): boolean =>
 const isPositiveInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value > 0;
 
-export const validateBridgeHealth = (
+const HEALTH_COMPATIBILITY_ERROR_CODES = new Set([
+  "BRIDGE_IDENTITY_MISMATCH",
+  "CAPABILITIES_CONTRACT_UNSUPPORTED",
+  "CAPABILITIES_INVALID",
+  "SEMANTIC_BOUNDARY_VIOLATION",
+  "BRIDGE_PROTOCOL_UNSUPPORTED",
+  "SCENE_SCHEMA_UNSUPPORTED",
+  "PATCH_SCHEMA_UNSUPPORTED",
+  "INTENT_REPORT_SCHEMA_UNSUPPORTED",
+]);
+
+const canonicalCaughtCompatibilityCode = (
+  error: unknown,
+): string | undefined => {
+  try {
+    if (!(error instanceof BridgeError)) {
+      return undefined;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(error, "code");
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      typeof descriptor.value !== "string" ||
+      !HEALTH_COMPATIBILITY_ERROR_CODES.has(descriptor.value)
+    ) {
+      return undefined;
+    }
+    return descriptor.value;
+  } catch {
+    return undefined;
+  }
+};
+
+const validateBridgeHealthUnsafe = (
   input: unknown,
-  expected: RuntimeCapabilityManifest = getRuntimeCapabilityManifest(),
+  expected: RuntimeCapabilityManifest,
 ): BridgeHealth => {
-  if (
-    !isObject(input) ||
-    input.service !== BRIDGE_SERVICE
-  ) {
+  if (!isObject(input)) {
     return throwBridgeCompatibilityError("BRIDGE_IDENTITY_MISMATCH");
   }
-  if (input.capabilitiesContractVersion === undefined) {
+  const inputSnapshot = snapshotOwnDataRecord(input);
+  const service = inspectOwnDataProperty(inputSnapshot, "service");
+  const contractVersion = inspectOwnDataProperty(
+    inputSnapshot,
+    "capabilitiesContractVersion",
+  );
+  if (!service.found || service.value !== BRIDGE_SERVICE) {
+    return throwBridgeCompatibilityError("BRIDGE_IDENTITY_MISMATCH");
+  }
+  if (!contractVersion.found || contractVersion.value === undefined) {
     return throwBridgeCompatibilityError(
       "CAPABILITIES_CONTRACT_UNSUPPORTED",
     );
   }
+  if (!isObject(expected)) {
+    return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+  }
+  const expectedSnapshot = snapshotOwnDataRecord(expected);
+  const expectedContractVersion = inspectOwnDataProperty(
+    expectedSnapshot,
+    "capabilitiesContractVersion",
+  );
+  if (!expectedContractVersion.found) {
+    return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+  }
   if (
-    isPositiveInteger(input.capabilitiesContractVersion) &&
-    isPositiveInteger(expected.capabilitiesContractVersion) &&
-    input.capabilitiesContractVersion !==
-      expected.capabilitiesContractVersion
+    isPositiveInteger(contractVersion.value) &&
+    isPositiveInteger(expectedContractVersion.value) &&
+    contractVersion.value !== expectedContractVersion.value
   ) {
     return throwBridgeCompatibilityError(
       "CAPABILITIES_CONTRACT_UNSUPPORTED",
     );
   }
 
+  let liveHeader: RuntimeCapabilityCompatibilityHeader;
+  let expectedHeader: RuntimeCapabilityCompatibilityHeader;
+  try {
+    liveHeader =
+      parseRuntimeCapabilityCompatibilityHeader(inputSnapshot);
+    expectedHeader = parseRuntimeCapabilityCompatibilityHeader(
+      expectedSnapshot,
+    );
+  } catch (error) {
+    if (error instanceof RuntimeCapabilityError) {
+      return throwBridgeCompatibilityError(error.code);
+    }
+    return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+  }
+  if (
+    liveHeader.capabilitiesContractVersion !==
+    expectedHeader.capabilitiesContractVersion
+  ) {
+    return throwBridgeCompatibilityError(
+      "CAPABILITIES_CONTRACT_UNSUPPORTED",
+    );
+  }
+  if (
+    liveHeader.bridgeProtocolVersion !==
+    expectedHeader.bridgeProtocolVersion
+  ) {
+    return throwBridgeCompatibilityError(
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+    );
+  }
+  if (
+    liveHeader.sceneSchemaVersion !==
+    expectedHeader.sceneSchemaVersion
+  ) {
+    return throwBridgeCompatibilityError("SCENE_SCHEMA_UNSUPPORTED");
+  }
+  if (
+    liveHeader.patchSchemaVersion !==
+    expectedHeader.patchSchemaVersion
+  ) {
+    return throwBridgeCompatibilityError("PATCH_SCHEMA_UNSUPPORTED");
+  }
+  if (
+    liveHeader.intentReportSchemaVersion !==
+    expectedHeader.intentReportSchemaVersion
+  ) {
+    return throwBridgeCompatibilityError(
+      "INTENT_REPORT_SCHEMA_UNSUPPORTED",
+    );
+  }
+
   let liveManifest: RuntimeCapabilityManifest;
   let expectedManifest: RuntimeCapabilityManifest;
   try {
-    liveManifest = parseRuntimeCapabilityManifest(input);
-    expectedManifest = parseRuntimeCapabilityManifest(expected);
+    liveManifest = parseRuntimeCapabilityManifest(inputSnapshot);
+    expectedManifest = parseRuntimeCapabilityManifest(expectedSnapshot);
   } catch (error) {
     if (error instanceof RuntimeCapabilityError) {
       return throwBridgeCompatibilityError(error.code);
@@ -345,71 +548,85 @@ export const validateBridgeHealth = (
   }
 
   if (
-    liveManifest.capabilitiesContractVersion !==
-    expectedManifest.capabilitiesContractVersion
-  ) {
-    return throwBridgeCompatibilityError(
-      "CAPABILITIES_CONTRACT_UNSUPPORTED",
-    );
-  }
-  if (
-    liveManifest.bridgeProtocolVersion !==
-    expectedManifest.bridgeProtocolVersion
-  ) {
-    return throwBridgeCompatibilityError(
-      "BRIDGE_PROTOCOL_UNSUPPORTED",
-    );
-  }
-  if (
-    liveManifest.sceneSchemaVersion !==
-    expectedManifest.sceneSchemaVersion
-  ) {
-    return throwBridgeCompatibilityError("SCENE_SCHEMA_UNSUPPORTED");
-  }
-  if (
-    liveManifest.patchSchemaVersion !==
-    expectedManifest.patchSchemaVersion
-  ) {
-    return throwBridgeCompatibilityError("PATCH_SCHEMA_UNSUPPORTED");
-  }
-  if (
-    liveManifest.intentReportSchemaVersion !==
-    expectedManifest.intentReportSchemaVersion
-  ) {
-    return throwBridgeCompatibilityError(
-      "INTENT_REPORT_SCHEMA_UNSUPPORTED",
-    );
-  }
-  if (
     !stringSetsEqual(liveManifest.commands, expectedManifest.commands) ||
-    !stringSetsEqual(liveManifest.features, expectedManifest.features)
+    !stringSetsEqual(liveManifest.features, expectedManifest.features) ||
+    !stringSetsEqual(
+      liveManifest.entityLockModes,
+      expectedManifest.entityLockModes,
+    ) ||
+    !stringSetsEqual(
+      liveManifest.patchPolicyFields,
+      expectedManifest.patchPolicyFields,
+    ) ||
+    !stringSetsEqual(
+      liveManifest.lockErrorCodes,
+      expectedManifest.lockErrorCodes,
+    ) ||
+    !stringSetsEqual(
+      liveManifest.actorLimbPartIds,
+      expectedManifest.actorLimbPartIds,
+    ) ||
+    !stringSetsEqual(
+      liveManifest.actorLimbPresenceModes,
+      expectedManifest.actorLimbPresenceModes,
+    ) ||
+    !stringSetsEqual(
+      liveManifest.actorLimbErrorCodes,
+      expectedManifest.actorLimbErrorCodes,
+    )
   ) {
     return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
   }
 
+  const status = inspectOwnDataProperty(inputSnapshot, "status");
+  const sceneId = inspectOwnDataProperty(inputSnapshot, "sceneId");
+  const revision = inspectOwnDataProperty(inputSnapshot, "revision");
+  const uiUrl = inspectOwnDataProperty(inputSnapshot, "uiUrl");
+  const instanceId = inspectOwnDataProperty(
+    inputSnapshot,
+    "instanceId",
+  );
   if (
-    input.status !== "ready" ||
-    typeof input.sceneId !== "string" ||
-    input.sceneId.length === 0 ||
-    typeof input.revision !== "number" ||
-    !Number.isInteger(input.revision) ||
-    input.revision < 0 ||
-    (input.instanceId !== undefined &&
-      (typeof input.instanceId !== "string" ||
-        !/^instance_[a-f0-9]{32}$/.test(input.instanceId)))
+    !status.found ||
+    status.value !== "ready" ||
+    !sceneId.found ||
+    typeof sceneId.value !== "string" ||
+    sceneId.value.length === 0 ||
+    !revision.found ||
+    typeof revision.value !== "number" ||
+    !Number.isInteger(revision.value) ||
+    revision.value < 0 ||
+    (instanceId.found &&
+      instanceId.value !== undefined &&
+      (typeof instanceId.value !== "string" ||
+        !/^instance_[a-f0-9]{32}$/.test(instanceId.value)))
   ) {
     return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
   }
   return {
     ...liveManifest,
     status: "ready",
-    sceneId: input.sceneId,
-    revision: input.revision,
-    uiUrl: validateLoopbackUiUrl(input.uiUrl),
-    ...(typeof input.instanceId === "string"
-      ? { instanceId: input.instanceId }
+    sceneId: sceneId.value,
+    revision: revision.value,
+    uiUrl: validateLoopbackUiUrl(uiUrl.value),
+    ...(typeof instanceId.value === "string"
+      ? { instanceId: instanceId.value }
       : {}),
   };
+};
+
+export const validateBridgeHealth = (
+  input: unknown,
+  expected: RuntimeCapabilityManifest = getRuntimeCapabilityManifest(),
+): BridgeHealth => {
+  try {
+    return validateBridgeHealthUnsafe(input, expected);
+  } catch (error) {
+    return throwBridgeCompatibilityError(
+      canonicalCaughtCompatibilityCode(error) ??
+        "CAPABILITIES_INVALID",
+    );
+  }
 };
 
 const fetchEnvelope = async (
@@ -496,6 +713,88 @@ export const probeBridgeHealth = async (
     throw error;
   }
   return validateBridgeHealth(envelope.data);
+};
+
+const validateBridgeControlHealth = (input: unknown): BridgeControlHealth => {
+  try {
+    if (!isObject(input)) {
+      return throwBridgeCompatibilityError("BRIDGE_IDENTITY_MISMATCH");
+    }
+    const snapshot = snapshotOwnDataRecord(input);
+    const service = inspectOwnDataProperty(snapshot, "service");
+    const contractVersion = inspectOwnDataProperty(
+      snapshot,
+      "capabilitiesContractVersion",
+    );
+    const protocolVersion = inspectOwnDataProperty(
+      snapshot,
+      "bridgeProtocolVersion",
+    );
+    const status = inspectOwnDataProperty(snapshot, "status");
+    const features = inspectOwnDataProperty(snapshot, "features");
+    const instanceId = inspectOwnDataProperty(snapshot, "instanceId");
+    if (!service.found || service.value !== BRIDGE_SERVICE) {
+      return throwBridgeCompatibilityError("BRIDGE_IDENTITY_MISMATCH");
+    }
+    if (
+      !contractVersion.found ||
+      contractVersion.value !==
+        getRuntimeCapabilityManifest().capabilitiesContractVersion
+    ) {
+      return throwBridgeCompatibilityError(
+        "CAPABILITIES_CONTRACT_UNSUPPORTED",
+      );
+    }
+    if (
+      !protocolVersion.found ||
+      protocolVersion.value !== BRIDGE_PROTOCOL_VERSION
+    ) {
+      return throwBridgeCompatibilityError("BRIDGE_PROTOCOL_UNSUPPORTED");
+    }
+    if (
+      !status.found ||
+      status.value !== "ready" ||
+      !features.found ||
+      !Array.isArray(features.value) ||
+      !features.value.includes("bridge.safe-shutdown") ||
+      (instanceId.found &&
+        instanceId.value !== undefined &&
+        (typeof instanceId.value !== "string" ||
+          !/^instance_[a-f0-9]{32}$/.test(instanceId.value)))
+    ) {
+      return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+    }
+    return typeof instanceId.value === "string"
+      ? { instanceId: instanceId.value }
+      : {};
+  } catch (error) {
+    return throwBridgeCompatibilityError(
+      canonicalCaughtCompatibilityCode(error) ?? "CAPABILITIES_INVALID",
+    );
+  }
+};
+
+const probeBridgeControlHealth = async (
+  configuration: BridgeConfiguration,
+): Promise<BridgeControlHealth | null> => {
+  let envelope: JsonEnvelope;
+  try {
+    envelope = await fetchEnvelope(
+      configuration,
+      "/api/v1/health",
+      {},
+      1_000,
+    );
+  } catch (error) {
+    if (
+      error instanceof BridgeError &&
+      error.code === "BRIDGE_UNAVAILABLE"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+  return validateBridgeControlHealth(envelope.data);
 };
 
 export const requireBridgeHealth = async (
@@ -683,7 +982,7 @@ export const ensureBridge = async (
 export const stopBridge = async (
   configuration: BridgeConfiguration,
 ): Promise<{ stopped: boolean }> => {
-  const health = await probeBridgeHealth(configuration);
+  const health = await probeBridgeControlHealth(configuration);
   if (health === null) {
     return { stopped: false };
   }
@@ -704,7 +1003,7 @@ export const stopBridge = async (
   const startedAt = Date.now();
   while (Date.now() - startedAt < 5_000) {
     try {
-      const current = await probeBridgeHealth(configuration);
+      const current = await probeBridgeControlHealth(configuration);
       if (current === null) {
         return { stopped: true };
       }

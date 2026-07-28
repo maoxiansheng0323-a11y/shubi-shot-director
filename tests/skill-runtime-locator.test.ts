@@ -26,14 +26,37 @@ const EXPECTED_RUNTIME_NAME = "shubi-shot-director";
 const V2_RUNTIME_METADATA = {
   capabilitiesContractVersion: 2,
   bridgeProtocolVersion: 1,
-  sceneSchemaVersion: 1,
-  patchSchemaVersion: 1,
-  intentReportSchemaVersion: 1,
+  sceneSchemaVersion: 4,
+  patchSchemaVersion: 4,
+  intentReportSchemaVersion: 4,
   semanticAuthority: "host",
   inputContract: "structured-only",
   modelIntegration: "none",
   credentialPolicy: "forbidden",
   networkPolicy: "loopback-only",
+  entityLockModes: ["none", "workflow", "user"],
+  patchPolicyFields: ["preserveLock"],
+  lockErrorCodes: [
+    "USER_LOCKED",
+    "WORKFLOW_LOCKED",
+    "LOCK_PRESERVATION_CONFLICT",
+  ],
+  actorLimbPartIds: [
+    "upper_arm_l",
+    "forearm_l",
+    "hand_l",
+    "upper_arm_r",
+    "forearm_r",
+    "hand_r",
+    "upper_leg_l",
+    "lower_leg_l",
+    "foot_l",
+    "upper_leg_r",
+    "lower_leg_r",
+    "foot_r",
+  ],
+  actorLimbPresenceModes: ["present", "absent"],
+  actorLimbErrorCodes: ["LIMB_HIERARCHY_CONFLICT"],
 } as const;
 const RUNTIME_NOT_FOUND_MESSAGE =
   "A compatible Shubi Shot Director runtime was not found.";
@@ -450,6 +473,65 @@ describe("skill runtime locator", () => {
     ["invalid scene schema", { sceneSchemaVersion: 0 }],
     ["invalid patch schema", { patchSchemaVersion: 1.5 }],
     ["missing intent schema", { intentReportSchemaVersion: undefined }],
+    ["missing actor limb part ids", { actorLimbPartIds: undefined }],
+    ["empty actor limb part ids", { actorLimbPartIds: [] }],
+    [
+      "duplicate actor limb presence modes",
+      { actorLimbPresenceModes: ["present", "absent", "present"] },
+    ],
+    ["non-string actor limb error code", { actorLimbErrorCodes: [42] }],
+    [
+      "mismatched actor limb part ids",
+      {
+        actorLimbPartIds: [
+          ...V2_RUNTIME_METADATA.actorLimbPartIds.slice(0, -1),
+          "toe_r",
+        ],
+      },
+    ],
+    ["missing entity lock modes", { entityLockModes: undefined }],
+    ["empty entity lock modes", { entityLockModes: [] }],
+    [
+      "duplicate entity lock modes",
+      { entityLockModes: ["none", "workflow", "user", "user"] },
+    ],
+    [
+      "mismatched entity lock modes",
+      { entityLockModes: ["none", "workflow", "system"] },
+    ],
+    ["missing patch policy fields", { patchPolicyFields: undefined }],
+    ["empty patch policy fields", { patchPolicyFields: [] }],
+    [
+      "duplicate patch policy fields",
+      { patchPolicyFields: ["preserveLock", "preserveLock"] },
+    ],
+    [
+      "mismatched patch policy fields",
+      { patchPolicyFields: ["keepLock"] },
+    ],
+    ["missing lock error codes", { lockErrorCodes: undefined }],
+    ["empty lock error codes", { lockErrorCodes: [] }],
+    [
+      "duplicate lock error codes",
+      {
+        lockErrorCodes: [
+          "USER_LOCKED",
+          "WORKFLOW_LOCKED",
+          "LOCK_PRESERVATION_CONFLICT",
+          "USER_LOCKED",
+        ],
+      },
+    ],
+    [
+      "mismatched lock error codes",
+      {
+        lockErrorCodes: [
+          "USER_LOCKED",
+          "WORKFLOW_LOCKED",
+          "ENTITY_LOCKED",
+        ],
+      },
+    ],
     ["runtime semantic authority", { semanticAuthority: "runtime" }],
     ["raw-text input contract", { inputContract: "raw-text" }],
     ["model integration", { modelIntegration: "local" }],

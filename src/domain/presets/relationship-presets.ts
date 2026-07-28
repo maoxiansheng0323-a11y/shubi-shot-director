@@ -1,4 +1,6 @@
 import { rotateVector } from "../scene-math";
+import { mutationBlockedByLock } from "../entity-lock";
+import { actorVisibleRigBounds } from "../actor-visible-bounds";
 import {
   ContactConstraintError,
   surfaceTopY,
@@ -85,7 +87,7 @@ const requireActor = (
       "A relationship role does not reference an actor.",
     );
   }
-  if (entity.locked) {
+  if (mutationBlockedByLock(entity.lockMode, true) === "USER_LOCKED") {
     throw new RelationshipPresetError(
       "ROLE_ACTOR_LOCKED",
       "A relationship role references a locked actor.",
@@ -151,15 +153,6 @@ const horizontalForward = (
   return normalizeHorizontal(x, z);
 };
 
-const contactOffsetM = (
-  pose: ReturnType<typeof materializePose>,
-): number => {
-  const offset = pose.preset.parameters.contactOffsetM;
-  return typeof offset === "number" && Number.isFinite(offset)
-    ? offset
-    : 0;
-};
-
 const transformAt = (
   actor: ActorEntity,
   positionM: [number, number, number],
@@ -169,6 +162,28 @@ const transformAt = (
   rotation,
   scale: [...actor.transform.scale],
 });
+
+const supportedTransformAt = (
+  actor: ActorEntity,
+  pose: ReturnType<typeof materializePose>,
+  positionXZ: readonly [number, number],
+  rotation: QuaternionTuple,
+  supportY: number,
+): TransformSpec => {
+  const candidate = transformAt(
+    actor,
+    [positionXZ[0], 0, positionXZ[1]],
+    rotation,
+  );
+  const supportOffsetM = actorVisibleRigBounds(
+    { ...actor, pose, transform: candidate },
+    candidate,
+  ).supportOffsetM;
+  return {
+    ...candidate,
+    positionM: [positionXZ[0], supportY + supportOffsetM, positionXZ[1]],
+  };
+};
 
 const stableHash = (value: string): string => {
   let hash = 2_166_136_261;
@@ -288,16 +303,31 @@ const buildFaceToFaceOperations = (
       0.9,
   );
   const halfSeparation = separationM / 2;
-  const primaryPosition: [number, number, number] = [
-    midpointX - direction.x * halfSeparation,
-    supportY + contactOffsetM(primaryPose),
-    midpointZ - direction.z * halfSeparation,
-  ];
-  const secondaryPosition: [number, number, number] = [
-    midpointX + direction.x * halfSeparation,
-    supportY + contactOffsetM(secondaryPose),
-    midpointZ + direction.z * halfSeparation,
-  ];
+  const primaryRotation = yawFacing(direction);
+  const secondaryRotation = yawFacing({
+    x: -direction.x,
+    z: -direction.z,
+  });
+  const primaryTransform = supportedTransformAt(
+    primary,
+    primaryPose,
+    [
+      midpointX - direction.x * halfSeparation,
+      midpointZ - direction.z * halfSeparation,
+    ],
+    primaryRotation,
+    supportY,
+  );
+  const secondaryTransform = supportedTransformAt(
+    secondary,
+    secondaryPose,
+    [
+      midpointX + direction.x * halfSeparation,
+      midpointZ + direction.z * halfSeparation,
+    ],
+    secondaryRotation,
+    supportY,
+  );
 
   return [
     {
@@ -313,20 +343,12 @@ const buildFaceToFaceOperations = (
     {
       op: "entity.transform.set",
       entityId: primary.id,
-      value: transformAt(
-        primary,
-        primaryPosition,
-        yawFacing(direction),
-      ),
+      value: primaryTransform,
     },
     {
       op: "entity.transform.set",
       entityId: secondary.id,
-      value: transformAt(
-        secondary,
-        secondaryPosition,
-        yawFacing({ x: -direction.x, z: -direction.z }),
-      ),
+      value: secondaryTransform,
     },
     groundConstraintOperation(scene, primary.id, surfaceId),
     groundConstraintOperation(scene, secondary.id, surfaceId),
@@ -361,18 +383,28 @@ const buildOverUnderOperations = (
     2;
   const primaryLongitudinalOffset =
     secondary.body.heightM * 0.1;
-  const secondaryPosition: [number, number, number] = [
-    midpointX,
-    supportY + contactOffsetM(secondaryPose),
-    midpointZ,
-  ];
-  const primaryPosition: [number, number, number] = [
-    midpointX +
-      -lowerForward.x * primaryLongitudinalOffset,
-    supportY + contactOffsetM(primaryPose),
-    midpointZ +
-      -lowerForward.z * primaryLongitudinalOffset,
-  ];
+  const primaryRotation = yawFacing(lowerForward);
+  const secondaryRotation = yawFacing({
+    x: -lowerForward.x,
+    z: -lowerForward.z,
+  });
+  const secondaryTransform = supportedTransformAt(
+    secondary,
+    secondaryPose,
+    [midpointX, midpointZ],
+    secondaryRotation,
+    supportY,
+  );
+  const primaryTransform = supportedTransformAt(
+    primary,
+    primaryPose,
+    [
+      midpointX + -lowerForward.x * primaryLongitudinalOffset,
+      midpointZ + -lowerForward.z * primaryLongitudinalOffset,
+    ],
+    primaryRotation,
+    supportY,
+  );
 
   return [
     {
@@ -388,23 +420,12 @@ const buildOverUnderOperations = (
     {
       op: "entity.transform.set",
       entityId: primary.id,
-      value: transformAt(
-        primary,
-        primaryPosition,
-        yawFacing(lowerForward),
-      ),
+      value: primaryTransform,
     },
     {
       op: "entity.transform.set",
       entityId: secondary.id,
-      value: transformAt(
-        secondary,
-        secondaryPosition,
-        yawFacing({
-          x: -lowerForward.x,
-          z: -lowerForward.z,
-        }),
-      ),
+      value: secondaryTransform,
     },
     groundConstraintOperation(scene, primary.id, surfaceId),
     groundConstraintOperation(scene, secondary.id, surfaceId),

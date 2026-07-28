@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { SceneSession } from "../server/scene-session";
 import { applyScenePatch } from "../src/domain/apply-scene-patch";
+import { actorVisibleRigBounds } from "../src/domain/actor-visible-bounds";
 import { analyzeComposition } from "../src/domain/composition-safety";
 import { surfaceTopY } from "../src/domain/contact-constraints";
 import { buildRelationshipOperations } from "../src/domain/presets";
 import { scenePatchSchema } from "../src/domain/scene-patch";
+import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 import {
   sceneSpecSchema,
   type ActorEntity,
@@ -19,7 +21,7 @@ import {
   createStructuredTwoActorScene,
 } from "./helpers/structured-fixtures";
 
-const CONTACT_TOLERANCE_M = 1e-6;
+const CONTACT_TOLERANCE_M = 0.001;
 const FRAME_FAILURE_CODES = new Set([
   "ANCHOR_BEHIND_CAMERA",
   "ANCHOR_OUT_OF_FRAME",
@@ -56,19 +58,12 @@ const expectGroundContactsWithinTolerance = (scene: SceneSpec): void => {
     if (!constraint || constraint.type !== "ground-contact") {
       throw new Error("Actor is missing its ground-contact constraint.");
     }
-    const contactOffsetM = actor.pose.preset.parameters.contactOffsetM;
-    expect(typeof contactOffsetM).toBe("number");
-    if (typeof contactOffsetM !== "number") {
-      throw new Error("Actor pose is missing its contact offset.");
-    }
-
     const surfaceY =
       constraint.surfaceEntityId === null
         ? 0
         : surfaceTopY(scene, constraint.surfaceEntityId);
-    const expectedY = surfaceY + contactOffsetM * actor.transform.scale[1];
     const contactErrorM = Math.abs(
-      actor.transform.positionM[1] - expectedY,
+      actorVisibleRigBounds(actor).minWorld[1] - surfaceY,
     );
     expect(contactErrorM).toBeLessThanOrEqual(CONTACT_TOLERANCE_M);
   }
@@ -117,6 +112,23 @@ const expectOnlyEntitiesChanged = (
 };
 
 describe("structured shot regression matrix", () => {
+  it("keeps camera-inside-visible-actor-proxy as a stable safety code", () => {
+    const scene = createStructuredShotScene();
+    const actor = actorsIn(scene)[0];
+    const camera = activeCameraIn(scene);
+    if (!actor) {
+      throw new Error("Regression scene is missing its actor.");
+    }
+    camera.transform.positionM = [...actor.transform.positionM];
+
+    const report = analyzeComposition(scene);
+
+    expect(report.cameraCollisionSafe.issueCodes).toContain(
+      "CAMERA_INSIDE_ACTOR_PROXY",
+    );
+    expect(report.cameraCollisionSafe.approximate).toBe(true);
+  });
+
   it("validates one generic actor in a compact low-angle shot", () => {
     const scene = createStructuredShotScene();
     const camera = activeCameraIn(scene);
@@ -172,11 +184,12 @@ describe("structured shot regression matrix", () => {
   it("materializes a face-to-face relationship from structured roles", () => {
     const initial = createStructuredTwoActorScene();
     const patch = scenePatchSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: PATCH_SCHEMA_VERSION,
       patchId: "patch_structured_face_to_face",
       sceneId: initial.sceneId,
       baseRevision: initial.revision,
       source: "system",
+      preserveLock: false,
       operations: buildRelationshipOperations(
         initial,
         "relationship.face-to-face-v1",
@@ -246,11 +259,12 @@ describe("structured shot regression matrix", () => {
     const initial = createStructuredShotScene();
     const initialEntityIds = initial.entities.map((entity) => entity.id);
     const movePatch = scenePatchSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: PATCH_SCHEMA_VERSION,
       patchId: "patch_structured_actor_move",
       sceneId: initial.sceneId,
       baseRevision: initial.revision,
       source: "natural-language",
+      preserveLock: false,
       operations: [
         {
           op: "entity.transform.translate",
@@ -283,11 +297,12 @@ describe("structured shot regression matrix", () => {
 
     const currentCamera = activeCameraIn(afterMove);
     const cameraPatch = scenePatchSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: PATCH_SCHEMA_VERSION,
       patchId: "patch_structured_camera_adjustment",
       sceneId: afterMove.sceneId,
       baseRevision: afterMove.revision,
       source: "natural-language",
+      preserveLock: false,
       operations: [
         {
           op: "entity.transform.translate",

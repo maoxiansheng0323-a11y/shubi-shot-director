@@ -5,17 +5,49 @@ Use this reference only for an initial shot or an explicitly requested new shot.
 ## Author in Host Codex
 
 1. Read `generated/scene-spec.schema.json`, `generated/intent-report.schema.json`, and `generated/scene-submission.schema.json`.
-2. Convert the complete request into generic entities, constraints, camera state, output state, and composition goals.
+2. Convert the complete request into generic spatial layout, entities, constraints, camera state, output state, and composition goals.
 3. Use meter units, right-handed coordinates, `+Y` up, and camera forward along `-Z`.
-4. Include the requested environment, generic actors and props, and at least one perspective camera.
-5. Materialize actor transforms, poses, contact, relationship blocking, camera rotation, and composition constraints. Leave no instruction for runtime semantic inference.
-6. Persist focal length and sensor width, not FOV. Persist the camera quaternion, not a second look-at state.
-7. Use 16:9 output; default to 1920 x 1080 unless the user requests another supported resolution.
-8. Use generic IDs, slots, labels, title, and constraint IDs. Exclude source wording, aliases, profile data, and private asset paths.
-9. Pair the scene with a create `IntentReport`. Require `allowPartial: false`, `canApplySafely: true`, empty unsupported/unresolved arrays, and valid evidence for every required recognized constraint.
-10. Put both objects in one transient scene-submission envelope and call `scene submit --file`.
+4. Choose exactly one spatial mode: `spatialLayout: null` with a legacy
+   environment entity, or a complete connected `spatialLayout` with no
+   environment entity. Include generic actors and props plus at least one
+   perspective camera.
+5. Give every new and unfinished graybox entity `lockMode: "none"`. Do not create a workflow or user lock merely because an entity is present in an initial submission.
+6. For every actor, author a complete `body.limbPresence` object with exactly these twelve keys in canonical order: `upper_arm_l`, `forearm_l`, `hand_l`, `upper_arm_r`, `forearm_r`, `hand_r`, `upper_leg_l`, `lower_leg_l`, `foot_l`, `upper_leg_r`, `lower_leg_r`, `foot_r`. Use only `present` or `absent`.
+7. Materialize actor transforms, poses, contact, relationship blocking, camera rotation, and composition constraints. Leave no instruction for runtime semantic inference.
+8. Persist focal length and sensor width, not FOV. Persist the camera quaternion, not a second look-at state.
+9. Use 16:9 output; default to 1920 x 1080 unless the user requests another supported resolution.
+10. Use generic IDs, slots, labels, title, and constraint IDs. Exclude source wording, aliases, profile data, and private asset paths.
+11. Pair the scene with a v4 create `IntentReport`. Require `allowPartial: false`, `canApplySafely: true`, empty unsupported/unresolved arrays, and valid evidence for every required recognized constraint. Use all twelve exact limb evidence paths when limb presence is required.
+12. Put both objects in one transient scene-submission envelope and call `scene submit --file`.
 
 Do not use a complete SceneSpec for a follow-up to an existing shot.
+
+## Lock modes and persistence
+
+- `none`: editable, unfinished graybox state. This is the default authoring mode for new entities.
+- `workflow`: workflow-checkpoint protection created only by an accepted visual checkpoint or an explicit user-facing save.
+- `user`: protection the user explicitly chose. Changing or unlocking it requires explicit confirmation.
+
+Workflow locks never require confirmation or user authorization. A visual acceptance checkpoint may lock only the reviewed and accepted entity subset after the required Overview, required Local previews, and final Shot Preview checks. Unfinished or unaccepted entities remain none.
+
+Later ordinary corrections to workflow-locked entities use `preserveLock: true`; they do not recreate workflow locks and never require confirmation.
+
+An explicit user-facing save locks all remaining none entities before serialization. Both visual-acceptance and explicit-save transitions must use an explicit ScenePatch with `preserveLock: false` to create workflow locks; wait for the accepted revision before serialization. Background and autosave persistence never creates locks; it serializes the authoritative scene as-is.
+
+## Generic spatial layouts
+
+For a multi-region request, read `connected-environments.md`. Host Codex authors
+the region count, labels, polygon footprints, boundaries, openings,
+connections, memberships, visibility, and camera placement. The runtime has no
+room-type vocabulary and must not infer these values.
+
+Use abstract, stable IDs such as `region_alpha`, `boundary_alpha_beta`, and
+`opening_alpha_beta`. Labels may reflect the user's description, but they have
+no runtime meaning. Assign actors, props, and cameras through `memberships`
+without changing their world transforms or parent relationships.
+
+Keep the current MVP on one `floorY`. Do not approximate stairs, multiple
+levels, navigation, or streaming through labels or preset parameters.
 
 ## Generic actor slots
 
@@ -25,6 +57,19 @@ Do not use a complete SceneSpec for a follow-up to an existing shot.
 - Number slots from 1 without gaps where practical.
 
 Actor labels remain generic. External aliases are host-only resolution inputs.
+
+## Canonical actor limb presence
+
+Treat each chain as ordered from parent to descendant:
+
+- `upper_arm_l -> forearm_l -> hand_l`
+- `upper_arm_r -> forearm_r -> hand_r`
+- `upper_leg_l -> lower_leg_l -> foot_l`
+- `upper_leg_r -> lower_leg_r -> foot_r`
+
+An absent parent closes every descendant to absent. A present child restores every required ancestor to present. Reject one explicit parent-absent plus descendant-present request as `LIMB_HIERARCHY_CONFLICT`; rewrite one consistent operation rather than storing an invalid map.
+
+Replacement parts, prostheses, mechanical limbs, sockets, and custom meshes are unsupported. Do not express them as limb presence, props, hidden geometry, zero scale, detached geometry, pose state, preset parameters, or source metadata.
 
 ## Built-in graybox registry
 

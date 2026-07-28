@@ -6,6 +6,7 @@ import {
 } from "../src/domain/apply-scene-patch";
 import { enforceGroundContacts } from "../src/domain/contact-constraints";
 import { validateIntentCoverage } from "../src/domain/intent-coverage";
+import { parseSceneSpecInput } from "../src/domain/scene-migrations";
 import {
   sceneSpecSchema,
   type SceneSpec,
@@ -90,7 +91,7 @@ export class SceneSession {
   }
 
   replaceScene(input: unknown): SceneSpec {
-    const next = enforceGroundContacts(sceneSpecSchema.parse(input));
+    const next = enforceGroundContacts(parseSceneSpecInput(input));
     const previous = this.snapshot();
     const replaced = {
       ...structuredClone(next),

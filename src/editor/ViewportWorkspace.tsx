@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -14,15 +15,26 @@ import {
 } from "@react-three/drei";
 import { snapTransformToContact } from "../domain/contact-constraints";
 import type {
+  CameraEntity,
   SceneSpec,
   TransformSpec,
 } from "../domain/scene-schema";
+import {
+  ShotCameraNavigation,
+  type ShotCameraDraft,
+} from "./ShotCameraNavigation";
+import type { ShotCameraGestureSession } from "./shot-camera-session";
 import {
   createTransformDragSession,
   decideTransformDragCommit,
   useEditorStore,
   type TransformDragSession,
 } from "./editor-store";
+import {
+  deriveSpatialPreview,
+  type SpatialPreviewMode,
+  type SpatialPreviewProjection,
+} from "./spatial-preview";
 import { SceneWorld, ShotCamera } from "../three/SceneWorld";
 import {
   ShotExporter,
@@ -40,13 +52,26 @@ export interface ViewportWorkspaceProps {
     transform: TransformSpec,
   ) => void | Promise<void>;
   registerExporter: (exporter: ShotExporterHandle | null) => void;
+  previewMode: SpatialPreviewMode;
+  focusedRegionId: string | null;
+  onPreviewModeChange: (mode: SpatialPreviewMode) => void;
+  onFocusedRegionChange: (regionId: string) => void;
+  interactionDisabled: boolean;
+  onUnlockUserProtectedCamera: () => void | Promise<void>;
+  onCommitCameraTransform: (
+    session: ShotCameraGestureSession,
+    transform: TransformSpec,
+  ) => Promise<SceneSpec | void>;
+  onCommitCameraFocalLength: (
+    session: ShotCameraGestureSession,
+    focalLengthMm: number,
+  ) => Promise<SceneSpec | void>;
+  onCameraDraftChange: (active: boolean) => void;
 }
 
 const workspaceStyle: CSSProperties = {
   position: "relative",
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 38%)",
-  gap: 12,
   width: "100%",
   height: "100%",
   minHeight: 520,
@@ -70,25 +95,20 @@ const viewportFrameStyle: CSSProperties = {
 
 const editorFrameStyle: CSSProperties = {
   ...viewportFrameStyle,
+  gridArea: "1 / 1",
+  width: "100%",
   height: "100%",
-};
-
-const shotColumnStyle: CSSProperties = {
-  position: "relative",
-  zIndex: 1,
-  display: "flex",
-  minWidth: 0,
-  alignItems: "flex-start",
-  justifyContent: "center",
-  paddingTop: 40,
-  pointerEvents: "none",
 };
 
 const shotFrameStyle: CSSProperties = {
   ...viewportFrameStyle,
-  width: "100%",
+  gridArea: "1 / 1",
+  alignSelf: "center",
+  justifySelf: "center",
+  width: "min(100%, 1120px)",
+  height: "auto",
+  maxHeight: "100%",
   aspectRatio: "16 / 9",
-  pointerEvents: "auto",
 };
 
 const viewStyle: CSSProperties = {
@@ -127,6 +147,33 @@ const canvasStyle: CSSProperties = {
   pointerEvents: "none",
 };
 
+const modeSwitcherStyle: CSSProperties = {
+  position: "absolute",
+  zIndex: 4,
+  top: 20,
+  right: 20,
+  display: "flex",
+  gap: 4,
+  padding: 4,
+  border: "1px solid rgba(226, 232, 240, 0.16)",
+  borderRadius: 8,
+  background: "rgba(15, 23, 42, 0.82)",
+  backdropFilter: "blur(8px)",
+};
+
+type EditorSceneProps = Pick<
+  ViewportWorkspaceProps,
+  | "scene"
+  | "selectedId"
+  | "onSelect"
+  | "toolMode"
+  | "snapEnabled"
+  | "previewMode"
+  | "focusedRegionId"
+  | "onFocusedRegionChange"
+> &
+  DraftSceneProps;
+
 const EditorScene = ({
   scene,
   selectedId,
@@ -138,12 +185,16 @@ const EditorScene = ({
   onTransformDraft,
   onTransformCommit,
   editorDomElement,
-}: ViewportWorkspaceProps & DraftSceneProps) => (
+  previewMode,
+  focusedRegionId,
+  onFocusedRegionChange,
+  spatialPreview,
+}: EditorSceneProps) => (
   <>
     <color attach="background" args={["#1c222b"]} />
     <PerspectiveCamera
       makeDefault
-      position={[6, 4.5, 7]}
+      position={spatialPreview.camera.position}
       fov={50}
       near={0.02}
       far={500}
@@ -151,7 +202,7 @@ const EditorScene = ({
     <OrbitControls
       makeDefault
       domElement={editorDomElement ?? undefined}
-      target={[0, 1, 0]}
+      target={spatialPreview.camera.target}
       enableDamping
       dampingFactor={0.08}
       minDistance={0.5}
@@ -176,6 +227,10 @@ const EditorScene = ({
       view="editor"
       selectedEntityId={selectedId}
       onSelectEntity={onSelect}
+      selectedRegionId={focusedRegionId}
+      onSelectRegion={onFocusedRegionChange}
+      spatialPreview={spatialPreview}
+      previewMode={previewMode}
       toolMode={toolMode}
       snapEnabled={snapEnabled}
       transformOverrides={transformOverrides}
@@ -188,6 +243,7 @@ const EditorScene = ({
 );
 
 interface DraftSceneProps {
+  spatialPreview: SpatialPreviewProjection;
   transformOverrides?: Readonly<
     Record<string, TransformSpec | undefined>
   >;
@@ -203,36 +259,62 @@ interface DraftSceneProps {
   editorDomElement?: HTMLElement | null;
 }
 
+interface ShotSceneProps {
+  scene: SceneSpec;
+  selectedId: string | null;
+  onSelect: (entityId: string | null) => void;
+  registerExporter: (exporter: ShotExporterHandle | null) => void;
+  cameraDraft: ShotCameraDraft | null;
+}
+
 const ShotScene = ({
   scene,
   selectedId,
   onSelect,
-  transformOverrides,
   registerExporter,
-}: ViewportWorkspaceProps & DraftSceneProps) => (
-  <>
-    <color attach="background" args={["#20252c"]} />
-    <ShotCamera
-      scene={scene}
-      transformOverride={transformOverrides?.[scene.activeCameraId]}
-    />
-    <ShotExporter
-      output={scene.output}
-      registerExporter={registerExporter}
-    />
-    <SceneWorld
-      scene={scene}
-      view="shot"
-      selectedEntityId={selectedId}
-      onSelectEntity={onSelect}
-      transformOverrides={transformOverrides}
-    />
-  </>
-);
+  cameraDraft,
+}: ShotSceneProps) => {
+  const activeCamera = scene.entities.find(
+    (entity): entity is CameraEntity =>
+      entity.kind === "camera" && entity.id === scene.activeCameraId,
+  );
+  const cameraTransformOverride =
+    cameraDraft?.cameraId === scene.activeCameraId
+      ? cameraDraft.transform
+      : undefined;
+  const effectiveCameraTransform =
+    cameraTransformOverride ?? activeCamera?.transform;
+
+  return (
+    <>
+      <color attach="background" args={["#20252c"]} />
+      <ShotCamera
+        scene={scene}
+        transformOverride={cameraTransformOverride}
+        focalLengthOverrideMm={
+          cameraDraft?.cameraId === scene.activeCameraId
+            ? cameraDraft.focalLengthMm
+            : undefined
+        }
+      />
+      <ShotExporter
+        output={scene.output}
+        registerExporter={registerExporter}
+      />
+      <SceneWorld
+        scene={scene}
+        view="shot"
+        selectedEntityId={selectedId}
+        onSelectEntity={onSelect}
+        shotCameraTransform={effectiveCameraTransform}
+      />
+    </>
+  );
+};
 
 /**
- * One WebGL canvas, split into an inspectable editor view and a locked 16:9
- * final-shot view. Both are projections of the same SceneSpec revision.
+ * One WebGL canvas with explicit overview, local, and final-shot modes. Every
+ * mode projects the same authoritative SceneSpec revision.
  */
 export const ViewportWorkspace = ({
   scene,
@@ -242,6 +324,15 @@ export const ViewportWorkspace = ({
   snapEnabled,
   onCommitTransform,
   registerExporter,
+  previewMode,
+  focusedRegionId,
+  onPreviewModeChange,
+  onFocusedRegionChange,
+  interactionDisabled,
+  onUnlockUserProtectedCamera,
+  onCommitCameraTransform,
+  onCommitCameraFocalLength,
+  onCameraDraftChange,
 }: ViewportWorkspaceProps) => {
   // Canvas accepts a RefObject<HTMLElement>; React fills the ref before the
   // Canvas layout effect subscribes its pointer events.
@@ -252,7 +343,17 @@ export const ViewportWorkspace = ({
     entityId: string;
     transform: TransformSpec;
   } | null>(null);
+  const [shotCameraDraft, setShotCameraDraft] =
+    useState<ShotCameraDraft | null>(null);
   const dragSessionRef = useRef<TransformDragSession | null>(null);
+
+  const handleShotCameraDraftChange = useCallback(
+    (nextDraft: ShotCameraDraft | null): void => {
+      setShotCameraDraft(nextDraft);
+      onCameraDraftChange(nextDraft !== null);
+    },
+    [onCameraDraftChange],
+  );
 
   useEffect(() => {
     setDraftTransform(null);
@@ -274,6 +375,21 @@ export const ViewportWorkspace = ({
         : undefined,
     [draftTransform],
   );
+  const spatialPreview = useMemo(
+    () =>
+      deriveSpatialPreview(
+        scene.spatialLayout,
+        previewMode,
+        focusedRegionId,
+      ),
+    [focusedRegionId, previewMode, scene.spatialLayout],
+  );
+
+  useEffect(() => {
+    if (previewMode === "local" && scene.spatialLayout === null) {
+      onPreviewModeChange("overview");
+    }
+  }, [onPreviewModeChange, previewMode, scene.spatialLayout]);
 
   const handleTransformDraft = (
     entityId: string,
@@ -338,25 +454,74 @@ export const ViewportWorkspace = ({
       aria-label="3D shot workspace"
     >
       <section
+        id="compact-shot-panel"
+        style={{
+          ...shotFrameStyle,
+          zIndex: previewMode === "shot" ? 2 : 1,
+          opacity: previewMode === "shot" ? 1 : 0,
+          pointerEvents: previewMode === "shot" ? "auto" : "none",
+        }}
+        data-testid="shot-preview"
+        aria-label="Locked 16 by 9 shot preview"
+        aria-hidden={previewMode !== "shot"}
+      >
+        <p style={labelStyle} aria-hidden="true">
+          Shot Preview · {scene.output.resolutionPx.width} ×{" "}
+          {scene.output.resolutionPx.height}
+        </p>
+        <View id="shot-three-view" style={viewStyle} index={1}>
+          <ShotScene
+            scene={scene}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            registerExporter={registerExporter}
+            cameraDraft={shotCameraDraft}
+          />
+        </View>
+        {previewMode === "shot" ? (
+          <ShotCameraNavigation
+            scene={scene}
+            disabled={interactionDisabled}
+            onSelectCamera={onSelect}
+            onUnlockUserProtectedCamera={onUnlockUserProtectedCamera}
+            onDraftChange={handleShotCameraDraftChange}
+            onCommitTransform={onCommitCameraTransform}
+            onCommitFocalLength={onCommitCameraFocalLength}
+          />
+        ) : null}
+      </section>
+
+      <section
         ref={setEditorDomElement}
         id="compact-editor-panel"
-        style={editorFrameStyle}
+        style={{
+          ...editorFrameStyle,
+          zIndex: 2,
+          display: previewMode === "shot" ? "none" : "block",
+        }}
         data-testid="editor-viewport"
         aria-label="Editor viewport. Drag to orbit, right-drag to pan, and scroll to zoom."
       >
         <p style={labelStyle} aria-hidden="true">
-          Editor View
+          {previewMode === "local"
+            ? `Local · ${spatialPreview.focusedRegionId ?? "No region"}`
+            : scene.spatialLayout
+              ? "Overview"
+              : "Editor View"}
         </p>
-        <View id="editor-three-view" style={viewStyle} index={1}>
+        <View id="editor-three-view" style={viewStyle} index={2}>
           <EditorScene
+            key={`${previewMode}-${spatialPreview.focusedRegionId ?? "none"}`}
             scene={scene}
             selectedId={selectedId}
             onSelect={onSelect}
             toolMode={toolMode}
             snapEnabled={snapEnabled}
-            onCommitTransform={onCommitTransform}
-            registerExporter={registerExporter}
+            previewMode={previewMode}
+            focusedRegionId={focusedRegionId}
+            onFocusedRegionChange={onFocusedRegionChange}
             transformOverrides={transformOverrides}
+            spatialPreview={spatialPreview}
             onTransformStart={handleTransformStart}
             onTransformDraft={handleTransformDraft}
             onTransformCommit={handleTransformCommit}
@@ -365,39 +530,35 @@ export const ViewportWorkspace = ({
         </View>
       </section>
 
-      <aside
-        id="compact-shot-panel"
-        style={shotColumnStyle}
-        data-testid="shot-preview-column"
-        aria-label="Final shot preview column"
-      >
-        <section
-          style={shotFrameStyle}
-          data-testid="shot-preview"
-          aria-label="Locked 16 by 9 shot preview"
-        >
-          <p style={labelStyle} aria-hidden="true">
-            Shot Preview · {scene.output.resolutionPx.width} ×{" "}
-            {scene.output.resolutionPx.height}
-          </p>
-          <View id="shot-three-view" style={viewStyle} index={2}>
-            <ShotScene
-              scene={scene}
-              selectedId={selectedId}
-              onSelect={onSelect}
-              toolMode={toolMode}
-              snapEnabled={snapEnabled}
-              onCommitTransform={onCommitTransform}
-              registerExporter={registerExporter}
-              transformOverrides={transformOverrides}
-            />
-          </View>
-        </section>
-      </aside>
+      <nav style={modeSwitcherStyle} aria-label="Viewport preview mode">
+        {(
+          [
+            ["overview", "整体总览"],
+            ["local", "局部预览"],
+            ["shot", "镜头预览"],
+          ] as const
+        ).map(([mode, label]) => (
+          <button
+            className={
+              previewMode === mode
+                ? "viewport-mode-button is-active"
+                : "viewport-mode-button"
+            }
+            data-preview-mode={mode}
+            data-view-mode={mode}
+            disabled={mode === "local" && scene.spatialLayout === null}
+            key={mode}
+            onClick={() => onPreviewModeChange(mode)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
 
       <Canvas
         data-testid="viewport-webgl-canvas"
-        aria-label="Shared WebGL renderer for editor and shot views"
+        aria-label="Shared WebGL renderer for the active preview mode"
         style={canvasStyle}
         eventSource={eventSourceRef}
         eventPrefix="client"

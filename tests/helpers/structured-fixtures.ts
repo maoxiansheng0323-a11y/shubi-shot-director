@@ -3,7 +3,10 @@ import { createDefaultScene } from "../../src/domain/default-scene";
 import { actorAnchorWorldPoint } from "../../src/domain/humanoid-rig";
 import { buildRelationshipOperations } from "../../src/domain/presets";
 import { lookAtQuaternion } from "../../src/domain/scene-math";
-import type { IntentReport } from "../../src/domain/intent-report";
+import {
+  INTENT_REPORT_SCHEMA_VERSION,
+  type IntentReport,
+} from "../../src/domain/intent-report";
 import {
   scenePatchSchema,
   type ScenePatch,
@@ -14,6 +17,7 @@ import {
   type CameraEntity,
   type SceneSpec,
 } from "../../src/domain/scene-schema";
+import { PATCH_SCHEMA_VERSION } from "../../src/domain/schema-versions";
 
 export const createStructuredScene = (): SceneSpec => createDefaultScene();
 
@@ -222,11 +226,12 @@ export const createStructuredRelationshipScene = (
 ): SceneSpec => {
   const scene = createStructuredTwoActorScene();
   const patch = scenePatchSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: PATCH_SCHEMA_VERSION,
     patchId: `patch_structured_${presetId.replaceAll(".", "_")}`,
     sceneId: scene.sceneId,
     baseRevision: scene.revision,
     source: "system",
+    preserveLock: false,
     operations: buildRelationshipOperations(scene, presetId, {
       primaryActorId: "actor_generic_1",
       secondaryActorId: "actor_generic_2",
@@ -256,7 +261,7 @@ export const createStructuredRelationshipScene = (
 export const createIntentReport = (
   overrides: Partial<IntentReport> = {},
 ): IntentReport => ({
-  schemaVersion: 1,
+  schemaVersion: INTENT_REPORT_SCHEMA_VERSION,
   operation: "create",
   allowPartial: false,
   recognizedConstraints: [
@@ -301,11 +306,12 @@ export const createPatchIntentReport = (
 export const createStructuredPatch = (
   scene: SceneSpec = createStructuredScene(),
 ): ScenePatch => ({
-  schemaVersion: 1,
+  schemaVersion: PATCH_SCHEMA_VERSION,
   patchId: "patch_structured_1",
   sceneId: scene.sceneId,
   baseRevision: scene.revision,
   source: "natural-language",
+  preserveLock: false,
   operations: [
     {
       op: "scene.title.set",

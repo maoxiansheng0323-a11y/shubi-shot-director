@@ -11,10 +11,4 @@ export {
   vec3Schema,
 } from "./scene-schema";
 
-import { z } from "zod";
-
-export const entityIdSchema = z
-  .string()
-  .min(3)
-  .max(64)
-  .regex(/^[a-z][a-z0-9_-]*$/);
+export { entityIdSchema } from "./schema-primitives";

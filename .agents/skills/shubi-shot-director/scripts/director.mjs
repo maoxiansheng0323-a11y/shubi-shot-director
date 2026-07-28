@@ -19,8 +19,40 @@ const generatedSchemaDirectory = path.join(
   "generated",
 );
 const bundledBridgeProtocolVersion = 1;
+const bundledEntityLockModes = Object.freeze([
+  "none",
+  "workflow",
+  "user",
+]);
+const bundledPatchPolicyFields = Object.freeze(["preserveLock"]);
+const bundledLockErrorCodes = Object.freeze([
+  "USER_LOCKED",
+  "WORKFLOW_LOCKED",
+  "LOCK_PRESERVATION_CONFLICT",
+]);
+const bundledActorLimbPartIds = Object.freeze([
+  "upper_arm_l",
+  "forearm_l",
+  "hand_l",
+  "upper_arm_r",
+  "forearm_r",
+  "hand_r",
+  "upper_leg_l",
+  "lower_leg_l",
+  "foot_l",
+  "upper_leg_r",
+  "lower_leg_r",
+  "foot_r",
+]);
+const bundledActorLimbPresenceModes = Object.freeze([
+  "present",
+  "absent",
+]);
+const bundledActorLimbErrorCodes = Object.freeze([
+  "LIMB_HIERARCHY_CONFLICT",
+]);
 const expectedIntentReportSchemaDigest =
-  "c343c18d11c3e3690a810654f3536e27c3ca0c6568a5ff5438605e6264098708";
+  "786a67f6e7e6d7ab73da4826b3e8cf972b8199d3fe8a991b0f58a1484d5c86ad";
 const runtimeTimeoutMs = 30_000;
 const runtimeMaxBufferBytes = 1024 * 1024;
 const stableActionIds = new Set([
@@ -171,8 +203,16 @@ const WRAPPER_ERROR_MESSAGES = Object.freeze({
   INTENT_COVERAGE_INCOMPLETE: "Intent coverage is incomplete.",
   ENTITY_NOT_FOUND: "A requested scene entity was not found.",
   ENTITY_LOCKED: "A requested scene entity is locked.",
+  USER_LOCKED: "A requested scene entity is user-locked.",
+  WORKFLOW_LOCKED: "A requested scene entity is workflow-locked.",
+  LOCK_PRESERVATION_CONFLICT:
+    "The requested change conflicts with lock preservation.",
   CONTACT_CONSTRAINT_ACTIVE:
     "An active contact constraint prevents this change.",
+  LIMB_HIERARCHY_CONFLICT:
+    "The requested limb presence conflicts with the actor hierarchy.",
+  ACTOR_LIMB_TARGET_INVALID:
+    "The requested limb target is not an editable actor.",
   CAPABILITY_NOT_AVAILABLE:
     "The requested runtime capability is not available.",
 });
@@ -197,7 +237,12 @@ const stableRuntimeErrorCodes = new Set([
   "INTENT_COVERAGE_INCOMPLETE",
   "ENTITY_NOT_FOUND",
   "ENTITY_LOCKED",
+  "USER_LOCKED",
+  "WORKFLOW_LOCKED",
+  "LOCK_PRESERVATION_CONFLICT",
   "CONTACT_CONSTRAINT_ACTIVE",
+  "LIMB_HIERARCHY_CONFLICT",
+  "ACTOR_LIMB_TARGET_INVALID",
   "CAPABILITY_NOT_AVAILABLE",
 ]);
 
@@ -476,16 +521,24 @@ const readBundledSchemaVersion = async (fileName, expectedDigest) => {
   }
 };
 
+const isNonEmptyUniqueStringArray = (value) =>
+  Array.isArray(value) &&
+  value.length > 0 &&
+  value.every(
+    (item) => typeof item === "string" && item.trim().length > 0,
+  ) &&
+  new Set(value).size === value.length;
+const stringSetsEqual = (left, right) =>
+  isNonEmptyUniqueStringArray(left) &&
+  left.length === right.length &&
+  left.every((value) => right.includes(value));
+
 const readBundledContractVersions = async () => {
   try {
     const metadata = JSON.parse(
       await readFile(path.join(skillDirectory, "runtime.json"), "utf8"),
     );
-    const [
-      sceneSchemaFileVersion,
-      patchSchemaFileVersion,
-      intentReportSchemaFileVersion,
-    ] = await Promise.all([
+    await Promise.all([
       readBundledSchemaVersion("scene-spec.schema.json"),
       readBundledSchemaVersion("scene-patch.schema.json"),
       readBundledSchemaVersion(
@@ -502,10 +555,33 @@ const readBundledContractVersions = async () => {
       metadata?.modelIntegration !== "none" ||
       metadata?.credentialPolicy !== "forbidden" ||
       metadata?.networkPolicy !== "loopback-only" ||
-      metadata?.sceneSchemaVersion !== sceneSchemaFileVersion ||
-      metadata?.patchSchemaVersion !== patchSchemaFileVersion ||
-      metadata?.intentReportSchemaVersion !==
-        intentReportSchemaFileVersion
+      metadata?.sceneSchemaVersion !== 4 ||
+      metadata?.patchSchemaVersion !== 4 ||
+      metadata?.intentReportSchemaVersion !== 4 ||
+      !stringSetsEqual(
+        metadata?.entityLockModes,
+        bundledEntityLockModes,
+      ) ||
+      !stringSetsEqual(
+        metadata?.patchPolicyFields,
+        bundledPatchPolicyFields,
+      ) ||
+      !stringSetsEqual(
+        metadata?.lockErrorCodes,
+        bundledLockErrorCodes,
+      ) ||
+      !stringSetsEqual(
+        metadata?.actorLimbPartIds,
+        bundledActorLimbPartIds,
+      ) ||
+      !stringSetsEqual(
+        metadata?.actorLimbPresenceModes,
+        bundledActorLimbPresenceModes,
+      ) ||
+      !stringSetsEqual(
+        metadata?.actorLimbErrorCodes,
+        bundledActorLimbErrorCodes,
+      )
     ) {
       throw new Error("invalid bundled contract");
     }
@@ -514,6 +590,12 @@ const readBundledContractVersions = async () => {
       skillSceneSchemaVersion: metadata.sceneSchemaVersion,
       skillPatchSchemaVersion: metadata.patchSchemaVersion,
       skillIntentReportSchemaVersion: metadata.intentReportSchemaVersion,
+      skillEntityLockModes: [...metadata.entityLockModes],
+      skillPatchPolicyFields: [...metadata.patchPolicyFields],
+      skillLockErrorCodes: [...metadata.lockErrorCodes],
+      skillActorLimbPartIds: [...metadata.actorLimbPartIds],
+      skillActorLimbPresenceModes: [...metadata.actorLimbPresenceModes],
+      skillActorLimbErrorCodes: [...metadata.actorLimbErrorCodes],
     };
   } catch (error) {
     if (error instanceof WrapperError) {
@@ -726,6 +808,12 @@ const createPlan = async (
     skillSceneSchemaVersion,
     skillPatchSchemaVersion,
     skillIntentReportSchemaVersion,
+    skillEntityLockModes,
+    skillPatchPolicyFields,
+    skillLockErrorCodes,
+    skillActorLimbPartIds,
+    skillActorLimbPresenceModes,
+    skillActorLimbErrorCodes,
   },
 ) => {
   const doctorData = requireEnvelopeData(
@@ -738,6 +826,12 @@ const createPlan = async (
     skillSceneSchemaVersion,
     skillPatchSchemaVersion,
     skillIntentReportSchemaVersion,
+    skillEntityLockModes: [...skillEntityLockModes],
+    skillPatchPolicyFields: [...skillPatchPolicyFields],
+    skillLockErrorCodes: [...skillLockErrorCodes],
+    skillActorLimbPartIds: [...skillActorLimbPartIds],
+    skillActorLimbPresenceModes: [...skillActorLimbPresenceModes],
+    skillActorLimbErrorCodes: [...skillActorLimbErrorCodes],
   };
   const offlinePlan = buildCompatibilityPlan(baseInput);
   if (!live || offlinePlan.mode === "incompatible") {

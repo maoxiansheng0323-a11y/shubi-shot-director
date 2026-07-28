@@ -1,6 +1,6 @@
 ---
 name: shubi-shot-director
-description: Use when staging or revising editable 3D graybox shots from natural language, including actor and prop blocking, camera placement, focal length, composition constraints, explicitly supplied project aliases, history operations, scene persistence, or perspective-reference export.
+description: Use when staging or revising editable 3D graybox shots from natural language, including generic actor limb presence, connected regions, actor and prop blocking, camera composition, scene persistence, or perspective-reference export.
 ---
 
 # Shubi Shot Director
@@ -13,7 +13,7 @@ Before changing to this Skill directory, resolve any explicitly supplied relativ
 
 1. Change to this Skill directory.
 2. Run `node scripts/director.mjs doctor`.
-3. Require capability contract v2 with `semanticAuthority: "host"`, `inputContract: "structured-only"`, `modelIntegration: "none"`, `credentialPolicy: "forbidden"`, and `networkPolicy: "loopback-only"`.
+3. Require capability contract v2 with canonical SceneSpec, ScenePatch, and IntentReport schema version 4, plus `semanticAuthority: "host"`, `inputContract: "structured-only"`, `modelIntegration: "none"`, `credentialPolicy: "forbidden"`, and `networkPolicy: "loopback-only"`.
 4. Run `node scripts/director.mjs ensure` only after `doctor` is compatible.
 5. Keep the returned loopback `uiUrl`. Open it in the integrated browser; use `open --system` only when necessary or requested.
 
@@ -31,8 +31,8 @@ Portable or native relative `--file` paths are resolved against the directory wh
 
 1. Treat only an explicit new-shot request, or the absence of a usable scene, as permission to author a complete `SceneSpec`.
 2. Resolve any explicitly supplied external profile only by following [external-profiles.md](references/external-profiles.md).
-3. Read [intent-routing.md](references/intent-routing.md), [intent-report.md](references/intent-report.md), [scene-authoring.md](references/scene-authoring.md), and the generated SceneSpec and scene-submission schemas.
-4. In Host Codex, author a generic create `IntentReport` with `allowPartial: false` and a complete generic `SceneSpec` covering every required constraint.
+3. Read [intent-routing.md](references/intent-routing.md), [intent-report.md](references/intent-report.md), [scene-authoring.md](references/scene-authoring.md), and the generated SceneSpec and scene-submission schemas. For multiple continuous regions, boundaries, or openings, also read [connected-environments.md](references/connected-environments.md).
+4. In Host Codex, author a generic v4 create `IntentReport` with `allowPartial: false` and a complete generic v4 `SceneSpec` covering every required constraint. For every actor, author the complete twelve-key `body.limbPresence` map before submission. New and unfinished graybox entities use `lockMode: "none"`.
 5. Write `{ "intentReport": ..., "scene": ... }` to an ignored generic transient file under `.shubi-shot/submissions/`. Do not include source wording or profile data.
 6. Submit it:
 
@@ -40,14 +40,14 @@ Portable or native relative `--file` paths are resolved against the directory wh
    node scripts/director.mjs scene submit --file <scene-submission.json>
    ```
 
-7. Run `snapshot`, inspect the editable view, final-camera preview, and composition report, then report the accepted `sceneId` and revision. Remove the transient file after successful verification.
+7. Run `snapshot`, inspect Overview, any required Local region previews, Shot Preview, and the composition report, then report the accepted `sceneId` and revision. Remove the transient file after successful verification.
 
 ## Modify the current shot
 
 1. Run `snapshot` immediately before interpreting every follow-up. Treat its `sceneId` and revision as authoritative.
 2. Resolve any explicitly supplied aliases in host memory only.
 3. Read [intent-report.md](references/intent-report.md), [patch-authoring.md](references/patch-authoring.md), and the generated ScenePatch and patch-submission schemas.
-4. In Host Codex, author the smallest `ScenePatch` that implements only the requested changes. Use the same `sceneId` and set `baseRevision` to the exact snapshot revision.
+4. In Host Codex, author the smallest v4 `ScenePatch` that implements only the requested changes. Use the same `sceneId`, set `baseRevision` to the exact snapshot revision, and set `preserveLock: true` for ordinary natural-language corrections. For limb-presence changes, use one minimal `actor.limb-presence.set` operation.
 5. Keep `allowPartial: false` unless the user explicitly accepts a partial modification. Even then, declare every unapplied item with a structured issue code and provide valid evidence for every applied required constraint.
 6. Write `{ "intentReport": ..., "patch": ... }` to an ignored generic transient file and submit it:
 
@@ -55,7 +55,43 @@ Portable or native relative `--file` paths are resolved against the directory wh
    node scripts/director.mjs patch submit --file <patch-submission.json>
    ```
 
-7. Run `snapshot` again. Require the same `sceneId`, revision exactly `baseRevision + 1`, and only requested field changes. Inspect the final-camera view and composition report before claiming visual success. Remove the transient file after successful verification.
+7. Run `snapshot` again. Require the same `sceneId`, revision exactly `baseRevision + 1`, and only requested field changes. For spatial edits, inspect Overview and affected Local previews; always inspect Shot Preview and the composition report before claiming visual success. Remove the transient file after successful verification.
+
+## Author actor limb presence
+
+- Read [scene-authoring.md](references/scene-authoring.md), [patch-authoring.md](references/patch-authoring.md), and [intent-report.md](references/intent-report.md) before authoring limb presence.
+- Store all twelve canonical keys with only `present` or `absent`. Preserve chain order such as `upper_arm_r -> forearm_r -> hand_r`.
+- On create, author the complete map in Host Codex. On modify, author one minimal `actor.limb-presence.set` operation and map it to `actor-limb-presence` intent evidence.
+- Close an absent parent over all descendants as absent. Restore all required ancestors when an explicit child becomes present.
+- If one operation explicitly sets a parent absent and its descendant present, treat it as `LIMB_HIERARCHY_CONFLICT`; rewrite the single operation instead of splitting or retrying it.
+- Treat replacement parts, prostheses, mechanical limbs, sockets, and custom meshes as unsupported. Do not translate them into presence states, props, hidden geometry, zero scale, detached geometry, pose changes, or preset parameters.
+- On `ACTOR_LIMB_TARGET_INVALID`, refresh the snapshot and correct the target to a canonical actor ID. Never fallback to a generic entity operation.
+
+## Respect lock provenance
+
+- `lockMode: "none"` means editable graybox work; use it for new and unfinished entities.
+- `lockMode: "workflow"` means workflow-checkpoint protection. Workflow locks never require confirmation or user authorization. Ordinary natural-language corrections re-author the Patch with `preserveLock: true` so the workflow lock remains in place; never ask the user for a workflow-lock correction.
+- `lockMode: "user"` records an explicit user protection decision. User locks require explicit confirmation: `USER_LOCKED` is a stop-and-ask condition before any unlock or protected change.
+- `WORKFLOW_LOCKED` means re-author with `preserveLock: true`, not ask the user.
+- A visual acceptance checkpoint may lock only the reviewed and accepted entity subset after the required Overview, required Local previews, and final Shot Preview checks. Unfinished or unaccepted entities remain none.
+- An explicit user-facing save locks all remaining none entities before serialization. Both visual-acceptance and explicit-save transitions must use an explicit ScenePatch with `preserveLock: false` to create workflow locks.
+- Background and autosave persistence never creates locks; it serializes the authoritative revision as-is.
+
+After explicit user confirmation, author one atomic ScenePatch with `preserveLock: false` in this exact operation order:
+
+1. `entity.flags.set` transitions each confirmed target from `user` to `none`.
+2. Apply the confirmed mutation operations.
+3. If protection remains, `entity.flags.set` transitions each target from `none` back to `user`.
+
+The intermediate none state exists only on the Patch working clone; it is never a separate revision, event, or saved state. If protection is intentionally removed, omit the final relock. A separate temporary unlock Patch is forbidden. `preserveLock: false` without explicit lock-mode transitions is not authorization.
+
+## Adjust the final camera directly
+
+1. When it is visible and eligible, Shot Preview automatically owns camera navigation; no activation toggle is required. Select and focus the active camera when the preview opens.
+2. Use left drag for image plane camera translation while preserving camera direction. Use right drag to orbit 360 degrees around the automatic primary composition or keep-visible target while continuing to look at it. Use the wheel to change focal length in millimeters without changing camera position.
+3. Use the six-button movement pad or `ArrowUp` and `ArrowDown` for forward and backward movement, `ArrowLeft` and `ArrowRight` for camera-relative lateral movement, and `PageUp` and `PageDown` for world-Y movement. Hold `Shift` for fast keyboard steps or `Alt` for precision steps. Use `Escape` to cancel the current draft.
+4. Treat each completed drag, held-key sequence, or wheel sequence as one Patch, one revision, and one undo step. Draft transforms and focal lengths remain UI state and must block export until committed. Cancel a stale draft if the scene changes externally; never retry it against a newer revision.
+5. For a workflow-locked camera, commit the gesture with `preserveLock: true` and require it to remain `workflow`; do not ask for authorization. User locks remain a stop-and-ask condition: disable direct camera controls until the user explicitly confirms the protected change.
 
 ## Export a perspective reference
 
@@ -76,7 +112,8 @@ Portable or native relative `--file` paths are resolved against the directory wh
 - On `INTENT_REPORT_INVALID`, correct the strict structured report.
 - On `UNSUPPORTED_DESCRIPTION`, stop unless the user explicitly authorizes a partial modification that the public schemas can represent.
 - On `INTENT_COVERAGE_INCOMPLETE`, correct targets or evidence; do not weaken a required constraint.
-- On entity, lock, or contact errors, refresh the snapshot and follow [recovery-and-concurrency.md](references/recovery-and-concurrency.md).
+- On `LIMB_HIERARCHY_CONFLICT`, rewrite one consistent `actor.limb-presence.set` operation. On `ACTOR_LIMB_TARGET_INVALID`, refresh and retarget the actor; never fallback to another entity type.
+- On `USER_LOCKED`, stop and ask for explicit confirmation. On `WORKFLOW_LOCKED`, re-author the ordinary correction with `preserveLock: true` without asking the user. For other entity, lock, or contact errors, refresh the snapshot and follow [recovery-and-concurrency.md](references/recovery-and-concurrency.md).
 - On bridge failure, run `ensure`, then `health`, and retry the unchanged structured submission only after compatibility is restored.
 
 ## Keep outputs generic

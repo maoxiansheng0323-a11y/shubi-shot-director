@@ -2,17 +2,32 @@ import {
   PATCH_SCHEMA_VERSION,
   SCENE_SCHEMA_VERSION,
 } from "../src/domain/schema-versions";
+import { INTENT_REPORT_SCHEMA_VERSION } from "../src/domain/intent-report";
+import { ENTITY_LOCK_MODES } from "../src/domain/entity-lock";
+import {
+  ACTOR_LIMB_PART_IDS,
+  ACTOR_LIMB_PRESENCE_MODES,
+} from "../src/domain/actor-anatomy";
 import { APPLICATION_VERSION } from "./application-metadata";
 
+export { INTENT_REPORT_SCHEMA_VERSION };
 export const BRIDGE_SERVICE = "shubi-shot-director" as const;
 export const CAPABILITIES_CONTRACT_VERSION = 2 as const;
 export const BRIDGE_PROTOCOL_VERSION = 1 as const;
-export const INTENT_REPORT_SCHEMA_VERSION = 1 as const;
 export const SEMANTIC_AUTHORITY = "host" as const;
 export const INPUT_CONTRACT = "structured-only" as const;
 export const MODEL_INTEGRATION = "none" as const;
 export const CREDENTIAL_POLICY = "forbidden" as const;
 export const NETWORK_POLICY = "loopback-only" as const;
+export const PATCH_POLICY_FIELDS = ["preserveLock"] as const;
+export const LOCK_ERROR_CODES = [
+  "USER_LOCKED",
+  "WORKFLOW_LOCKED",
+  "LOCK_PRESERVATION_CONFLICT",
+] as const;
+export const ACTOR_LIMB_ERROR_CODES = [
+  "LIMB_HIERARCHY_CONFLICT",
+] as const;
 
 export const CLI_COMMAND_DEFINITIONS = [
   { id: "doctor", usage: "doctor" },
@@ -59,6 +74,7 @@ export const RUNTIME_FEATURE_IDS = [
   "export.software-png",
   "composition.segmented-report",
   "bridge.safe-shutdown",
+  "actor.limb-presence",
 ] as const;
 
 export interface RuntimeCapabilityManifest {
@@ -76,6 +92,26 @@ export interface RuntimeCapabilityManifest {
   networkPolicy: typeof NETWORK_POLICY;
   commands: string[];
   features: string[];
+  entityLockModes: string[];
+  patchPolicyFields: string[];
+  lockErrorCodes: string[];
+  actorLimbPartIds: string[];
+  actorLimbPresenceModes: string[];
+  actorLimbErrorCodes: string[];
+}
+
+export interface RuntimeCapabilityCompatibilityHeader {
+  service: typeof BRIDGE_SERVICE;
+  capabilitiesContractVersion: number;
+  bridgeProtocolVersion: number;
+  sceneSchemaVersion: number;
+  patchSchemaVersion: number;
+  intentReportSchemaVersion: number;
+  semanticAuthority: typeof SEMANTIC_AUTHORITY;
+  inputContract: typeof INPUT_CONTRACT;
+  modelIntegration: typeof MODEL_INTEGRATION;
+  credentialPolicy: typeof CREDENTIAL_POLICY;
+  networkPolicy: typeof NETWORK_POLICY;
 }
 
 export type RuntimeCapabilityErrorCode =
@@ -186,13 +222,63 @@ const COMPACT_CREDENTIAL_CONFIGURATION_PATTERNS = [
 const COMPACT_SEMANTIC_CONFIGURATION_PATTERN =
   /^[a-z0-9]*(?:(?:model|provider|endpoint)(?:config|configuration|settings|options|url|service|model|provider|endpoint)|(?:config|configuration|settings|options|url|service|model|provider|endpoint)(?:model|provider|endpoint))[a-z0-9]*$/;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+const MANIFEST_REQUIRED_FIELDS = [
+  "service",
+  "capabilitiesContractVersion",
+  "applicationVersion",
+  "bridgeProtocolVersion",
+  "sceneSchemaVersion",
+  "patchSchemaVersion",
+  "intentReportSchemaVersion",
+  "semanticAuthority",
+  "inputContract",
+  "modelIntegration",
+  "credentialPolicy",
+  "networkPolicy",
+  "commands",
+  "features",
+  "entityLockModes",
+  "patchPolicyFields",
+  "lockErrorCodes",
+  "actorLimbPartIds",
+  "actorLimbPresenceModes",
+  "actorLimbErrorCodes",
+] as const;
+
+const plainOwnRecord = (
+  value: unknown,
+): Record<string, unknown> | undefined => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    return undefined;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null
+    ? (value as Record<string, unknown>)
+    : undefined;
+};
+
+const hasOwnDataProperty = (
+  input: Record<string, unknown>,
+  key: string,
+): boolean => {
+  const descriptor = Object.getOwnPropertyDescriptor(input, key);
+  return descriptor !== undefined && "value" in descriptor;
+};
 
 const isUniqueStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) &&
   value.every((item) => typeof item === "string" && item.length > 0) &&
   new Set(value).size === value.length;
+const isNonEmptyUniqueStringArray = (
+  value: unknown,
+): value is string[] =>
+  isUniqueStringArray(value) &&
+  value.length > 0 &&
+  value.every((item) => item.trim().length > 0);
 
 const containsForbiddenId = (
   value: unknown,
@@ -265,50 +351,72 @@ const throwRuntimeCapabilityError = (
   throw new RuntimeCapabilityError(code);
 };
 
-export const parseRuntimeCapabilityManifest = (
+const sanitizeRuntimeCapabilityFailure = (error: unknown): never => {
+  if (error instanceof RuntimeCapabilityError) {
+    throw error;
+  }
+  return throwRuntimeCapabilityError("CAPABILITIES_INVALID");
+};
+
+const inspectRuntimeCapabilityCompatibilityHeader = (
   input: unknown,
-): RuntimeCapabilityManifest => {
-  if (!isRecord(input)) {
+): {
+  header: RuntimeCapabilityCompatibilityHeader;
+  record: Record<string, unknown>;
+} => {
+  const record = plainOwnRecord(input);
+  if (record === undefined) {
     return throwRuntimeCapabilityError("CAPABILITIES_INVALID");
   }
   if (
-    containsForbiddenConfigurationKey(input) ||
-    containsForbiddenId(input.commands, FORBIDDEN_COMMAND_IDS) ||
-    containsForbiddenId(input.features, FORBIDDEN_FEATURE_IDS)
+    containsForbiddenConfigurationKey(record) ||
+    containsForbiddenId(record.commands, FORBIDDEN_COMMAND_IDS) ||
+    containsForbiddenId(record.features, FORBIDDEN_FEATURE_IDS)
   ) {
     return throwRuntimeCapabilityError("SEMANTIC_BOUNDARY_VIOLATION");
   }
-  const semanticAuthority = input.semanticAuthority;
-  const inputContract = input.inputContract;
-  const modelIntegration = input.modelIntegration;
-  const credentialPolicy = input.credentialPolicy;
-  const networkPolicy = input.networkPolicy;
+  const headerFields = MANIFEST_REQUIRED_FIELDS.filter(
+    (field) =>
+      field !== "applicationVersion" &&
+      field !== "commands" &&
+      field !== "features" &&
+      field !== "entityLockModes" &&
+      field !== "patchPolicyFields" &&
+      field !== "lockErrorCodes" &&
+      field !== "actorLimbPartIds" &&
+      field !== "actorLimbPresenceModes" &&
+      field !== "actorLimbErrorCodes",
+  );
+  if (!headerFields.every((field) => hasOwnDataProperty(record, field))) {
+    return throwRuntimeCapabilityError("CAPABILITIES_INVALID");
+  }
+  const semanticAuthority = record.semanticAuthority;
+  const inputContract = record.inputContract;
+  const modelIntegration = record.modelIntegration;
+  const credentialPolicy = record.credentialPolicy;
+  const networkPolicy = record.networkPolicy;
   if (
-    input.service !== BRIDGE_SERVICE ||
-    typeof input.capabilitiesContractVersion !== "number" ||
-    !Number.isInteger(input.capabilitiesContractVersion) ||
-    input.capabilitiesContractVersion < 1 ||
-    typeof input.applicationVersion !== "string" ||
-    input.applicationVersion.length === 0 ||
-    typeof input.bridgeProtocolVersion !== "number" ||
-    !Number.isInteger(input.bridgeProtocolVersion) ||
-    input.bridgeProtocolVersion < 1 ||
-    typeof input.sceneSchemaVersion !== "number" ||
-    !Number.isInteger(input.sceneSchemaVersion) ||
-    input.sceneSchemaVersion < 1 ||
-    typeof input.patchSchemaVersion !== "number" ||
-    !Number.isInteger(input.patchSchemaVersion) ||
-    input.patchSchemaVersion < 1 ||
-    typeof input.intentReportSchemaVersion !== "number" ||
-    !Number.isInteger(input.intentReportSchemaVersion) ||
-    input.intentReportSchemaVersion < 1 ||
+    record.service !== BRIDGE_SERVICE ||
+    typeof record.capabilitiesContractVersion !== "number" ||
+    !Number.isInteger(record.capabilitiesContractVersion) ||
+    record.capabilitiesContractVersion < 1 ||
+    typeof record.bridgeProtocolVersion !== "number" ||
+    !Number.isInteger(record.bridgeProtocolVersion) ||
+    record.bridgeProtocolVersion < 1 ||
+    typeof record.sceneSchemaVersion !== "number" ||
+    !Number.isInteger(record.sceneSchemaVersion) ||
+    record.sceneSchemaVersion < 1 ||
+    typeof record.patchSchemaVersion !== "number" ||
+    !Number.isInteger(record.patchSchemaVersion) ||
+    record.patchSchemaVersion < 1 ||
+    typeof record.intentReportSchemaVersion !== "number" ||
+    !Number.isInteger(record.intentReportSchemaVersion) ||
+    record.intentReportSchemaVersion < 1 ||
     typeof semanticAuthority !== "string" ||
     typeof inputContract !== "string" ||
     typeof modelIntegration !== "string" ||
     typeof credentialPolicy !== "string" ||
-    typeof networkPolicy !== "string" ||
-    !isUniqueStringArray(input.commands) ||
-    !isUniqueStringArray(input.features)
+    typeof networkPolicy !== "string"
   ) {
     return throwRuntimeCapabilityError("CAPABILITIES_INVALID");
   }
@@ -322,21 +430,71 @@ export const parseRuntimeCapabilityManifest = (
     return throwRuntimeCapabilityError("SEMANTIC_BOUNDARY_VIOLATION");
   }
   return {
-    service: BRIDGE_SERVICE,
-    capabilitiesContractVersion: input.capabilitiesContractVersion,
-    applicationVersion: input.applicationVersion,
-    bridgeProtocolVersion: input.bridgeProtocolVersion,
-    sceneSchemaVersion: input.sceneSchemaVersion,
-    patchSchemaVersion: input.patchSchemaVersion,
-    intentReportSchemaVersion: input.intentReportSchemaVersion,
-    semanticAuthority,
-    inputContract,
-    modelIntegration,
-    credentialPolicy,
-    networkPolicy,
-    commands: [...input.commands],
-    features: [...input.features],
+    header: {
+      service: BRIDGE_SERVICE,
+      capabilitiesContractVersion: record.capabilitiesContractVersion,
+      bridgeProtocolVersion: record.bridgeProtocolVersion,
+      sceneSchemaVersion: record.sceneSchemaVersion,
+      patchSchemaVersion: record.patchSchemaVersion,
+      intentReportSchemaVersion: record.intentReportSchemaVersion,
+      semanticAuthority,
+      inputContract,
+      modelIntegration,
+      credentialPolicy,
+      networkPolicy,
+    },
+    record,
   };
+};
+
+export const parseRuntimeCapabilityCompatibilityHeader = (
+  input: unknown,
+): RuntimeCapabilityCompatibilityHeader => {
+  try {
+    return inspectRuntimeCapabilityCompatibilityHeader(input).header;
+  } catch (error) {
+    return sanitizeRuntimeCapabilityFailure(error);
+  }
+};
+
+export const parseRuntimeCapabilityManifest = (
+  input: unknown,
+): RuntimeCapabilityManifest => {
+  try {
+    const { header, record } =
+      inspectRuntimeCapabilityCompatibilityHeader(input);
+    if (
+      !MANIFEST_REQUIRED_FIELDS.every((field) =>
+        hasOwnDataProperty(record, field),
+      ) ||
+      typeof record.applicationVersion !== "string" ||
+      record.applicationVersion.length === 0 ||
+      !isUniqueStringArray(record.commands) ||
+      !isUniqueStringArray(record.features) ||
+      !isNonEmptyUniqueStringArray(record.entityLockModes) ||
+      !isNonEmptyUniqueStringArray(record.patchPolicyFields) ||
+      !isNonEmptyUniqueStringArray(record.lockErrorCodes) ||
+      !isNonEmptyUniqueStringArray(record.actorLimbPartIds) ||
+      !isNonEmptyUniqueStringArray(record.actorLimbPresenceModes) ||
+      !isNonEmptyUniqueStringArray(record.actorLimbErrorCodes)
+    ) {
+      return throwRuntimeCapabilityError("CAPABILITIES_INVALID");
+    }
+    return {
+      ...header,
+      applicationVersion: record.applicationVersion,
+      commands: [...record.commands],
+      features: [...record.features],
+      entityLockModes: [...record.entityLockModes],
+      patchPolicyFields: [...record.patchPolicyFields],
+      lockErrorCodes: [...record.lockErrorCodes],
+      actorLimbPartIds: [...record.actorLimbPartIds],
+      actorLimbPresenceModes: [...record.actorLimbPresenceModes],
+      actorLimbErrorCodes: [...record.actorLimbErrorCodes],
+    };
+  } catch (error) {
+    return sanitizeRuntimeCapabilityFailure(error);
+  }
 };
 
 export const getRuntimeCapabilityManifest =
@@ -355,4 +513,10 @@ export const getRuntimeCapabilityManifest =
     networkPolicy: NETWORK_POLICY,
     commands: CLI_COMMAND_DEFINITIONS.map(({ id }) => id),
     features: [...RUNTIME_FEATURE_IDS],
+    entityLockModes: [...ENTITY_LOCK_MODES],
+    patchPolicyFields: [...PATCH_POLICY_FIELDS],
+    lockErrorCodes: [...LOCK_ERROR_CODES],
+    actorLimbPartIds: [...ACTOR_LIMB_PART_IDS],
+    actorLimbPresenceModes: [...ACTOR_LIMB_PRESENCE_MODES],
+    actorLimbErrorCodes: [...ACTOR_LIMB_ERROR_CODES],
   });

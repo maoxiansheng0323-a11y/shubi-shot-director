@@ -1,24 +1,28 @@
-# IntentReport v1 and submission envelopes
+# IntentReport v4 and submission envelopes
 
 Author `IntentReport` only in Host Codex. Keep it generic and ephemeral. Never add source wording, aliases, profile paths or contents, project identifiers, credentials, model settings, or free-form explanation fields.
 
+Author all new submissions as v4. The runtime may migrate valid v1, v2, or v3
+submissions at the compatibility boundary, but new authoring must use the
+canonical v4 shapes below.
+
 ## Contents
 
-- [Exact v1 report shape](#exact-v1-report-shape)
+- [Exact v4 report shape](#exact-v4-report-shape)
 - [Exact enums](#exact-enums)
 - [Exact evidence union](#exact-evidence-union)
 - [Policy and coverage](#policy-rules)
 - [Patch-operation evidence](#patch-operation-evidence-mapping)
 - [Generic scene submission](#generic-scene-submission-pattern)
-- [Generic patch submission](#generic-patch-submission-pattern)
+- [Generic limb-presence modify submission](#generic-limb-presence-modify-pattern)
 
-## Exact v1 report shape
+## Exact v4 report shape
 
 The object is strict; extra keys fail validation.
 
-| Field | Exact v1 type |
+| Field | Exact v4 type |
 | --- | --- |
-| `schemaVersion` | literal `1` |
+| `schemaVersion` | literal `4` |
 | `operation` | `"create"` or `"modify"` |
 | `allowPartial` | boolean |
 | `recognizedConstraints` | up to 128 strict constraint objects with unique `id` values |
@@ -32,10 +36,10 @@ A constraint is exactly:
 ```text
 {
   id: GenericId,
-  kind: IntentConstraintKindV1,
+  kind: IntentConstraintKindV4,
   required: boolean,
   targets: GenericId[],
-  evidence: IntentEvidenceV1[]
+  evidence: IntentEvidenceV4[]
 }
 ```
 
@@ -52,6 +56,7 @@ environment
 entity-presence
 entity-removal
 actor-slot
+actor-limb-presence
 pose
 relationship
 contact
@@ -66,6 +71,13 @@ focal-length
 framing
 output
 composition-safety
+spatial-region
+spatial-boundary
+spatial-opening
+spatial-connection
+entity-region-membership
+region-visibility
+lock-protection
 ```
 
 Issue codes:
@@ -91,10 +103,10 @@ Use only these strict shapes:
 
 ```text
 { type: "entity", entityId: GenericId }
-{ type: "entity-property", entityId: GenericId, path: EntityEvidencePathV1 }
-{ type: "scene-property", path: SceneEvidencePathV1 }
+{ type: "entity-property", entityId: GenericId, path: EntityEvidencePathV4 }
+{ type: "scene-property", path: SceneEvidencePathV4 }
 { type: "scene-constraint", constraintId: GenericId }
-{ type: "patch-operation", operationIndex: integer from 0 through 127 }
+{ type: "patch-operation", operationIndex: integer from 0 through 255 }
 ```
 
 Entity property paths and compatible constraint kinds:
@@ -107,14 +119,28 @@ Entity property paths and compatible constraint kinds:
 | `entity.transform.rotation` | `rotation`, `relationship`, `camera-angle`, `camera-target` |
 | `entity.transform.scale` | `scale` |
 | `entity.visible` | `visibility` |
-| `entity.locked` | none in v1 coverage; do not use it as evidence |
+| `entity.lockMode` | `lock-protection` |
 | `actor.slot` | `actor-slot` |
 | `actor.pose` | `pose`, `relationship` |
+| `entity.body.limbPresence.upper_arm_l` | `actor-limb-presence` |
+| `entity.body.limbPresence.forearm_l` | `actor-limb-presence` |
+| `entity.body.limbPresence.hand_l` | `actor-limb-presence` |
+| `entity.body.limbPresence.upper_arm_r` | `actor-limb-presence` |
+| `entity.body.limbPresence.forearm_r` | `actor-limb-presence` |
+| `entity.body.limbPresence.hand_r` | `actor-limb-presence` |
+| `entity.body.limbPresence.upper_leg_l` | `actor-limb-presence` |
+| `entity.body.limbPresence.lower_leg_l` | `actor-limb-presence` |
+| `entity.body.limbPresence.foot_l` | `actor-limb-presence` |
+| `entity.body.limbPresence.upper_leg_r` | `actor-limb-presence` |
+| `entity.body.limbPresence.lower_leg_r` | `actor-limb-presence` |
+| `entity.body.limbPresence.foot_r` | `actor-limb-presence` |
 | `camera.heightM` | `camera-height` |
 | `camera.lens.focalLengthMm` | `focal-length` |
 | `camera.lens.sensorWidthMm` | `focal-length` |
 
 Actor-only paths require an actor. Camera-only paths require a camera. Rotation is primary `camera-target` evidence only when the entity is a camera.
+
+For a v4 create, use all twelve exact `entity.body.limbPresence.*` paths when `actor-limb-presence` is required. For a modify, map the minimal `actor.limb-presence.set` operation to `actor-limb-presence` with its exact `patch-operation` index. Replacement parts, prostheses, mechanical limbs, sockets, and custom meshes are unsupported constraints; do not report them as applied limb presence.
 
 Scene property paths and compatible kinds:
 
@@ -127,6 +153,11 @@ Scene property paths and compatible kinds:
 | `scene.compositionGoals.captionZone` | `composition-safety` |
 | `scene.compositionGoals.sideUiZone` | `composition-safety` |
 | `scene.compositionGoals.criticalEntityIds` | `composition-safety` |
+| `scene.spatialLayout.regions` | `spatial-region`, `region-visibility` |
+| `scene.spatialLayout.boundaries` | `spatial-boundary` |
+| `scene.spatialLayout.openings` | `spatial-opening` |
+| `scene.spatialLayout.connections` | `spatial-connection` |
+| `scene.spatialLayout.memberships` | `entity-region-membership` |
 
 The referenced optional composition property must exist. `scene.activeCameraId` covers the active camera. Framing and critical-entity evidence covers their declared entity IDs.
 
@@ -147,10 +178,16 @@ Apply policy before coverage:
 
 For create, always use `allowPartial: false`, `canApplySafely: true`, and empty unsupported and unresolved arrays.
 
+Use `lock-protection` only when the requested result includes a lock mode. New
+and unfinished graybox entities normally use `lockMode: "none"`, so an
+ordinary create report does not need a lock-protection constraint. An explicit
+lock transition may use `entity.lockMode` evidence or the matching
+`entity.flags.set` operation index.
+
 ## Target validation
 
 - Empty targets are valid only for `output` and `composition-safety`.
-- `actor-slot` and `pose` targets must all be actors.
+- `actor-slot`, `actor-limb-presence`, and `pose` targets must all be actors.
 - `camera-height`, `camera-angle`, and `focal-length` targets must all be cameras.
 - `camera-target` must include at least one camera.
 - `environment` targets must all be environments.
@@ -158,6 +195,11 @@ For create, always use `allowPartial: false`, `canApplySafely: true`, and empty 
 - `relationship` requires at least two targets.
 - `contact` accepts one or two targets, exactly one actor, and an optional environment or prop surface.
 - `framing` targets must all be actors or props.
+- `spatial-region` and `region-visibility` targets must resolve to regions.
+- `spatial-boundary`, `spatial-opening`, and `spatial-connection` targets must
+  resolve to their matching spatial records.
+- `entity-region-membership` targets may include the assigned entity and region
+  IDs present in membership records.
 - Every other target must resolve to an entity visible to the coverage context.
 
 Create coverage sees the submitted scene. Modify coverage sees the after scene plus the before scene. Entity presence resolves after; entity removal resolves before; other modify evidence prefers after and may use before when the entity no longer exists.
@@ -186,16 +228,23 @@ The referenced operation index must exist in the submitted Patch. It provides pr
 | `entity.transform.set` | `position`, `rotation`, `scale`, `relationship`; plus `camera-height`, `camera-angle`, `camera-target` for cameras |
 | `entity.transform.translate` | `position`, `relationship`; plus `camera-height` for cameras |
 | `entity.transform.rotate` | `rotation`, `relationship`; plus `camera-angle`, `camera-target` for cameras |
-| `entity.flags.set` | `visibility` |
+| `entity.flags.set` | `visibility` only when `visible` is present; `lock-protection` only when `lockMode` is present |
 | `entity.preset.parameters.set` | `environment` for an environment |
 | `actor.pose.set` | `pose`, `relationship` for an actor |
+| `actor.limb-presence.set` | `actor-limb-presence` for the targeted actor |
 | `camera.lens.set` | `focal-length` for a camera |
 | `camera.look-at` | `camera-angle`, `camera-target` for a camera; an entity-anchor target also covers the subject entity |
 | `constraint.set` or compatible `constraint.remove` | `contact` or `relationship` for ground contact; `camera-target` or `composition-safety` for keep-visible |
 | `scene.active-camera.set` | `composition-safety` for a valid camera |
 | `scene.output.set` | `output` |
 | `scene.composition-goals.set` | `framing`, `composition-safety` |
-| `scene.title.set` | no IntentReport kind in v1 |
+| `scene.title.set` | no IntentReport kind in v4 |
+| `spatial.region.upsert`, `spatial.region.remove` | `spatial-region` |
+| `spatial.region.visibility.set` | `region-visibility` |
+| `spatial.boundary.upsert`, `spatial.boundary.visibility.set`, `spatial.boundary.remove` | `spatial-boundary` |
+| `spatial.opening.upsert`, `spatial.opening.remove` | `spatial-opening` |
+| `spatial.connection.upsert`, `spatial.connection.remove` | `spatial-connection` |
+| `spatial.membership.set`, `spatial.membership.remove` | `entity-region-membership` |
 
 ## Generic scene-submission pattern
 
@@ -204,10 +253,30 @@ This is a complete generic envelope shape. Replace values only with schema-valid
 ```json
 {
   "intentReport": {
-    "schemaVersion": 1,
+    "schemaVersion": 4,
     "operation": "create",
     "allowPartial": false,
     "recognizedConstraints": [
+      {
+        "id": "intent_actor_limb_presence_1",
+        "kind": "actor-limb-presence",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_arm_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.forearm_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.hand_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_arm_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.forearm_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.hand_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_leg_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.lower_leg_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.foot_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_leg_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.lower_leg_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.foot_r" }
+        ]
+      },
       {
         "id": "intent_output_1",
         "kind": "output",
@@ -227,7 +296,7 @@ This is a complete generic envelope shape. Replace values only with schema-valid
     "canApplySafely": true
   },
   "scene": {
-    "schemaVersion": 1,
+    "schemaVersion": 4,
     "sceneId": "scene_generic_1",
     "revision": 0,
     "title": "Generic camera study",
@@ -254,7 +323,7 @@ This is a complete generic envelope shape. Replace values only with schema-valid
           "scale": [1, 1, 1]
         },
         "visible": true,
-        "locked": true,
+        "lockMode": "none",
         "preset": {
           "registry": "builtin",
           "id": "room.small-v1",
@@ -269,6 +338,55 @@ This is a complete generic envelope shape. Replace values only with schema-valid
         "color": "#7d8794"
       },
       {
+        "id": "actor_generic_1",
+        "label": "Generic actor",
+        "parentId": null,
+        "kind": "actor",
+        "slot": "actor_generic_1",
+        "transform": {
+          "positionM": [0, 0.977, 0],
+          "rotation": [0, 0, 0, 1],
+          "scale": [1, 1, 1]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "rig": {
+          "registry": "builtin",
+          "id": "rig.humanoid-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "body": {
+          "heightM": 1.72,
+          "shoulderWidthM": 0.42,
+          "build": "average",
+          "limbPresence": {
+            "upper_arm_l": "present",
+            "forearm_l": "present",
+            "hand_l": "present",
+            "upper_arm_r": "present",
+            "forearm_r": "present",
+            "hand_r": "present",
+            "upper_leg_l": "present",
+            "lower_leg_l": "present",
+            "foot_l": "present",
+            "upper_leg_r": "present",
+            "lower_leg_r": "present",
+            "foot_r": "present"
+          }
+        },
+        "pose": {
+          "preset": {
+            "registry": "builtin",
+            "id": "pose.standing-neutral-v1",
+            "version": 1,
+            "parameters": { "contactOffsetM": 0.977 }
+          },
+          "joints": {}
+        },
+        "color": "#c7ced8"
+      },
+      {
         "id": "camera_generic_1",
         "label": "Generic shot camera",
         "parentId": null,
@@ -279,7 +397,7 @@ This is a complete generic envelope shape. Replace values only with schema-valid
           "scale": [1, 1, 1]
         },
         "visible": true,
-        "locked": false,
+        "lockMode": "none",
         "lens": {
           "projection": "perspective",
           "focalLengthMm": 45,
@@ -289,27 +407,28 @@ This is a complete generic envelope shape. Replace values only with schema-valid
         }
       }
     ],
-    "constraints": []
+    "constraints": [],
+    "spatialLayout": null
   }
 }
 ```
 
-## Generic patch-submission pattern
+## Generic limb-presence modify pattern
 
 Take `sceneId` and `baseRevision` from the immediately preceding snapshot.
 
 ```json
 {
   "intentReport": {
-    "schemaVersion": 1,
+    "schemaVersion": 4,
     "operation": "modify",
     "allowPartial": false,
     "recognizedConstraints": [
       {
-        "id": "intent_focal_length_1",
-        "kind": "focal-length",
+        "id": "intent_actor_limb_presence_1",
+        "kind": "actor-limb-presence",
         "required": true,
-        "targets": ["camera_generic_1"],
+        "targets": ["actor_generic_1"],
         "evidence": [
           {
             "type": "patch-operation",
@@ -324,21 +443,20 @@ Take `sceneId` and `baseRevision` from the immediately preceding snapshot.
     "canApplySafely": true
   },
   "patch": {
-    "schemaVersion": 1,
-    "patchId": "patch_generic_1",
+    "schemaVersion": 4,
+    "patchId": "patch_limb_presence_1",
     "sceneId": "scene_generic_1",
     "baseRevision": 3,
     "source": "natural-language",
+    "preserveLock": true,
     "operations": [
       {
-        "op": "camera.lens.set",
-        "entityId": "camera_generic_1",
-        "value": {
-          "projection": "perspective",
-          "focalLengthMm": 55,
-          "sensorWidthMm": 36,
-          "nearM": 0.05,
-          "farM": 200
+        "op": "actor.limb-presence.set",
+        "actorId": "actor_generic_1",
+        "updates": {
+          "upper_arm_r": "absent",
+          "lower_leg_l": "absent",
+          "lower_leg_r": "absent"
         }
       }
     ]

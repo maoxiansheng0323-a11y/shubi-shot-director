@@ -9,6 +9,7 @@ import {
 import path from "node:path";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { enforceGroundContacts } from "../src/domain/contact-constraints";
+import { parseSceneSpecInput } from "../src/domain/scene-migrations";
 import {
   sceneSpecSchema,
   type SceneSpec,
@@ -82,7 +83,7 @@ export class ScenePersistence {
 
     try {
       return enforceGroundContacts(
-        sceneSpecSchema.parse(JSON.parse(source)),
+        parseSceneSpecInput(JSON.parse(source)),
       );
     } catch (error) {
       throw new ScenePersistenceError(

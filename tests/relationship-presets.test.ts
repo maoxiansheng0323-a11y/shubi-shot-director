@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyScenePatch } from "../src/domain/apply-scene-patch";
+import { actorVisibleRigBounds } from "../src/domain/actor-visible-bounds";
 import { createDefaultScene } from "../src/domain/default-scene";
 import {
   buildRelationshipOperations,
@@ -15,6 +16,7 @@ import {
   type ActorEntity,
   type SceneSpec,
 } from "../src/domain/scene-schema";
+import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 
 const createTwoActorScene = (): SceneSpec => {
   const base = createDefaultScene();
@@ -59,15 +61,62 @@ const createTwoActorScene = (): SceneSpec => {
 const asPatch = (
   scene: SceneSpec,
   operations: ScenePatch["operations"],
+  preserveLock = false,
 ): ScenePatch =>
   scenePatchSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: PATCH_SCHEMA_VERSION,
     patchId: "patch_relationship_test",
     sceneId: scene.sceneId,
     baseRevision: scene.revision,
     source: "system",
+    preserveLock,
     operations,
   });
+
+const prospectiveActorFromOperations = (
+  actor: ActorEntity,
+  operations: ScenePatch["operations"],
+): ActorEntity => {
+  const poseOperation = operations.find(
+    (operation) =>
+      operation.op === "actor.pose.set" && operation.entityId === actor.id,
+  );
+  const transformOperation = operations.find(
+    (operation) =>
+      operation.op === "entity.transform.set" &&
+      operation.entityId === actor.id,
+  );
+  if (
+    !poseOperation ||
+    poseOperation.op !== "actor.pose.set" ||
+    !transformOperation ||
+    transformOperation.op !== "entity.transform.set"
+  ) {
+    throw new Error("Relationship operations are missing pose or transform data.");
+  }
+  return {
+    ...structuredClone(actor),
+    pose: structuredClone(poseOperation.value),
+    transform: structuredClone(transformOperation.value),
+  };
+};
+
+const expectAuthoredVisibleSupport = (
+  actor: ActorEntity,
+  supportY: number,
+): void => {
+  const zeroYTransform = {
+    ...structuredClone(actor.transform),
+    positionM: [
+      actor.transform.positionM[0],
+      0,
+      actor.transform.positionM[2],
+    ] as [number, number, number],
+  };
+  const expectedY =
+    supportY + actorVisibleRigBounds(actor, zeroYTransform).supportOffsetM;
+  expect(actor.transform.positionM[1]).toBeCloseTo(expectedY, 9);
+};
 
 describe("relationship presets", () => {
   it("lists generic relationship definitions", () => {
@@ -81,6 +130,19 @@ describe("relationship presets", () => {
 
   it("builds a face-to-face pose and transform for both roles", () => {
     const scene = createTwoActorScene();
+    const inputPrimary = scene.entities.find(
+      (entity): entity is ActorEntity =>
+        entity.id === "actor_primary_1" && entity.kind === "actor",
+    );
+    const inputSecondary = scene.entities.find(
+      (entity): entity is ActorEntity =>
+        entity.id === "actor_secondary_1" && entity.kind === "actor",
+    );
+    if (!inputPrimary || !inputSecondary) {
+      throw new Error("Relationship actor fixtures are missing.");
+    }
+    inputPrimary.transform.scale = [1.4, 0.8, 1.1];
+    inputSecondary.transform.scale = [0.9, 1.3, 0.8];
     const before = structuredClone(scene);
     const operations = buildRelationshipOperations(
       scene,
@@ -103,6 +165,14 @@ describe("relationship presets", () => {
     expect(
       operations.filter((operation) => operation.op === "constraint.set"),
     ).toHaveLength(2);
+    expectAuthoredVisibleSupport(
+      prospectiveActorFromOperations(inputPrimary, operations),
+      0,
+    );
+    expectAuthoredVisibleSupport(
+      prospectiveActorFromOperations(inputSecondary, operations),
+      0,
+    );
 
     const result = applyScenePatch(scene, asPatch(scene, operations));
     const primary = result.next.entities.find(
@@ -120,18 +190,25 @@ describe("relationship presets", () => {
     expect(secondary.pose.preset.id).toBe(
       "pose.standing-neutral-v1",
     );
-    expect(primary.transform.positionM[1]).toBeCloseTo(
-      primary.pose.preset.parameters.contactOffsetM as number,
-      5,
-    );
-    expect(secondary.transform.positionM[1]).toBeCloseTo(
-      secondary.pose.preset.parameters.contactOffsetM as number,
-      5,
-    );
+    expect(actorVisibleRigBounds(primary).minWorld[1]).toBeCloseTo(0, 9);
+    expect(actorVisibleRigBounds(secondary).minWorld[1]).toBeCloseTo(0, 9);
   });
 
   it("builds over-under blocking on a surface and protects the lower face", () => {
     const scene = createTwoActorScene();
+    const inputPrimary = scene.entities.find(
+      (entity): entity is ActorEntity =>
+        entity.id === "actor_primary_1" && entity.kind === "actor",
+    );
+    const inputSecondary = scene.entities.find(
+      (entity): entity is ActorEntity =>
+        entity.id === "actor_secondary_1" && entity.kind === "actor",
+    );
+    if (!inputPrimary || !inputSecondary) {
+      throw new Error("Relationship actor fixtures are missing.");
+    }
+    inputPrimary.transform.scale = [1.2, 0.85, 1.1];
+    inputSecondary.transform.scale = [0.8, 1.35, 0.9];
     const surface = scene.entities.find(
       (entity) => entity.id === "prop_block_1",
     );
@@ -153,6 +230,14 @@ describe("relationship presets", () => {
       },
     );
     expect(() => asPatch(scene, operations)).not.toThrow();
+    expectAuthoredVisibleSupport(
+      prospectiveActorFromOperations(inputPrimary, operations),
+      surfaceTop,
+    );
+    expectAuthoredVisibleSupport(
+      prospectiveActorFromOperations(inputSecondary, operations),
+      surfaceTop,
+    );
 
     const result = applyScenePatch(scene, asPatch(scene, operations));
     const primary = result.next.entities.find(
@@ -168,15 +253,13 @@ describe("relationship presets", () => {
     }
     expect(primary.pose.preset.id).toBe("pose.kneeling-lean-v1");
     expect(lower.pose.preset.id).toBe("pose.lying-supine-v1");
-    expect(primary.transform.positionM[1]).toBeCloseTo(
-      surfaceTop +
-        (primary.pose.preset.parameters.contactOffsetM as number),
-      5,
+    expect(actorVisibleRigBounds(primary).minWorld[1]).toBeCloseTo(
+      surfaceTop,
+      6,
     );
-    expect(lower.transform.positionM[1]).toBeCloseTo(
-      surfaceTop +
-        (lower.pose.preset.parameters.contactOffsetM as number),
-      5,
+    expect(actorVisibleRigBounds(lower).minWorld[1]).toBeCloseTo(
+      surfaceTop,
+      6,
     );
     expect(result.next.constraints).toEqual(
       expect.arrayContaining([
@@ -197,6 +280,74 @@ describe("relationship presets", () => {
           anchor: "face",
         }),
       ]),
+    );
+  });
+
+  it("builds and atomically applies corrections for workflow-locked actors", () => {
+    const scene = createTwoActorScene();
+    const primary = scene.entities.find(
+      (entity) => entity.id === "actor_primary_1",
+    );
+    const secondary = scene.entities.find(
+      (entity) => entity.id === "actor_secondary_1",
+    );
+    if (primary?.kind !== "actor" || secondary?.kind !== "actor") {
+      throw new Error("Relationship actor fixtures are missing.");
+    }
+    primary.lockMode = "workflow";
+    secondary.lockMode = "workflow";
+
+    const operations = buildRelationshipOperations(
+      scene,
+      "relationship.face-to-face-v1",
+      {
+        primaryActorId: primary.id,
+        secondaryActorId: secondary.id,
+      },
+    );
+    const applied = applyScenePatch(
+      scene,
+      asPatch(scene, operations, true),
+    );
+
+    expect(
+      applied.next.entities.filter(
+        (entity) =>
+          entity.id === primary.id || entity.id === secondary.id,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: primary.id,
+        lockMode: "workflow",
+      }),
+      expect.objectContaining({
+        id: secondary.id,
+        lockMode: "workflow",
+      }),
+    ]);
+  });
+
+  it("continues to reject user-locked relationship actors", () => {
+    const scene = createTwoActorScene();
+    const primary = scene.entities.find(
+      (entity) => entity.id === "actor_primary_1",
+    );
+    if (primary?.kind !== "actor") {
+      throw new Error("Relationship actor fixture is missing.");
+    }
+    primary.lockMode = "user";
+
+    expect(() =>
+      buildRelationshipOperations(
+        scene,
+        "relationship.face-to-face-v1",
+        {
+          primaryActorId: primary.id,
+          secondaryActorId: "actor_secondary_1",
+        },
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "ROLE_ACTOR_LOCKED" }),
     );
   });
 

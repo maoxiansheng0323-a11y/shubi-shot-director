@@ -1,17 +1,20 @@
 # Public release procedure
 
-This repository can be prepared as public source, but its current internal Git history is not the publication artifact. The history contains development-only checkpoints and must remain private.
+This repository can be prepared as public source, but its internal Git history
+is not the publication artifact. Development-only checkpoints remain private;
+GitHub receives only a verified, history-free source snapshot.
 
-## Fixed v0.2.1 publication parameters
+## Fixed v0.4.0 publication parameters
 
 - Repository: `shubi-shot-director`
+- Repository name: `shubi-shot-director`
+- Repository owner: `maoxiansheng0323-a11y`
+- Existing public repository: `maoxiansheng0323-a11y/shubi-shot-director`
 - Visibility: `public`
 - Default branch: `main`
-- Initial version: `v0.2.1`
+- Release version: `v0.4.0`
 - License: `MIT`
 - Package publication: disabled; keep `package.json` at `private: true` and do not publish to npm.
-
-The only hosting decision left is the repository owner or organization. It does not change the history-free source snapshot.
 
 ## Verify the private working repository
 
@@ -25,24 +28,30 @@ git diff --check
 git status --short
 ```
 
-`pnpm verify` already performs the dependency-license audit. Run the content scan again with each private project name, alias, or marker supplied only as a command-line deny token:
+`pnpm verify` includes the dependency-license audit. Run the content scan again
+with each private project name, alias, or marker supplied only as a command-line
+deny token:
 
 ```powershell
 node scripts/audit-public-release.mjs --skip-license-check --deny-token <private-marker-1> --deny-token <private-marker-2>
 ```
 
-Do not store deny tokens in repository files, shell scripts, reports, fixtures, logs, screenshots, or command transcripts intended for publication.
+Never store deny tokens in repository files, scripts, reports, fixtures, logs,
+screenshots, or command transcripts intended for publication.
 
 ## Create a history-free source snapshot
 
-Create the release candidate from the final verified commit with `git archive`. Extract it into a clean directory that is not itself a checkout of this internal repository.
+Create the release candidate from the final verified commit with `git archive`.
+Extract it into a clean directory that is not itself the internal checkout.
 
 ```powershell
 New-Item -ItemType Directory -Force .shubi-shot | Out-Null
 git archive --format=tar HEAD -o .shubi-shot/public-source.tar
 ```
 
-The archive must contain only committed source files. It must not contain `.git`, ignored runtime state, external profiles, environment files, local scenes, exports, logs, build output, internal branches, or tags.
+The archive must contain only committed source files. It must not contain
+`.git`, ignored runtime state, external profiles, environment files, local
+scenes, exports, logs, build output, internal branches, or tags.
 
 Inside the extracted snapshot, run:
 
@@ -55,21 +64,34 @@ node scripts/director.mjs scene submit --file examples/quickstart.scene-submissi
 node scripts/director.mjs snapshot
 ```
 
-Open the returned loopback URL, wait for the Shot Preview, and complete one real 1920 × 1080 PNG export before accepting the snapshot.
+Open the returned loopback URL, wait for Shot Preview, and complete one real
+1920 x 1080 PNG export before accepting the snapshot.
 
-## Initialize the future public repository
+## Update the existing public repository
 
-Create a new public repository from the verified extracted snapshot, or initialize an orphan-rooted repository whose first commit contains only that snapshot.
+Clone the existing public repository into a separate public checkout. Never add
+its remote to this internal checkout. Never push the existing internal branches or tags.
+In the public checkout, preserve `.git`, replace only the tracked source tree
+with the verified snapshot, and review the complete diff.
 
-Never push the existing internal branches or tags. Do not add the future remote to this internal checkout. Do not publish a package from this repository as part of the source-release procedure.
-
-A future maintainer may initialize the extracted snapshot with the fixed default branch and version:
+Before committing, require `package.json` to remain private, rerun the public
+audit, and verify that no internal history, runtime state, profile, credential,
+or private marker is present. Then commit and tag only from the public checkout:
 
 ```powershell
-git init -b main
-git add .
-git commit -m "Initial public release"
-git tag v0.2.1
+git add --all
+git commit -m "Release v0.4.0"
+git tag -a v0.4.0 -m "Shubi Shot Director v0.4.0"
+git push origin main
+git push origin v0.4.0
 ```
 
-After choosing the repository owner, create a public repository named `shubi-shot-director`, then add that new remote from the initialized snapshot. Stop before creating a remote, pushing, opening the public repository, or publishing anything unless those actions are separately authorized.
+Create the public announcement from the committed reusable release notes:
+
+```powershell
+gh release create v0.4.0 --repo maoxiansheng0323-a11y/shubi-shot-director --title "Shubi Shot Director v0.4.0" --notes-file docs/releases/v0.4.0.md
+```
+
+Finally verify the remote `main` SHA, annotated tag target, published Release,
+anonymous repository access, MIT license recognition, and attached export. Do
+not publish this package to npm.

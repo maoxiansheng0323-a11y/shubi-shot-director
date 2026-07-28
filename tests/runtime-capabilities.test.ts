@@ -8,12 +8,20 @@ import {
 import * as runtimeCapabilities from "../cli/runtime-capabilities";
 import {
   CAPABILITIES_CONTRACT_VERSION,
+  ACTOR_LIMB_ERROR_CODES,
   CLI_COMMAND_DEFINITIONS,
   CLI_HELP_COMMANDS,
+  LOCK_ERROR_CODES,
+  PATCH_POLICY_FIELDS,
   RUNTIME_FEATURE_IDS,
   getRuntimeCapabilityManifest,
   parseRuntimeCapabilityManifest,
 } from "../cli/runtime-capabilities";
+import { ENTITY_LOCK_MODES } from "../src/domain/entity-lock";
+import {
+  ACTOR_LIMB_PART_IDS,
+  ACTOR_LIMB_PRESENCE_MODES,
+} from "../src/domain/actor-anatomy";
 import {
   PATCH_SCHEMA_VERSION,
   SCENE_SCHEMA_VERSION,
@@ -47,7 +55,32 @@ const EXPECTED_FEATURE_IDS = [
   "export.software-png",
   "composition.segmented-report",
   "bridge.safe-shutdown",
+  "actor.limb-presence",
 ] as const;
+
+const EXPECTED_ENTITY_LOCK_MODES = ["none", "workflow", "user"] as const;
+const EXPECTED_PATCH_POLICY_FIELDS = ["preserveLock"] as const;
+const EXPECTED_LOCK_ERROR_CODES = [
+  "USER_LOCKED",
+  "WORKFLOW_LOCKED",
+  "LOCK_PRESERVATION_CONFLICT",
+] as const;
+const EXPECTED_ACTOR_LIMB_PART_IDS = [
+  "upper_arm_l",
+  "forearm_l",
+  "hand_l",
+  "upper_arm_r",
+  "forearm_r",
+  "hand_r",
+  "upper_leg_l",
+  "lower_leg_l",
+  "foot_l",
+  "upper_leg_r",
+  "lower_leg_r",
+  "foot_r",
+] as const;
+const EXPECTED_ACTOR_LIMB_PRESENCE_MODES = ["present", "absent"] as const;
+const EXPECTED_ACTOR_LIMB_ERROR_CODES = ["LIMB_HIERARCHY_CONFLICT"] as const;
 
 const COMPACT_CONFIGURATION_KEYS = [
   "modelconfig",
@@ -151,7 +184,10 @@ describe("runtime capability manifest", () => {
     expect(APPLICATION_VERSION).toBe(packageMetadata.version);
     expect(runtimeCapabilities).toMatchObject({
       CAPABILITIES_CONTRACT_VERSION: 2,
-      INTENT_REPORT_SCHEMA_VERSION: 1,
+      INTENT_REPORT_SCHEMA_VERSION: 4,
+      PATCH_POLICY_FIELDS: EXPECTED_PATCH_POLICY_FIELDS,
+      LOCK_ERROR_CODES: EXPECTED_LOCK_ERROR_CODES,
+      ACTOR_LIMB_ERROR_CODES: EXPECTED_ACTOR_LIMB_ERROR_CODES,
       SEMANTIC_AUTHORITY: "host",
       INPUT_CONTRACT: "structured-only",
       MODEL_INTEGRATION: "none",
@@ -159,29 +195,60 @@ describe("runtime capability manifest", () => {
       NETWORK_POLICY: "loopback-only",
       RuntimeCapabilityError: expect.any(Function),
     });
-    expect(manifest).toMatchObject({
+    expect(manifest).toEqual({
       service: "shubi-shot-director",
       capabilitiesContractVersion: 2,
       applicationVersion: packageMetadata.version,
       bridgeProtocolVersion: 1,
       sceneSchemaVersion: SCENE_SCHEMA_VERSION,
       patchSchemaVersion: PATCH_SCHEMA_VERSION,
-      intentReportSchemaVersion: 1,
+      intentReportSchemaVersion: 4,
       semanticAuthority: "host",
       inputContract: "structured-only",
       modelIntegration: "none",
       credentialPolicy: "forbidden",
       networkPolicy: "loopback-only",
+      commands: [...EXPECTED_COMMAND_IDS],
+      features: [...EXPECTED_FEATURE_IDS],
+      entityLockModes: [...EXPECTED_ENTITY_LOCK_MODES],
+      patchPolicyFields: [...EXPECTED_PATCH_POLICY_FIELDS],
+      lockErrorCodes: [...EXPECTED_LOCK_ERROR_CODES],
+      actorLimbPartIds: [...EXPECTED_ACTOR_LIMB_PART_IDS],
+      actorLimbPresenceModes: [...EXPECTED_ACTOR_LIMB_PRESENCE_MODES],
+      actorLimbErrorCodes: [...EXPECTED_ACTOR_LIMB_ERROR_CODES],
     });
     expect(CAPABILITIES_CONTRACT_VERSION).toBe(2);
+    expect(ENTITY_LOCK_MODES).toEqual(EXPECTED_ENTITY_LOCK_MODES);
+    expect(ACTOR_LIMB_PART_IDS).toEqual(EXPECTED_ACTOR_LIMB_PART_IDS);
+    expect(ACTOR_LIMB_PRESENCE_MODES).toEqual(
+      EXPECTED_ACTOR_LIMB_PRESENCE_MODES,
+    );
     expect(manifest).not.toHaveProperty("requiresApiKey");
   });
 
-  it("publishes unique stable command and feature ids", () => {
+  it("publishes unique stable command, feature, lock, and anatomy capability ids", () => {
     const manifest = getRuntimeCapabilityManifest();
 
     expect(new Set(manifest.commands).size).toBe(manifest.commands.length);
     expect(new Set(manifest.features).size).toBe(manifest.features.length);
+    expect(new Set(manifest.entityLockModes).size).toBe(
+      manifest.entityLockModes.length,
+    );
+    expect(new Set(manifest.patchPolicyFields).size).toBe(
+      manifest.patchPolicyFields.length,
+    );
+    expect(new Set(manifest.lockErrorCodes).size).toBe(
+      manifest.lockErrorCodes.length,
+    );
+    expect(new Set(manifest.actorLimbPartIds).size).toBe(
+      manifest.actorLimbPartIds.length,
+    );
+    expect(new Set(manifest.actorLimbPresenceModes).size).toBe(
+      manifest.actorLimbPresenceModes.length,
+    );
+    expect(new Set(manifest.actorLimbErrorCodes).size).toBe(
+      manifest.actorLimbErrorCodes.length,
+    );
     expect(manifest.commands).toEqual([...EXPECTED_COMMAND_IDS]);
     expect(CLI_COMMAND_DEFINITIONS.map(({ id }) => id)).toEqual([
       ...EXPECTED_COMMAND_IDS,
@@ -191,6 +258,27 @@ describe("runtime capability manifest", () => {
     );
     expect(manifest.features).toEqual([...EXPECTED_FEATURE_IDS]);
     expect(RUNTIME_FEATURE_IDS).toEqual(EXPECTED_FEATURE_IDS);
+    expect(manifest.entityLockModes).toEqual([
+      ...EXPECTED_ENTITY_LOCK_MODES,
+    ]);
+    expect(manifest.patchPolicyFields).toEqual([
+      ...EXPECTED_PATCH_POLICY_FIELDS,
+    ]);
+    expect(PATCH_POLICY_FIELDS).toEqual(EXPECTED_PATCH_POLICY_FIELDS);
+    expect(manifest.lockErrorCodes).toEqual([
+      ...EXPECTED_LOCK_ERROR_CODES,
+    ]);
+    expect(LOCK_ERROR_CODES).toEqual(EXPECTED_LOCK_ERROR_CODES);
+    expect(manifest.actorLimbPartIds).toEqual([
+      ...EXPECTED_ACTOR_LIMB_PART_IDS,
+    ]);
+    expect(manifest.actorLimbPresenceModes).toEqual([
+      ...EXPECTED_ACTOR_LIMB_PRESENCE_MODES,
+    ]);
+    expect(manifest.actorLimbErrorCodes).toEqual([
+      ...EXPECTED_ACTOR_LIMB_ERROR_CODES,
+    ]);
+    expect(ACTOR_LIMB_ERROR_CODES).toEqual(EXPECTED_ACTOR_LIMB_ERROR_CODES);
   });
 
   it("classifies malformed manifests as invalid", () => {
@@ -205,6 +293,114 @@ describe("runtime capability manifest", () => {
       "CAPABILITIES_INVALID",
     );
   });
+
+  it.each([
+    ["entity lock modes", "entityLockModes", EXPECTED_ENTITY_LOCK_MODES],
+    ["patch policy fields", "patchPolicyFields", EXPECTED_PATCH_POLICY_FIELDS],
+    ["lock error codes", "lockErrorCodes", EXPECTED_LOCK_ERROR_CODES],
+    ["actor limb part ids", "actorLimbPartIds", EXPECTED_ACTOR_LIMB_PART_IDS],
+    [
+      "actor limb presence modes",
+      "actorLimbPresenceModes",
+      EXPECTED_ACTOR_LIMB_PRESENCE_MODES,
+    ],
+    [
+      "actor limb error codes",
+      "actorLimbErrorCodes",
+      EXPECTED_ACTOR_LIMB_ERROR_CODES,
+    ],
+  ] as const)(
+    "requires %s to be a non-empty unique string array",
+    (_label, field, expected) => {
+      const valid = getRuntimeCapabilityManifest();
+      const malformedValues: unknown[] = [
+        undefined,
+        [],
+        [...expected, expected[0]],
+        [...expected.slice(0, -1), 42],
+        "",
+        null,
+        {},
+      ];
+
+      for (const value of malformedValues) {
+        expectCapabilityError(
+          () =>
+            parseRuntimeCapabilityManifest({
+              ...valid,
+              [field]: value,
+            }),
+          "CAPABILITIES_INVALID",
+        );
+      }
+    },
+  );
+
+  it("requires a plain or null-prototype manifest with own required fields", () => {
+    const valid = getRuntimeCapabilityManifest();
+
+    expectCapabilityError(
+      () => parseRuntimeCapabilityManifest([]),
+      "CAPABILITIES_INVALID",
+    );
+    expectCapabilityError(
+      () =>
+        parseRuntimeCapabilityManifest(
+          Object.create(valid) as Record<string, unknown>,
+        ),
+      "CAPABILITIES_INVALID",
+    );
+
+    const nullPrototypeManifest = Object.assign(
+      Object.create(null) as Record<string, unknown>,
+      valid,
+    );
+    expect(parseRuntimeCapabilityManifest(nullPrototypeManifest)).toEqual(
+      valid,
+    );
+  });
+
+  it.each(["getter", "proxy"] as const)(
+    "fails closed without leaking a throwing %s manifest",
+    (kind) => {
+      const marker = `PRIVATE_${kind.toUpperCase()}_MARKER`;
+      const valid = getRuntimeCapabilityManifest();
+      let input: unknown;
+      if (kind === "getter") {
+        const getterManifest = { ...valid };
+        Object.defineProperty(getterManifest, "service", {
+          enumerable: true,
+          get() {
+            throw new Error(marker);
+          },
+        });
+        input = getterManifest;
+      } else {
+        input = new Proxy(
+          { ...valid },
+          {
+            getPrototypeOf() {
+              throw new Error(marker);
+            },
+          },
+        );
+      }
+
+      let caught: unknown;
+      try {
+        parseRuntimeCapabilityManifest(input);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toMatchObject({
+        name: "RuntimeCapabilityError",
+        code: "CAPABILITIES_INVALID",
+        message: "The runtime capability manifest is invalid.",
+      });
+      expect(String(caught)).not.toContain(marker);
+    },
+  );
 
   it.each([
     ["shot.create", "command"],
@@ -284,22 +480,101 @@ describe("runtime capability manifest", () => {
     );
   });
 
-  it("returns independent command and feature arrays", () => {
+  it("returns independent manifest arrays", () => {
     const first = getRuntimeCapabilityManifest();
     const second = getRuntimeCapabilityManifest();
     const parsed = parseRuntimeCapabilityManifest(first);
 
     expect(first.commands).not.toBe(second.commands);
     expect(first.features).not.toBe(second.features);
+    expect(first.entityLockModes).not.toBe(second.entityLockModes);
+    expect(first.patchPolicyFields).not.toBe(second.patchPolicyFields);
+    expect(first.lockErrorCodes).not.toBe(second.lockErrorCodes);
+    expect(first.actorLimbPartIds).not.toBe(second.actorLimbPartIds);
+    expect(first.actorLimbPresenceModes).not.toBe(second.actorLimbPresenceModes);
+    expect(first.actorLimbErrorCodes).not.toBe(second.actorLimbErrorCodes);
     expect(parsed.commands).not.toBe(first.commands);
     expect(parsed.features).not.toBe(first.features);
+    expect(parsed.entityLockModes).not.toBe(first.entityLockModes);
+    expect(parsed.patchPolicyFields).not.toBe(first.patchPolicyFields);
+    expect(parsed.lockErrorCodes).not.toBe(first.lockErrorCodes);
+    expect(parsed.actorLimbPartIds).not.toBe(first.actorLimbPartIds);
+    expect(parsed.actorLimbPresenceModes).not.toBe(first.actorLimbPresenceModes);
+    expect(parsed.actorLimbErrorCodes).not.toBe(first.actorLimbErrorCodes);
 
     first.commands.push("source-only.command");
     first.features.push("source-only.feature");
+    first.entityLockModes.push("source-only-lock");
+    first.patchPolicyFields.push("sourceOnlyPolicy");
+    first.lockErrorCodes.push("SOURCE_ONLY_ERROR");
+    first.actorLimbPartIds.push("source_only_part");
+    first.actorLimbPresenceModes.push("source-only-mode");
+    first.actorLimbErrorCodes.push("SOURCE_ONLY_LIMB_ERROR");
     expect(parsed.commands).toEqual([...EXPECTED_COMMAND_IDS]);
     expect(parsed.features).toEqual([...EXPECTED_FEATURE_IDS]);
+    expect(parsed.entityLockModes).toEqual([
+      ...EXPECTED_ENTITY_LOCK_MODES,
+    ]);
+    expect(parsed.patchPolicyFields).toEqual([
+      ...EXPECTED_PATCH_POLICY_FIELDS,
+    ]);
+    expect(parsed.lockErrorCodes).toEqual([
+      ...EXPECTED_LOCK_ERROR_CODES,
+    ]);
     expect(second.commands).toEqual([...EXPECTED_COMMAND_IDS]);
     expect(second.features).toEqual([...EXPECTED_FEATURE_IDS]);
+    expect(second.entityLockModes).toEqual([
+      ...EXPECTED_ENTITY_LOCK_MODES,
+    ]);
+    expect(second.patchPolicyFields).toEqual([
+      ...EXPECTED_PATCH_POLICY_FIELDS,
+    ]);
+    expect(second.lockErrorCodes).toEqual([
+      ...EXPECTED_LOCK_ERROR_CODES,
+    ]);
+    expect(parsed.actorLimbPartIds).toEqual([...EXPECTED_ACTOR_LIMB_PART_IDS]);
+    expect(parsed.actorLimbPresenceModes).toEqual([
+      ...EXPECTED_ACTOR_LIMB_PRESENCE_MODES,
+    ]);
+    expect(parsed.actorLimbErrorCodes).toEqual([
+      ...EXPECTED_ACTOR_LIMB_ERROR_CODES,
+    ]);
+    expect(second.actorLimbPartIds).toEqual([...EXPECTED_ACTOR_LIMB_PART_IDS]);
+    expect(second.actorLimbPresenceModes).toEqual([
+      ...EXPECTED_ACTOR_LIMB_PRESENCE_MODES,
+    ]);
+    expect(second.actorLimbErrorCodes).toEqual([
+      ...EXPECTED_ACTOR_LIMB_ERROR_CODES,
+    ]);
+  });
+
+  it("does not reorder caller arrays while parsing", () => {
+    const valid = getRuntimeCapabilityManifest();
+    const source = {
+      ...valid,
+      commands: [...valid.commands].reverse(),
+      features: [...valid.features].reverse(),
+      entityLockModes: [...valid.entityLockModes].reverse(),
+      patchPolicyFields: [...valid.patchPolicyFields].reverse(),
+      lockErrorCodes: [...valid.lockErrorCodes].reverse(),
+      actorLimbPartIds: [...valid.actorLimbPartIds].reverse(),
+      actorLimbPresenceModes: [...valid.actorLimbPresenceModes].reverse(),
+      actorLimbErrorCodes: [...valid.actorLimbErrorCodes].reverse(),
+    };
+    const before = {
+      commands: [...source.commands],
+      features: [...source.features],
+      entityLockModes: [...source.entityLockModes],
+      patchPolicyFields: [...source.patchPolicyFields],
+      lockErrorCodes: [...source.lockErrorCodes],
+      actorLimbPartIds: [...source.actorLimbPartIds],
+      actorLimbPresenceModes: [...source.actorLimbPresenceModes],
+      actorLimbErrorCodes: [...source.actorLimbErrorCodes],
+    };
+
+    parseRuntimeCapabilityManifest(source);
+
+    expect(source).toMatchObject(before);
   });
 
   it("rejects non-positive and fractional manifest versions", () => {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
-  INTENT_ISSUE_CODES_V1,
-  INTENT_WARNING_CODES_V1,
+  INTENT_ISSUE_CODES_V3,
+  INTENT_WARNING_CODES_V3,
   intentReportSchema,
   type IntentReport,
 } from "./intent-report";
@@ -10,6 +10,11 @@ import {
   validateIntentPolicy,
 } from "./intent-coverage";
 import { IntentSubmissionError } from "./intent-submission-error";
+import {
+  parseScenePatchInput,
+  parseSceneSpecInput,
+  parseIntentReportInput,
+} from "./scene-migrations";
 import { scenePatchSchema } from "./scene-patch";
 import { sceneSpecSchema } from "./scene-schema";
 
@@ -41,9 +46,9 @@ export const intentSummarySchema = z
     unsupportedConstraintCount: z.number().int().nonnegative(),
     unresolvedRelationCount: z.number().int().nonnegative(),
     warningCount: z.number().int().nonnegative(),
-    unsupportedConstraintCodes: z.array(z.enum(INTENT_ISSUE_CODES_V1)),
-    unresolvedRelationCodes: z.array(z.enum(INTENT_ISSUE_CODES_V1)),
-    warningCodes: z.array(z.enum(INTENT_WARNING_CODES_V1)),
+    unsupportedConstraintCodes: z.array(z.enum(INTENT_ISSUE_CODES_V3)),
+    unresolvedRelationCodes: z.array(z.enum(INTENT_ISSUE_CODES_V3)),
+    warningCodes: z.array(z.enum(INTENT_WARNING_CODES_V3)),
   })
   .strict();
 
@@ -86,11 +91,11 @@ const patchSubmissionEnvelopeSchema = z
   .strict();
 
 const parseIntentReport = (input: unknown): IntentReport => {
-  const result = intentReportSchema.safeParse(input);
-  if (!result.success) {
+  try {
+    return parseIntentReportInput(input);
+  } catch {
     throw new IntentSubmissionError("INTENT_REPORT_INVALID");
   }
-  return result.data;
 };
 
 const validateSubmissionPolicy = (
@@ -99,20 +104,34 @@ const validateSubmissionPolicy = (
 ): void => validateIntentPolicy(report, operation);
 
 export const parseSceneSubmission = (input: unknown): SceneSubmission => {
+  const submission = normalizeSceneSubmissionInput(input);
+  validateSubmissionPolicy(submission.intentReport, "create");
+  validateIntentCoverage(submission.intentReport, {
+    after: submission.scene,
+  });
+  return submission;
+};
+
+export const normalizeSceneSubmissionInput = (
+  input: unknown,
+): SceneSubmission => {
   const envelope = sceneSubmissionEnvelopeSchema.parse(input);
   const intentReport = parseIntentReport(envelope.intentReport);
-  const scene = sceneSpecSchema.parse(envelope.scene);
-  validateSubmissionPolicy(intentReport, "create");
-  validateIntentCoverage(intentReport, {
-    after: scene,
-  });
+  const scene = parseSceneSpecInput(envelope.scene);
   return { intentReport, scene };
 };
 
 export const parsePatchSubmission = (input: unknown): PatchSubmission => {
+  const submission = normalizePatchSubmissionInput(input);
+  validateSubmissionPolicy(submission.intentReport, "modify");
+  return submission;
+};
+
+export const normalizePatchSubmissionInput = (
+  input: unknown,
+): PatchSubmission => {
   const envelope = patchSubmissionEnvelopeSchema.parse(input);
   const intentReport = parseIntentReport(envelope.intentReport);
-  const patch = scenePatchSchema.parse(envelope.patch);
-  validateSubmissionPolicy(intentReport, "modify");
+  const patch = parseScenePatchInput(envelope.patch);
   return { intentReport, patch };
 };

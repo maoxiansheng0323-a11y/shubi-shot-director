@@ -32,6 +32,12 @@ const safeSceneDomainMessage = (code: string): string => {
       return "A requested scene entity was not found.";
     case "ENTITY_LOCKED":
       return "A requested scene entity is locked.";
+    case "USER_LOCKED":
+      return "A requested scene entity is user protected.";
+    case "WORKFLOW_LOCKED":
+      return "A requested scene entity is workflow locked.";
+    case "LOCK_PRESERVATION_CONFLICT":
+      return "The requested Patch would change preserved lock state.";
     default:
       return "The scene request was rejected.";
   }
@@ -46,6 +52,10 @@ const safeContactConstraintMessage = (
       return "A requested scene entity was not found.";
     case "LOCKED_ENTITY_CONFLICT":
       return "A requested scene entity is locked.";
+    case "USER_LOCKED":
+      return "A requested scene entity is user protected.";
+    case "WORKFLOW_LOCKED":
+      return "A requested scene entity is workflow locked.";
     default:
       return "The scene request violates a contact constraint.";
   }

@@ -1,7 +1,11 @@
 import { z } from "zod";
+import {
+  ACTOR_LIMB_PART_IDS,
+  type ActorLimbPartId,
+} from "./actor-anatomy";
 import { entityIdSchema } from "./shared-schemas";
 
-export const INTENT_REPORT_SCHEMA_VERSION = 1 as const;
+export const INTENT_REPORT_SCHEMA_VERSION = 4 as const;
 
 export const INTENT_CONSTRAINT_KINDS_V1 = [
   "environment",
@@ -24,16 +28,44 @@ export const INTENT_CONSTRAINT_KINDS_V1 = [
   "composition-safety",
 ] as const;
 
+export const INTENT_CONSTRAINT_KINDS_V2 = [
+  ...INTENT_CONSTRAINT_KINDS_V1,
+  "spatial-region",
+  "spatial-boundary",
+  "spatial-opening",
+  "spatial-connection",
+  "entity-region-membership",
+  "region-visibility",
+] as const;
+
+export const INTENT_CONSTRAINT_KINDS_V3 = [
+  ...INTENT_CONSTRAINT_KINDS_V2,
+  "lock-protection",
+] as const;
+
+export const INTENT_CONSTRAINT_KINDS_V4 = [
+  ...INTENT_CONSTRAINT_KINDS_V3,
+  "actor-limb-presence",
+] as const;
+
 export const INTENT_ISSUE_CODES_V1 = [
   "UNSUPPORTED_CONSTRAINT",
   "UNRESOLVED_RELATION",
   "UNAPPLIED_CONSTRAINT",
 ] as const;
 
+export const INTENT_ISSUE_CODES_V2 = INTENT_ISSUE_CODES_V1;
+export const INTENT_ISSUE_CODES_V3 = INTENT_ISSUE_CODES_V2;
+export const INTENT_ISSUE_CODES_V4 = INTENT_ISSUE_CODES_V3;
+
 export const INTENT_WARNING_CODES_V1 = [
   "PARTIAL_APPLICATION",
   "APPROXIMATE_PLACEMENT",
 ] as const;
+
+export const INTENT_WARNING_CODES_V2 = INTENT_WARNING_CODES_V1;
+export const INTENT_WARNING_CODES_V3 = INTENT_WARNING_CODES_V2;
+export const INTENT_WARNING_CODES_V4 = INTENT_WARNING_CODES_V3;
 
 export const ENTITY_EVIDENCE_PATHS_V1 = [
   "entity.kind",
@@ -50,6 +82,50 @@ export const ENTITY_EVIDENCE_PATHS_V1 = [
   "camera.lens.sensorWidthMm",
 ] as const;
 
+export const ENTITY_EVIDENCE_PATHS_V2 = ENTITY_EVIDENCE_PATHS_V1;
+
+export const ENTITY_EVIDENCE_PATHS_V3 = [
+  "entity.kind",
+  "entity.parentId",
+  "entity.transform.positionM",
+  "entity.transform.rotation",
+  "entity.transform.scale",
+  "entity.visible",
+  "entity.lockMode",
+  "actor.slot",
+  "actor.pose",
+  "camera.heightM",
+  "camera.lens.focalLengthMm",
+  "camera.lens.sensorWidthMm",
+] as const;
+
+export type ActorLimbEvidencePath =
+  `entity.body.limbPresence.${ActorLimbPartId}`;
+
+const actorLimbEvidencePath = (
+  partId: ActorLimbPartId,
+): ActorLimbEvidencePath =>
+  `entity.body.limbPresence.${partId}`;
+
+const [firstActorLimbPartId, ...remainingActorLimbPartIds] =
+  ACTOR_LIMB_PART_IDS;
+
+export const ACTOR_LIMB_EVIDENCE_PATHS: readonly [
+  ActorLimbEvidencePath,
+  ...ActorLimbEvidencePath[],
+] = [
+  actorLimbEvidencePath(firstActorLimbPartId),
+  ...remainingActorLimbPartIds.map(
+    (partId): ActorLimbEvidencePath =>
+      actorLimbEvidencePath(partId),
+  ),
+];
+
+export const ENTITY_EVIDENCE_PATHS_V4 = [
+  ...ENTITY_EVIDENCE_PATHS_V3,
+  ...ACTOR_LIMB_EVIDENCE_PATHS,
+] as const;
+
 export const SCENE_EVIDENCE_PATHS_V1 = [
   "scene.activeCameraId",
   "scene.output",
@@ -59,6 +135,18 @@ export const SCENE_EVIDENCE_PATHS_V1 = [
   "scene.compositionGoals.sideUiZone",
   "scene.compositionGoals.criticalEntityIds",
 ] as const;
+
+export const SCENE_EVIDENCE_PATHS_V2 = [
+  ...SCENE_EVIDENCE_PATHS_V1,
+  "scene.spatialLayout.regions",
+  "scene.spatialLayout.boundaries",
+  "scene.spatialLayout.openings",
+  "scene.spatialLayout.connections",
+  "scene.spatialLayout.memberships",
+] as const;
+
+export const SCENE_EVIDENCE_PATHS_V3 = SCENE_EVIDENCE_PATHS_V2;
+export const SCENE_EVIDENCE_PATHS_V4 = SCENE_EVIDENCE_PATHS_V3;
 
 const uniqueIds = (values: string[]): boolean =>
   new Set(values).size === values.length;
@@ -79,13 +167,13 @@ const intentEvidenceSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("entity-property"),
       entityId: entityIdSchema,
-      path: z.enum(ENTITY_EVIDENCE_PATHS_V1),
+      path: z.enum(ENTITY_EVIDENCE_PATHS_V4),
     })
     .strict(),
   z
     .object({
       type: z.literal("scene-property"),
-      path: z.enum(SCENE_EVIDENCE_PATHS_V1),
+      path: z.enum(SCENE_EVIDENCE_PATHS_V4),
     })
     .strict(),
   z
@@ -97,7 +185,7 @@ const intentEvidenceSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("patch-operation"),
-      operationIndex: z.number().int().nonnegative().max(127),
+      operationIndex: z.number().int().nonnegative().max(255),
     })
     .strict(),
 ]);
@@ -105,7 +193,7 @@ const intentEvidenceSchema = z.discriminatedUnion("type", [
 const intentConstraintSchema = z
   .object({
     id: entityIdSchema,
-    kind: z.enum(INTENT_CONSTRAINT_KINDS_V1),
+    kind: z.enum(INTENT_CONSTRAINT_KINDS_V4),
     required: z.boolean(),
     targets: genericIdArraySchema,
     evidence: z.array(intentEvidenceSchema).max(64),
@@ -114,14 +202,14 @@ const intentConstraintSchema = z
 
 const intentIssueSchema = z
   .object({
-    code: z.enum(INTENT_ISSUE_CODES_V1),
+    code: z.enum(INTENT_ISSUE_CODES_V4),
     targetIds: genericIdArraySchema.optional(),
   })
   .strict();
 
 const intentWarningSchema = z
   .object({
-    code: z.enum(INTENT_WARNING_CODES_V1),
+    code: z.enum(INTENT_WARNING_CODES_V4),
     targetIds: genericIdArraySchema.optional(),
   })
   .strict();

@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 import { SceneSession } from "../server/scene-session";
 import { validateIntentCoverage } from "../src/domain/intent-coverage";
+import { INTENT_REPORT_SCHEMA_VERSION } from "../src/domain/intent-report";
 import type { SceneOperation } from "../src/domain/scene-patch";
 import {
   IntentSubmissionError,
+  normalizePatchSubmissionInput,
   parsePatchSubmission,
   parseSceneSubmission,
 } from "../src/domain/scene-submission";
@@ -164,9 +166,228 @@ describe("structured scene submission policy", () => {
 
     expect(parsePatchSubmission(submission)).toEqual(submission);
   });
+
+  it.each([1, 2] as const)(
+    "migrates v%s report evidence and preserves every patch operation index",
+    (schemaVersion) => {
+      const scene = createStructuredScene();
+      const legacyOperations = [
+        {
+          op: "entity.transform.translate",
+          entityId: "actor_generic_1",
+          deltaM: [0.25, 0, 0],
+          referenceSpace: "world",
+        },
+        {
+          op: "entity.flags.set",
+          entityId: "actor_generic_1",
+          visible: false,
+          locked: true,
+        },
+        {
+          op: "scene.output.set",
+          value: {
+            aspect: { width: 16, height: 9 },
+            resolutionPx: { width: 1280, height: 720 },
+          },
+        },
+      ] as const;
+      const legacySubmission = {
+        intentReport: {
+          schemaVersion,
+          operation: "modify",
+          allowPartial: false,
+          recognizedConstraints: [
+            {
+              id: "intent_legacy_position_1",
+              kind: "position",
+              required: true,
+              targets: ["actor_generic_1"],
+              evidence: [{ type: "patch-operation", operationIndex: 0 }],
+            },
+            {
+              id: "intent_legacy_visibility_1",
+              kind: "visibility",
+              required: false,
+              targets: ["actor_generic_1"],
+              evidence: [
+                {
+                  type: "entity-property",
+                  entityId: "actor_generic_1",
+                  path: "entity.locked",
+                },
+                { type: "patch-operation", operationIndex: 1 },
+              ],
+            },
+            {
+              id: "intent_legacy_output_1",
+              kind: "output",
+              required: true,
+              targets: [],
+              evidence: [{ type: "patch-operation", operationIndex: 2 }],
+            },
+          ],
+          unsupportedConstraints: [],
+          unresolvedRelations: [],
+          warnings: [],
+          canApplySafely: true,
+        },
+        patch: {
+          schemaVersion,
+          patchId: `patch_legacy_submission_v${schemaVersion}`,
+          sceneId: scene.sceneId,
+          baseRevision: scene.revision,
+          source: "natural-language",
+          operations: legacyOperations,
+        },
+      } as const;
+
+      const migrated = normalizePatchSubmissionInput(legacySubmission);
+      const operationIndexes = migrated.intentReport.recognizedConstraints
+        .flatMap(({ evidence }) => evidence)
+        .filter(
+          (
+            evidence,
+          ): evidence is Extract<
+            (typeof evidence),
+            { type: "patch-operation" }
+          > => evidence.type === "patch-operation",
+        )
+        .map(({ operationIndex }) => operationIndex);
+
+      expect(migrated.intentReport.schemaVersion).toBe(
+        INTENT_REPORT_SCHEMA_VERSION,
+      );
+      expect(
+        migrated.intentReport.recognizedConstraints[1]!.evidence[0],
+      ).toEqual({
+        type: "entity-property",
+        entityId: "actor_generic_1",
+        path: "entity.lockMode",
+      });
+      expect(operationIndexes).toEqual([0, 1, 2]);
+      for (const operationIndex of operationIndexes) {
+        expect(migrated.patch.operations[operationIndex]!.op).toBe(
+          legacyOperations[operationIndex]!.op,
+        );
+      }
+      expect(migrated.patch.operations[1]).toEqual({
+        op: "entity.flags.set",
+        entityId: "actor_generic_1",
+        visible: false,
+        lockMode: "workflow",
+      });
+    },
+  );
 });
 
 describe("deterministic intent coverage", () => {
+  it("uses entity.flags.set visible only as visibility evidence", () => {
+    const scene = createStructuredScene();
+    const patch = {
+      ...createStructuredPatch(scene),
+      operations: [
+        {
+          op: "entity.flags.set" as const,
+          entityId: "actor_generic_1",
+          visible: false,
+        },
+      ],
+    };
+    const visibilityReport = createPatchIntentReport({
+      recognizedConstraints: [
+        {
+          id: "intent_visibility_flag_1",
+          kind: "visibility",
+          required: true,
+          targets: ["actor_generic_1"],
+          evidence: [{ type: "patch-operation", operationIndex: 0 }],
+        },
+      ],
+    });
+    const lockReport = createPatchIntentReport({
+      recognizedConstraints: [
+        {
+          id: "intent_lock_flag_missing_1",
+          kind: "lock-protection",
+          required: true,
+          targets: ["actor_generic_1"],
+          evidence: [{ type: "patch-operation", operationIndex: 0 }],
+        },
+      ],
+    });
+
+    expect(() =>
+      validateIntentCoverage(visibilityReport, {
+        before: scene,
+        after: structuredClone(scene),
+        patch,
+      }),
+    ).not.toThrow();
+    expectSubmissionCode(
+      () =>
+        validateIntentCoverage(lockReport, {
+          before: scene,
+          after: structuredClone(scene),
+          patch,
+        }),
+      "INTENT_COVERAGE_INCOMPLETE",
+    );
+  });
+
+  it("uses entity.flags.set lockMode only as lock-protection evidence", () => {
+    const scene = createStructuredScene();
+    const patch = {
+      ...createStructuredPatch(scene),
+      operations: [
+        {
+          op: "entity.flags.set" as const,
+          entityId: "actor_generic_1",
+          lockMode: "workflow" as const,
+        },
+      ],
+    };
+    const lockReport = createPatchIntentReport({
+      recognizedConstraints: [
+        {
+          id: "intent_lock_flag_1",
+          kind: "lock-protection",
+          required: true,
+          targets: ["actor_generic_1"],
+          evidence: [{ type: "patch-operation", operationIndex: 0 }],
+        },
+      ],
+    });
+    const visibilityReport = createPatchIntentReport({
+      recognizedConstraints: [
+        {
+          id: "intent_visibility_flag_missing_1",
+          kind: "visibility",
+          required: true,
+          targets: ["actor_generic_1"],
+          evidence: [{ type: "patch-operation", operationIndex: 0 }],
+        },
+      ],
+    });
+
+    expect(() =>
+      validateIntentCoverage(lockReport, {
+        before: scene,
+        after: structuredClone(scene),
+        patch,
+      }),
+    ).not.toThrow();
+    expectSubmissionCode(
+      () =>
+        validateIntentCoverage(visibilityReport, {
+          before: scene,
+          after: structuredClone(scene),
+          patch,
+        }),
+      "INTENT_COVERAGE_INCOMPLETE",
+    );
+  });
+
   it("requires evidence for every required recognized constraint", () => {
     const submission = createSceneSubmission();
     submission.intentReport = createIntentReport({

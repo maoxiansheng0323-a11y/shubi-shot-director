@@ -5,13 +5,20 @@ import {
 } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  access,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -26,7 +33,10 @@ import {
   sceneSpecSchema,
   type SceneSpec,
 } from "../src/domain/scene-schema";
+import { applyScenePatch } from "../src/domain/apply-scene-patch";
+import { createDefaultScene } from "../src/domain/default-scene";
 import { renderSceneToPng } from "../server/software-png";
+import { getRuntimeCapabilityManifest } from "../cli/runtime-capabilities";
 import {
   createPatchSubmission,
   createSceneSubmission,
@@ -84,6 +94,7 @@ const expectedFeatureIds = [
   "export.software-png",
   "composition.segmented-report",
   "bridge.safe-shutdown",
+  "actor.limb-presence",
 ] as const;
 const temporaryDirectories: string[] = [];
 
@@ -454,6 +465,133 @@ const getUnusedLoopbackPort = async (): Promise<number> => {
   }
 };
 
+const fileExists = async (filePath: string): Promise<boolean> =>
+  access(filePath).then(
+    () => true,
+    () => false,
+  );
+
+const readRequestJson = async (
+  request: IncomingMessage,
+): Promise<unknown> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+};
+
+const sendJson = (
+  response: ServerResponse,
+  status: number,
+  body: unknown,
+): void => {
+  response.statusCode = status;
+  response.setHeader("Content-Type", "application/json");
+  response.end(JSON.stringify(body));
+};
+
+interface ControlledSaveBridge {
+  server: Server;
+  bridgeUrl: string;
+  observations: {
+    patch: unknown | null;
+    fileExistedBeforePatchResponse: boolean | null;
+    currentScene: () => SceneSpec;
+  };
+}
+
+const startControlledSaveBridge = async (
+  initialScene: SceneSpec,
+  savePath: string,
+  responseMode: "accepted" | "invalid" | "mismatched",
+  onPatchApplied?: (scene: SceneSpec) => Promise<void>,
+): Promise<ControlledSaveBridge> => {
+  let scene = structuredClone(initialScene);
+  let bridgeUrl = "";
+  const observations: ControlledSaveBridge["observations"] = {
+    patch: null,
+    fileExistedBeforePatchResponse: null,
+    currentScene: () => structuredClone(scene),
+  };
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method === "GET" && request.url === "/api/v1/health") {
+        sendJson(response, 200, {
+          ok: true,
+          data: {
+            ...getRuntimeCapabilityManifest(),
+            status: "ready",
+            sceneId: scene.sceneId,
+            revision: scene.revision,
+            uiUrl: bridgeUrl,
+            instanceId: "instance_00000000000000000000000000000000",
+          },
+        });
+        return;
+      }
+      if (request.method === "GET" && request.url === "/api/v1/scene") {
+        sendJson(response, 200, {
+          ok: true,
+          data: {
+            scene,
+            history: { canUndo: false, canRedo: false },
+          },
+        });
+        return;
+      }
+      if (request.method === "POST" && request.url === "/api/v1/patches") {
+        observations.patch = await readRequestJson(request);
+        scene = applyScenePatch(scene, observations.patch).next;
+        observations.fileExistedBeforePatchResponse =
+          await fileExists(savePath);
+        await onPatchApplied?.(structuredClone(scene));
+        const responseScene =
+          responseMode === "mismatched"
+            ? {
+                ...structuredClone(scene),
+                title: "Mismatched checkpoint response",
+              }
+            : scene;
+        sendJson(
+          response,
+          200,
+          responseMode !== "invalid"
+            ? {
+                ok: true,
+                data: {
+                  scene: responseScene,
+                  history: { canUndo: true, canRedo: false },
+                },
+              }
+            : {
+                ok: true,
+                data: {
+                  scene: { invalid: true },
+                },
+              },
+        );
+        return;
+      }
+      sendJson(response, 404, {
+        ok: false,
+        error: { code: "NOT_FOUND", message: "Not found." },
+      });
+    } catch {
+      sendJson(response, 500, {
+        ok: false,
+        error: {
+          code: "CONTROLLED_BRIDGE_FAILED",
+          message: "Controlled bridge failed.",
+        },
+      });
+    }
+  });
+  const port = await listenOnLoopback(server);
+  bridgeUrl = `http://127.0.0.1:${port}`;
+  return { server, bridgeUrl, observations };
+};
+
 const startGuardedBridge = async (
   port: number,
   runtimeDirectory: string,
@@ -528,11 +666,11 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
   expect(data).toEqual(expect.objectContaining({
     service: "shubi-shot-director",
     capabilitiesContractVersion: 2,
-    applicationVersion: "0.2.1",
+    applicationVersion: "0.4.0",
     bridgeProtocolVersion: 1,
-    sceneSchemaVersion: 1,
-    patchSchemaVersion: 1,
-    intentReportSchemaVersion: 1,
+    sceneSchemaVersion: 4,
+    patchSchemaVersion: 4,
+    intentReportSchemaVersion: 4,
     semanticAuthority: "host",
     inputContract: "structured-only",
     modelIntegration: "none",
@@ -540,6 +678,29 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
     networkPolicy: "loopback-only",
     commands: expectedCommandIds,
     features: expectedFeatureIds,
+    entityLockModes: ["none", "workflow", "user"],
+    patchPolicyFields: ["preserveLock"],
+    lockErrorCodes: [
+      "USER_LOCKED",
+      "WORKFLOW_LOCKED",
+      "LOCK_PRESERVATION_CONFLICT",
+    ],
+    actorLimbPartIds: [
+      "upper_arm_l",
+      "forearm_l",
+      "hand_l",
+      "upper_arm_r",
+      "forearm_r",
+      "hand_r",
+      "upper_leg_l",
+      "lower_leg_l",
+      "foot_l",
+      "upper_leg_r",
+      "lower_leg_r",
+      "foot_r",
+    ],
+    actorLimbPresenceModes: ["present", "absent"],
+    actorLimbErrorCodes: ["LIMB_HIERARCHY_CONFLICT"],
   }));
   expect(data).not.toHaveProperty("requiresApiKey");
 };
@@ -760,6 +921,310 @@ describe.sequential("offline structured Director real-process workflow", () => {
       await closeServer(ipv6Server);
     }
   }, 20_000);
+
+  it("receives an accepted save checkpoint before writing the scene file", async () => {
+    const directory = await createTemporaryDirectory(
+      "shubi-shot-controlled-save-",
+    );
+    const runtimeDirectory = path.join(directory, "runtime");
+    await mkdir(runtimeDirectory);
+    const savedScenePath = path.join(directory, "saved-scene.json");
+    const scene = createDefaultScene();
+    scene.revision = 9;
+    scene.entities[1]!.lockMode = "workflow";
+    scene.entities[2]!.lockMode = "user";
+    const controlled = await startControlledSaveBridge(
+      scene,
+      savedScenePath,
+      "accepted",
+    );
+    try {
+      const result = await runNode(
+        [
+          "--import",
+          socketGuardUrl,
+          "--import",
+          tsxLoaderUrl,
+          directorCliPath,
+          "scene",
+          "save",
+          "--file",
+          savedScenePath,
+        ],
+        createMinimalEnvironment({
+          SHUBI_SHOT_URL: controlled.bridgeUrl,
+          SHUBI_SHOT_RUNTIME_DIR: runtimeDirectory,
+        }),
+      );
+      expect(result.exitCode, result.stdout).toBe(0);
+      const saved = parseSuccessfulJsonLine<{
+        sceneId: string;
+        revision: number;
+      }>(result);
+
+      expect(controlled.observations.fileExistedBeforePatchResponse).toBe(
+        false,
+      );
+      expect(controlled.observations.patch).toMatchObject({
+        patchId: "system_save_9",
+        sceneId: scene.sceneId,
+        baseRevision: 9,
+        source: "system",
+        preserveLock: false,
+        operations: [
+          {
+            op: "entity.flags.set",
+            entityId: scene.entities[0]!.id,
+            lockMode: "workflow",
+          },
+          {
+            op: "entity.flags.set",
+            entityId: scene.entities[3]!.id,
+            lockMode: "workflow",
+          },
+        ],
+      });
+      const written = sceneSpecSchema.parse(
+        JSON.parse(await readFile(savedScenePath, "utf8")) as unknown,
+      );
+      expect(written.revision).toBe(10);
+      expect(saved.data.revision).toBe(10);
+      expect(
+        written.entities.every((entity) => entity.lockMode !== "none"),
+      ).toBe(true);
+    } finally {
+      await closeServer(controlled.server);
+    }
+  });
+
+  it("does not create a scene file when the save checkpoint response is invalid", async () => {
+    const directory = await createTemporaryDirectory(
+      "shubi-shot-invalid-save-",
+    );
+    const runtimeDirectory = path.join(directory, "runtime");
+    await mkdir(runtimeDirectory);
+    const savedScenePath = path.join(directory, "must-not-exist.json");
+    const controlled = await startControlledSaveBridge(
+      createDefaultScene(),
+      savedScenePath,
+      "invalid",
+    );
+    try {
+      const result = await runNode(
+        [
+          "--import",
+          socketGuardUrl,
+          "--import",
+          tsxLoaderUrl,
+          directorCliPath,
+          "scene",
+          "save",
+          "--file",
+          savedScenePath,
+        ],
+        createMinimalEnvironment({
+          SHUBI_SHOT_URL: controlled.bridgeUrl,
+          SHUBI_SHOT_RUNTIME_DIR: runtimeDirectory,
+        }),
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(controlled.observations.patch).not.toBeNull();
+      expect(await fileExists(savedScenePath)).toBe(false);
+    } finally {
+      await closeServer(controlled.server);
+    }
+  });
+
+  it("preflights an existing target before submitting any checkpoint", async () => {
+    const directory = await createTemporaryDirectory(
+      "shubi-shot-save-preflight-",
+    );
+    const runtimeDirectory = path.join(directory, "runtime");
+    await mkdir(runtimeDirectory);
+    const savedScenePath = path.join(directory, "existing-scene.json");
+    const sentinel = "existing scene must remain unchanged";
+    await writeFile(savedScenePath, sentinel, "utf8");
+    const initial = createDefaultScene();
+    const controlled = await startControlledSaveBridge(
+      initial,
+      savedScenePath,
+      "accepted",
+    );
+    try {
+      const result = await runNode(
+        [
+          "--import",
+          socketGuardUrl,
+          "--import",
+          tsxLoaderUrl,
+          directorCliPath,
+          "scene",
+          "save",
+          "--file",
+          savedScenePath,
+        ],
+        createMinimalEnvironment({
+          SHUBI_SHOT_URL: controlled.bridgeUrl,
+          SHUBI_SHOT_RUNTIME_DIR: runtimeDirectory,
+        }),
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(controlled.observations.patch).toBeNull();
+      expect(controlled.observations.currentScene()).toEqual(initial);
+      expect(await readFile(savedScenePath, "utf8")).toBe(sentinel);
+    } finally {
+      await closeServer(controlled.server);
+    }
+  });
+
+  it("does not overwrite a scene file when the save checkpoint response is invalid", async () => {
+    const directory = await createTemporaryDirectory(
+      "shubi-shot-invalid-save-overwrite-",
+    );
+    const runtimeDirectory = path.join(directory, "runtime");
+    await mkdir(runtimeDirectory);
+    const savedScenePath = path.join(directory, "existing-scene.json");
+    const sentinel = "existing scene must remain unchanged";
+    await writeFile(savedScenePath, sentinel, "utf8");
+    const controlled = await startControlledSaveBridge(
+      createDefaultScene(),
+      savedScenePath,
+      "invalid",
+    );
+    try {
+      const result = await runNode(
+        [
+          "--import",
+          socketGuardUrl,
+          "--import",
+          tsxLoaderUrl,
+          directorCliPath,
+          "scene",
+          "save",
+          "--file",
+          savedScenePath,
+          "--force",
+        ],
+        createMinimalEnvironment({
+          SHUBI_SHOT_URL: controlled.bridgeUrl,
+          SHUBI_SHOT_RUNTIME_DIR: runtimeDirectory,
+        }),
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(controlled.observations.patch).not.toBeNull();
+      expect(await readFile(savedScenePath, "utf8")).toBe(sentinel);
+    } finally {
+      await closeServer(controlled.server);
+    }
+  });
+
+  it("does not overwrite a scene file for a schema-valid but uncorrelated checkpoint response", async () => {
+    const directory = await createTemporaryDirectory(
+      "shubi-shot-mismatched-save-overwrite-",
+    );
+    const runtimeDirectory = path.join(directory, "runtime");
+    await mkdir(runtimeDirectory);
+    const savedScenePath = path.join(directory, "existing-scene.json");
+    const sentinel = "existing scene must remain unchanged";
+    await writeFile(savedScenePath, sentinel, "utf8");
+    const controlled = await startControlledSaveBridge(
+      createDefaultScene(),
+      savedScenePath,
+      "mismatched",
+    );
+    try {
+      const result = await runNode(
+        [
+          "--import",
+          socketGuardUrl,
+          "--import",
+          tsxLoaderUrl,
+          directorCliPath,
+          "scene",
+          "save",
+          "--file",
+          savedScenePath,
+          "--force",
+        ],
+        createMinimalEnvironment({
+          SHUBI_SHOT_URL: controlled.bridgeUrl,
+          SHUBI_SHOT_RUNTIME_DIR: runtimeDirectory,
+        }),
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(
+        JSON.parse(result.stdout.trim()) as unknown,
+      ).toMatchObject({
+        ok: false,
+        error: {
+          code: "WORKFLOW_LOCK_CHECKPOINT_INVALID",
+        },
+      });
+      expect(await readFile(savedScenePath, "utf8")).toBe(sentinel);
+    } finally {
+      await closeServer(controlled.server);
+    }
+  });
+
+  it("reports a late write failure while retaining the accepted remote checkpoint", async () => {
+    const directory = await createTemporaryDirectory(
+      "shubi-shot-late-save-write-",
+    );
+    const runtimeDirectory = path.join(directory, "runtime");
+    await mkdir(runtimeDirectory);
+    const outputDirectory = path.join(directory, "output");
+    await mkdir(outputDirectory);
+    const savedScenePath = path.join(outputDirectory, "scene.json");
+    const controlled = await startControlledSaveBridge(
+      createDefaultScene(),
+      savedScenePath,
+      "accepted",
+      async () => {
+        await rm(outputDirectory, { recursive: true, force: true });
+      },
+    );
+    try {
+      const result = await runNode(
+        [
+          "--import",
+          socketGuardUrl,
+          "--import",
+          tsxLoaderUrl,
+          directorCliPath,
+          "scene",
+          "save",
+          "--file",
+          savedScenePath,
+        ],
+        createMinimalEnvironment({
+          SHUBI_SHOT_URL: controlled.bridgeUrl,
+          SHUBI_SHOT_RUNTIME_DIR: runtimeDirectory,
+        }),
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(
+        JSON.parse(result.stdout.trim()) as unknown,
+      ).toMatchObject({
+        ok: false,
+        error: { code: "SCENE_FILE_WRITE_FAILED" },
+      });
+      const remote = controlled.observations.currentScene();
+      expect(remote.revision).toBe(1);
+      expect(
+        remote.entities.every(
+          (entity) => entity.lockMode !== "none",
+        ),
+      ).toBe(true);
+      expect(await fileExists(savedScenePath)).toBe(false);
+    } finally {
+      await closeServer(controlled.server);
+    }
+  });
 
   it("completes a credential-free structured workflow with no outbound access", async () => {
     expect(path.isAbsolute(process.execPath)).toBe(true);
@@ -982,7 +1447,14 @@ describe.sequential("offline structured Director real-process workflow", () => {
       sceneId: savedScene.sceneId,
       revision: savedScene.revision,
     });
-    expect(savedScene).toEqual(redoSnapshot.data.scene);
+    expect(savedScene.revision).toBe(
+      redoSnapshot.data.scene.revision + 1,
+    );
+    expect(
+      savedScene.entities.every(
+        (entity) => entity.lockMode !== "none",
+      ),
+    ).toBe(true);
 
     const loaded = await runDirectCli<{
       sceneId: string;

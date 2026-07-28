@@ -7,8 +7,19 @@ import type {
   SceneSpec,
   TransformSpec,
 } from "../domain/scene-schema";
+import type { ActorLimbPresenceUpdates } from "../domain/actor-anatomy";
+import type { EntityLockMode } from "../domain/entity-lock";
+import { PATCH_SCHEMA_VERSION } from "../domain/schema-versions";
 
 let patchSequence = 0;
+
+export interface ManualPatchOptions {
+  preserveLock?: boolean;
+}
+
+export const nextManualLockMode = (
+  current: EntityLockMode,
+): EntityLockMode => (current === "none" ? "user" : "none");
 
 const nextPatchId = (scope: string): string => {
   patchSequence = (patchSequence + 1) % 1_679_616;
@@ -36,12 +47,14 @@ export const createOperationsPatch = (
   scope: string,
   operations: SceneOperation[],
   source: ScenePatch["source"] = "manual",
+  preserveLock = false,
 ): ScenePatch => ({
-  schemaVersion: 1,
+  schemaVersion: PATCH_SCHEMA_VERSION,
   patchId: nextPatchId(scope),
   sceneId: scene.sceneId,
   baseRevision: scene.revision,
   source,
+  preserveLock,
   operations,
 });
 
@@ -49,42 +62,67 @@ export const createTransformPatch = (
   scene: SceneSpec,
   entityId: string,
   transform: TransformSpec,
+  options: ManualPatchOptions = {},
 ): ScenePatch =>
-  createOperationsPatch(scene, "transform", [
-    {
-      op: "entity.transform.set",
-      entityId,
-      value: transform,
-    },
-  ]);
+  createOperationsPatch(
+    scene,
+    "transform",
+    [
+      {
+        op: "entity.transform.set",
+        entityId,
+        value: transform,
+      },
+    ],
+    "manual",
+    options.preserveLock ?? false,
+  );
 
 export const createCameraLensPatch = (
   scene: SceneSpec,
   camera: CameraEntity,
   focalLengthMm: number,
+  options: ManualPatchOptions = {},
 ): ScenePatch =>
-  createOperationsPatch(scene, "lens", [
-    {
-      op: "camera.lens.set",
-      entityId: camera.id,
-      value: {
-        ...camera.lens,
-        focalLengthMm,
+  createOperationsPatch(
+    scene,
+    "lens",
+    [
+      {
+        op: "camera.lens.set",
+        entityId: camera.id,
+        value: {
+          ...camera.lens,
+          focalLengthMm,
+        },
       },
-    },
-  ]);
+    ],
+    "manual",
+    options.preserveLock ?? false,
+  );
 
-export const createLockedPatch = (
+export const createLockModePatch = (
   scene: SceneSpec,
   entityId: string,
-  visible: boolean,
-  locked: boolean,
+  lockMode: EntityLockMode,
 ): ScenePatch =>
   createOperationsPatch(scene, "flags", [
     {
       op: "entity.flags.set",
       entityId,
-      visible,
-      locked,
+      lockMode,
+    },
+  ]);
+
+export const createActorLimbPresencePatch = (
+  scene: SceneSpec,
+  actorId: string,
+  updates: ActorLimbPresenceUpdates,
+): ScenePatch =>
+  createOperationsPatch(scene, "limb_presence", [
+    {
+      op: "actor.limb-presence.set",
+      actorId,
+      updates,
     },
   ]);

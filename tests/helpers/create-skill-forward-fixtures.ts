@@ -51,7 +51,32 @@ const featureIds = [
   "export.software-png",
   "composition.segmented-report",
   "bridge.safe-shutdown",
+  "actor.limb-presence",
 ];
+
+const entityLockModes = ["none", "workflow", "user"] as const;
+const patchPolicyFields = ["preserveLock"] as const;
+const lockErrorCodes = [
+  "USER_LOCKED",
+  "WORKFLOW_LOCKED",
+  "LOCK_PRESERVATION_CONFLICT",
+] as const;
+const actorLimbPartIds = [
+  "upper_arm_l",
+  "forearm_l",
+  "hand_l",
+  "upper_arm_r",
+  "forearm_r",
+  "hand_r",
+  "upper_leg_l",
+  "lower_leg_l",
+  "foot_l",
+  "upper_leg_r",
+  "lower_leg_r",
+  "foot_r",
+] as const;
+const actorLimbPresenceModes = ["present", "absent"] as const;
+const actorLimbErrorCodes = ["LIMB_HIERARCHY_CONFLICT"] as const;
 
 const modernManifest = (
   overrides: Record<string, unknown> = {},
@@ -60,9 +85,9 @@ const modernManifest = (
   capabilitiesContractVersion: 2,
   applicationVersion: "1.0.0",
   bridgeProtocolVersion: 1,
-  sceneSchemaVersion: 1,
-  patchSchemaVersion: 1,
-  intentReportSchemaVersion: 1,
+  sceneSchemaVersion: 4,
+  patchSchemaVersion: 4,
+  intentReportSchemaVersion: 4,
   semanticAuthority: "host",
   inputContract: "structured-only",
   modelIntegration: "none",
@@ -70,6 +95,12 @@ const modernManifest = (
   networkPolicy: "loopback-only",
   commands: [...commandIds],
   features: [...featureIds],
+  entityLockModes: [...entityLockModes],
+  patchPolicyFields: [...patchPolicyFields],
+  lockErrorCodes: [...lockErrorCodes],
+  actorLimbPartIds: [...actorLimbPartIds],
+  actorLimbPresenceModes: [...actorLimbPresenceModes],
+  actorLimbErrorCodes: [...actorLimbErrorCodes],
   ...overrides,
 });
 
@@ -103,9 +134,9 @@ const optionsForCase = (
       return {
         doctorData: modernManifest({
           applicationVersion: "999.0.0",
-          sceneSchemaVersion: 2,
-          patchSchemaVersion: 2,
-          intentReportSchemaVersion: 2,
+          sceneSchemaVersion: 5,
+          patchSchemaVersion: 5,
+          intentReportSchemaVersion: 5,
         }),
       };
     case "requires-key":

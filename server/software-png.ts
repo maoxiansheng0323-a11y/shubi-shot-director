@@ -5,7 +5,6 @@ import {
   Vector3,
 } from "three";
 import {
-  sceneSpecSchema,
   type ActorEntity,
   type CameraEntity,
   type QuaternionTuple,
@@ -14,6 +13,8 @@ import {
   type TransformSpec,
   type Vec3,
 } from "../src/domain/scene-schema";
+import { parseSceneSpecInput } from "../src/domain/scene-migrations";
+import { deriveBoundaryWallBoxes } from "../src/domain/spatial-layout";
 
 export class SoftwarePngError extends Error {
   readonly code: string;
@@ -587,7 +588,7 @@ export const renderSceneToPng = (
       "The requested export resolution is unsupported.",
     );
   }
-  const scene = sceneSpecSchema.parse(input);
+  const scene = parseSceneSpecInput(input);
   const camera = scene.entities.find(
     (entity): entity is CameraEntity =>
       entity.kind === "camera" &&
@@ -661,6 +662,54 @@ export const renderSceneToPng = (
       color,
     });
   };
+
+  if (scene.spatialLayout !== null) {
+    const layout = scene.spatialLayout;
+    for (const region of layout.regions) {
+      if (!region.visible) {
+        continue;
+      }
+      for (let index = 0; index < region.footprintXZ.length; index += 1) {
+        const [startX, startZ] = region.footprintXZ[index];
+        const [endX, endZ] =
+          region.footprintXZ[(index + 1) % region.footprintXZ.length];
+        addStroke(
+          new Vector3(startX, layout.floorY + 0.006, startZ),
+          new Vector3(endX, layout.floorY + 0.006, endZ),
+          hexColor("#7896a8", 150),
+          1.25,
+        );
+      }
+    }
+    for (const boundary of layout.boundaries) {
+      if (
+        !boundary.visible ||
+        !boundary.regionIds.some(
+          (regionId) =>
+            layout.regions.find((region) => region.id === regionId)
+              ?.visible === true,
+        )
+      ) {
+        continue;
+      }
+      for (const wall of deriveBoundaryWallBoxes(layout, boundary)) {
+        const wallMatrix = new Matrix4()
+          .makeRotationY(wall.rotationY)
+          .setPosition(new Vector3(...wall.position));
+        const corners = boxCorners(wall.size).map((corner) =>
+          corner.applyMatrix4(wallMatrix),
+        );
+        for (const [start, end] of boxEdges) {
+          addStroke(
+            corners[start],
+            corners[end],
+            hexColor("#8b949f", 175),
+            1.35,
+          );
+        }
+      }
+    }
+  }
 
   for (const entity of scene.entities) {
     if (!entity.visible || entity.kind === "camera") {

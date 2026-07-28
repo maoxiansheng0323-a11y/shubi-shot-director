@@ -4,7 +4,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 1
+      "const": 4
     },
     "sceneId": {
       "type": "string",
@@ -189,6 +189,330 @@
       },
       "additionalProperties": false
     },
+    "spatialLayout": {
+      "default": null,
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "floorY": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            },
+            "regions": {
+              "minItems": 1,
+              "maxItems": 64,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "footprintXZ": {
+                    "minItems": 3,
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "heightM": {
+                    "type": "number",
+                    "minimum": 0.2,
+                    "maximum": 100
+                  },
+                  "visible": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "footprintXZ",
+                  "heightM",
+                  "visible"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "boundaries": {
+              "maxItems": 256,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "regionIds": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "startXZ": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "endXZ": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "heightM": {
+                    "type": "number",
+                    "minimum": 0.2,
+                    "maximum": 100
+                  },
+                  "thicknessM": {
+                    "type": "number",
+                    "minimum": 0.01,
+                    "maximum": 10
+                  },
+                  "visible": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "regionIds",
+                  "startXZ",
+                  "endXZ",
+                  "heightM",
+                  "thicknessM",
+                  "visible"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "openings": {
+              "maxItems": 256,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "boundaryId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "offsetM": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "widthM": {
+                    "type": "number",
+                    "minimum": 0.01,
+                    "maximum": 100
+                  },
+                  "bottomM": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "heightM": {
+                    "type": "number",
+                    "minimum": 0.01,
+                    "maximum": 100
+                  },
+                  "visible": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "boundaryId",
+                  "offsetM",
+                  "widthM",
+                  "bottomM",
+                  "heightM",
+                  "visible"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "connections": {
+              "maxItems": 256,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "regionIds": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      }
+                    ]
+                  },
+                  "openingId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "allowsPassage": {
+                    "type": "boolean"
+                  },
+                  "allowsSight": {
+                    "type": "boolean"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "regionIds",
+                  "openingId",
+                  "allowsPassage",
+                  "allowsSight",
+                  "enabled"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "memberships": {
+              "maxItems": 256,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "entityId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "regionId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  }
+                },
+                "required": [
+                  "entityId",
+                  "regionId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "floorY",
+            "regions",
+            "boundaries",
+            "openings",
+            "connections",
+            "memberships"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "entities": {
       "minItems": 2,
       "maxItems": 256,
@@ -281,8 +605,13 @@
               "visible": {
                 "type": "boolean"
               },
-              "locked": {
-                "type": "boolean"
+              "lockMode": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "workflow",
+                  "user"
+                ]
               },
               "kind": {
                 "type": "string",
@@ -336,7 +665,7 @@
               "parentId",
               "transform",
               "visible",
-              "locked",
+              "lockMode",
               "kind",
               "preset",
               "color"
@@ -429,8 +758,13 @@
               "visible": {
                 "type": "boolean"
               },
-              "locked": {
-                "type": "boolean"
+              "lockMode": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "workflow",
+                  "user"
+                ]
               },
               "kind": {
                 "type": "string",
@@ -517,7 +851,7 @@
               "parentId",
               "transform",
               "visible",
-              "locked",
+              "lockMode",
               "kind",
               "preset",
               "geometry",
@@ -611,8 +945,13 @@
               "visible": {
                 "type": "boolean"
               },
-              "locked": {
-                "type": "boolean"
+              "lockMode": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "workflow",
+                  "user"
+                ]
               },
               "kind": {
                 "type": "string",
@@ -681,12 +1020,117 @@
                       "average",
                       "broad"
                     ]
+                  },
+                  "limbPresence": {
+                    "type": "object",
+                    "properties": {
+                      "upper_arm_l": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "forearm_l": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "hand_l": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "upper_arm_r": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "forearm_r": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "hand_r": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "upper_leg_l": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "lower_leg_l": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "foot_l": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "upper_leg_r": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "lower_leg_r": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "foot_r": {
+                        "type": "string",
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "upper_arm_l",
+                      "forearm_l",
+                      "hand_l",
+                      "upper_arm_r",
+                      "forearm_r",
+                      "hand_r",
+                      "upper_leg_l",
+                      "lower_leg_l",
+                      "foot_l",
+                      "upper_leg_r",
+                      "lower_leg_r",
+                      "foot_r"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
                   "heightM",
                   "shoulderWidthM",
-                  "build"
+                  "build",
+                  "limbPresence"
                 ],
                 "additionalProperties": false
               },
@@ -774,7 +1218,7 @@
               "parentId",
               "transform",
               "visible",
-              "locked",
+              "lockMode",
               "kind",
               "slot",
               "rig",
@@ -870,8 +1314,13 @@
               "visible": {
                 "type": "boolean"
               },
-              "locked": {
-                "type": "boolean"
+              "lockMode": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "workflow",
+                  "user"
+                ]
               },
               "kind": {
                 "type": "string",
@@ -921,7 +1370,7 @@
               "parentId",
               "transform",
               "visible",
-              "locked",
+              "lockMode",
               "kind",
               "lens"
             ],
@@ -1041,6 +1490,7 @@
     "coordinateSystem",
     "activeCameraId",
     "output",
+    "spatialLayout",
     "entities",
     "constraints"
   ],

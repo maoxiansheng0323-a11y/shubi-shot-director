@@ -277,6 +277,33 @@ const targetExists = async (targetFile: string): Promise<boolean> => {
   }
 };
 
+export const preflightOutputFile = async (
+  filePath: string,
+  options: {
+    overwrite?: boolean;
+    existsCode: string;
+    writeFailedCode: string;
+  },
+): Promise<void> => {
+  try {
+    const exists = await targetExists(path.resolve(filePath));
+    if (exists && options.overwrite !== true) {
+      throw new CliCommandError(
+        options.existsCode,
+        "The output file already exists; pass --force to replace it.",
+      );
+    }
+  } catch (error) {
+    if (error instanceof CliCommandError) {
+      throw error;
+    }
+    throw new CliCommandError(
+      options.writeFailedCode,
+      "The output path could not be checked safely.",
+    );
+  }
+};
+
 export const writeFileAtomically = async (
   filePath: string,
   data: string | Uint8Array,

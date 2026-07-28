@@ -140,7 +140,7 @@ describe("public release audit", () => {
     const { auditPackageMetadata } = await loadAudit();
     const valid = {
       name: "shubi-shot-director",
-      version: "0.2.1",
+      version: "0.4.0",
       private: true,
       license: "MIT",
       engines: { node: ">=22.12" },

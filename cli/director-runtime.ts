@@ -5,15 +5,23 @@ import { fileURLToPath } from "node:url";
 import { z, ZodError } from "zod";
 import { createBrowserChildEnvironment } from "../scripts/process-boundary.mjs";
 import { analyzeComposition } from "../src/domain/composition-safety";
-import { scenePatchSchema } from "../src/domain/scene-patch";
+import {
+  parseScenePatchInput,
+  parseSceneSpecInput,
+} from "../src/domain/scene-migrations";
 import {
   sceneSpecSchema,
   type SceneSpec,
 } from "../src/domain/scene-schema";
 import {
+  createWorkflowLockCheckpointPatch,
+  validateWorkflowLockCheckpointAcceptance,
+  WorkflowLockCheckpointError,
+} from "../src/domain/workflow-lock-patch";
+import {
   intentSummarySchema,
-  patchSubmissionSchema,
-  sceneSubmissionSchema,
+  normalizePatchSubmissionInput,
+  normalizeSceneSubmissionInput,
   type PatchSubmission,
   type SceneSubmission,
 } from "../src/domain/scene-submission";
@@ -37,6 +45,7 @@ import {
   parseCompositionInspectOptions,
   parseExportCommandOptions,
   parseFileCommandOptions,
+  preflightOutputFile,
   readBoundedJsonFile,
   writeFileAtomically,
 } from "./command-io";
@@ -94,59 +103,53 @@ const readSceneFromEnvelope = (envelope: JsonEnvelope): SceneSpec => {
 const readValidatedSceneFile = async (
   filePath: string,
 ): Promise<SceneSpec> => {
-  const result = sceneSpecSchema.safeParse(
-    await readBoundedJsonFile(filePath),
-  );
-  if (!result.success) {
+  try {
+    return parseSceneSpecInput(await readBoundedJsonFile(filePath));
+  } catch {
     throw new CliCommandError(
       "SCENE_FILE_INVALID",
       "The supplied file is not a valid SceneSpec.",
     );
   }
-  return result.data;
 };
 
 const readValidatedPatchFile = async (filePath: string) => {
-  const result = scenePatchSchema.safeParse(
-    await readBoundedJsonFile(filePath),
-  );
-  if (!result.success) {
+  try {
+    return parseScenePatchInput(await readBoundedJsonFile(filePath));
+  } catch {
     throw new CliCommandError(
       "PATCH_FILE_INVALID",
       "The supplied file is not a valid ScenePatch.",
     );
   }
-  return result.data;
 };
 
 const readValidatedSceneSubmissionFile = async (
   filePath: string,
 ): Promise<SceneSubmission> => {
-  const result = sceneSubmissionSchema.safeParse(
-    await readBoundedJsonFile(filePath),
-  );
-  if (!result.success) {
+  const input = await readBoundedJsonFile(filePath);
+  try {
+    return normalizeSceneSubmissionInput(input);
+  } catch {
     throw new CliCommandError(
       "SCENE_SUBMISSION_FILE_INVALID",
       "The supplied file is not a valid scene submission.",
     );
   }
-  return result.data;
 };
 
 const readValidatedPatchSubmissionFile = async (
   filePath: string,
 ): Promise<PatchSubmission> => {
-  const result = patchSubmissionSchema.safeParse(
-    await readBoundedJsonFile(filePath),
-  );
-  if (!result.success) {
+  const input = await readBoundedJsonFile(filePath);
+  try {
+    return normalizePatchSubmissionInput(input);
+  } catch {
     throw new CliCommandError(
       "PATCH_SUBMISSION_FILE_INVALID",
       "The supplied file is not a valid patch submission.",
     );
   }
-  return result.data;
 };
 
 const historyStatusSchema = z
@@ -337,13 +340,41 @@ const runDirectorCommand = async (
     const options = parseFileCommandOptions(args.slice(2), {
       allowForce: true,
     });
+    await preflightOutputFile(options.file, {
+      overwrite: options.force,
+      existsCode: "SCENE_FILE_EXISTS",
+      writeFailedCode: "SCENE_FILE_WRITE_FAILED",
+    });
     await requireBridgeHealth(configuration);
     const response = await requestBridge(
       configuration,
       "/api/v1/scene",
     );
     const scene = readSceneFromEnvelope(response);
-    const serialized = `${JSON.stringify(scene, null, 2)}\n`;
+    const checkpoint = createWorkflowLockCheckpointPatch(
+      scene,
+      `system_save_${scene.revision}`,
+      "system",
+    );
+    const savedScene = checkpoint === null
+      ? scene
+      : validateWorkflowLockCheckpointAcceptance(
+          scene,
+          checkpoint,
+          readSceneFromEnvelope(
+            await requestBridge(
+              configuration,
+              "/api/v1/patches",
+              {
+                method: "POST",
+                body: JSON.stringify(checkpoint),
+              },
+            ),
+          ),
+        );
+    const serialized = `${JSON.stringify(savedScene, null, 2)}\n`;
+    // The accepted checkpoint is authoritative remote state. A later local
+    // filesystem failure is reported, but cannot transactionally undo it.
     const written = await writeFileAtomically(
       options.file,
       serialized,
@@ -356,8 +387,8 @@ const runDirectorCommand = async (
     output({
       ok: true,
       data: {
-        sceneId: scene.sceneId,
-        revision: scene.revision,
+        sceneId: savedScene.sceneId,
+        revision: savedScene.revision,
         bytes: written.bytes,
         overwritten: written.overwritten,
       },
@@ -494,7 +525,7 @@ const runDirectorCommand = async (
         entity.id === scene.activeCameraId,
     );
     const warnings: string[] = [];
-    if (activeCamera?.locked !== true) {
+    if (activeCamera?.lockMode === "none") {
       warnings.push("ACTIVE_CAMERA_UNLOCKED");
     }
     if (
@@ -583,6 +614,9 @@ export const runDirector = async (
     } else if (error instanceof ZodError) {
       code = "SCHEMA_VALIDATION_FAILED";
       message = "Generated scene data failed schema validation.";
+    } else if (error instanceof WorkflowLockCheckpointError) {
+      code = error.code;
+      message = error.message;
     }
 
     output({

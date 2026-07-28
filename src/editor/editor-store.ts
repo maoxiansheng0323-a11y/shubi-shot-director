@@ -2,6 +2,10 @@ import { create } from "zustand";
 import type { ScenePatch } from "../domain/scene-patch";
 import type { SceneSpec } from "../domain/scene-schema";
 import {
+  createWorkflowLockCheckpointPatch,
+  validateWorkflowLockCheckpointAcceptance,
+} from "../domain/workflow-lock-patch";
+import {
   sceneClient,
   SceneClientError,
   type SceneConnectionStatus,
@@ -43,7 +47,7 @@ export interface EditorStoreState {
   undo: () => Promise<SceneSpec | null>;
   redo: () => Promise<SceneSpec | null>;
   replaceScene: (scene: SceneSpec) => Promise<SceneSpec>;
-  saveScene: (requestedName?: string) => string | null;
+  saveScene: (requestedName?: string) => Promise<string | null>;
   loadScene: (file: Blob) => Promise<SceneSpec>;
   reportTransformConflict: () => void;
 }
@@ -119,6 +123,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
   let serverStateEpoch = 0;
   let latestRefreshId = 0;
   let pendingMutations = 0;
+  let saveQueue: Promise<void> = Promise.resolve();
 
   const commitUpdate = (
     update: SceneSessionUpdate,
@@ -289,13 +294,21 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
   const runUpdate = async (
     request: () => Promise<SceneSessionUpdate>,
-  ): Promise<SceneSpec | null> => {
+    validateBeforeCommit?: (update: SceneSessionUpdate) => void,
+  ): Promise<{
+    accepted: SceneSessionUpdate;
+    current: SceneSpec | null;
+  }> => {
     const requestEpoch = serverStateEpoch;
     pendingMutations += 1;
     set({ isMutating: true, error: null });
     try {
       const update = await request();
-      return commitUpdate(update, requestEpoch);
+      validateBeforeCommit?.(update);
+      return {
+        accepted: update,
+        current: commitUpdate(update, requestEpoch),
+      };
     } catch (error) {
       set({ error: userFacingError(error) });
       throw error;
@@ -364,60 +377,109 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     setToolMode: (toolMode) => set({ toolMode }),
 
     applyPatch: async (patch) => {
-      const scene = await runUpdate(() => sceneClient.applyPatch(patch));
-      if (scene === null) {
+      const result = await runUpdate(() => sceneClient.applyPatch(patch));
+      if (result.accepted.scene === null) {
         throw new SceneClientError(
           "MISSING_SCENE",
           "The patch response did not contain a scene.",
         );
       }
-      return scene;
+      return result.accepted.scene;
     },
 
-    undo: () => runUpdate(() => sceneClient.undo()),
+    undo: async () => (await runUpdate(() => sceneClient.undo())).current,
 
-    redo: () => runUpdate(() => sceneClient.redo()),
+    redo: async () => (await runUpdate(() => sceneClient.redo())).current,
 
     replaceScene: async (scene) => {
-      const updated = await runUpdate(() =>
+      const result = await runUpdate(() =>
         sceneClient.replaceScene(scene),
       );
-      if (updated === null) {
+      if (result.current === null) {
         throw new SceneClientError(
           "MISSING_SCENE",
           "The replace response did not contain a scene.",
         );
       }
-      return updated;
+      return result.current;
     },
 
     saveScene: (requestedName) => {
-      const scene = get().scene;
-      if (scene === null) {
-        set({ error: "There is no scene to save." });
-        return null;
-      }
-      try {
-        const fileName = downloadSceneFile(scene, requestedName);
-        set({ error: null });
-        return fileName;
-      } catch (error) {
-        set({ error: userFacingError(error) });
-        return null;
-      }
+      const save = async (): Promise<string | null> => {
+        const before = get().scene;
+        if (before === null) {
+          set({ error: "There is no scene to save." });
+          return null;
+        }
+        try {
+          const checkpoint = createWorkflowLockCheckpointPatch(
+            before,
+            `manual_save_${before.revision}`,
+            "manual",
+          );
+          let sceneToDownload = before;
+          if (checkpoint !== null) {
+            const result = await runUpdate(
+              () => sceneClient.applyPatch(checkpoint),
+              (update) => {
+                if (update.scene === null) {
+                  throw new SceneClientError(
+                    "MISSING_SCENE",
+                    "The patch response did not contain a scene.",
+                  );
+                }
+                validateWorkflowLockCheckpointAcceptance(
+                  before,
+                  checkpoint,
+                  update.scene,
+                );
+              },
+            );
+            const accepted = result.accepted.scene;
+            if (accepted === null) {
+              throw new SceneClientError(
+                "MISSING_SCENE",
+                "The patch response did not contain a scene.",
+              );
+            }
+            sceneToDownload = accepted;
+            if (get().scene !== accepted) {
+              throw new SceneClientError(
+                "STALE_REVISION",
+                "The scene changed before the accepted save checkpoint could be downloaded.",
+              );
+            }
+          }
+          const fileName = downloadSceneFile(
+            sceneToDownload,
+            requestedName,
+          );
+          set({ error: null });
+          return fileName;
+        } catch (error) {
+          set({ error: userFacingError(error) });
+          return null;
+        }
+      };
+      const queued = saveQueue.then(save, save);
+      saveQueue = queued.then(
+        () => undefined,
+        () => undefined,
+      );
+      return queued;
     },
 
     loadScene: async (file) => {
-      const scene = await runUpdate(() =>
+      const result = await runUpdate(() =>
         loadSceneFile(file, sceneClient),
       );
-      if (scene === null) {
+      if (result.current === null) {
         throw new SceneClientError(
           "MISSING_SCENE",
           "The load response did not contain a scene.",
         );
       }
-      return scene;
+      return result.current;
     },
 
     reportTransformConflict: () => {

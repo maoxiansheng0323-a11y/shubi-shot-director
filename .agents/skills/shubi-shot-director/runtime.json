@@ -4,12 +4,35 @@
   "entrypoint": "scripts/director.mjs",
   "capabilitiesContractVersion": 2,
   "bridgeProtocolVersion": 1,
-  "sceneSchemaVersion": 1,
-  "patchSchemaVersion": 1,
-  "intentReportSchemaVersion": 1,
+  "sceneSchemaVersion": 4,
+  "patchSchemaVersion": 4,
+  "intentReportSchemaVersion": 4,
   "semanticAuthority": "host",
   "inputContract": "structured-only",
   "modelIntegration": "none",
   "credentialPolicy": "forbidden",
-  "networkPolicy": "loopback-only"
+  "networkPolicy": "loopback-only",
+  "entityLockModes": ["none", "workflow", "user"],
+  "patchPolicyFields": ["preserveLock"],
+  "lockErrorCodes": [
+    "USER_LOCKED",
+    "WORKFLOW_LOCKED",
+    "LOCK_PRESERVATION_CONFLICT"
+  ],
+  "actorLimbPartIds": [
+    "upper_arm_l",
+    "forearm_l",
+    "hand_l",
+    "upper_arm_r",
+    "forearm_r",
+    "hand_r",
+    "upper_leg_l",
+    "lower_leg_l",
+    "foot_l",
+    "upper_leg_r",
+    "lower_leg_r",
+    "foot_r"
+  ],
+  "actorLimbPresenceModes": ["present", "absent"],
+  "actorLimbErrorCodes": ["LIMB_HIERARCHY_CONFLICT"]
 }

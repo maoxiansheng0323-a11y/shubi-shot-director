@@ -3,6 +3,7 @@ import {
   applyScenePatch,
   SceneDomainError,
 } from "../src/domain/apply-scene-patch";
+import { actorVisibleRigBounds } from "../src/domain/actor-visible-bounds";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { quaternionFromEulerDegrees } from "../src/domain/scene-math";
 import { sceneSpecSchema } from "../src/domain/scene-schema";
@@ -68,7 +69,12 @@ describe("ScenePatch", () => {
     const actor = applied.next.entities.find(
       (entity) => entity.id === "actor_generic_1",
     );
-    expect(actor?.transform.positionM).toEqual([1, 0.977, -0.5]);
+    if (!actor || actor.kind !== "actor") {
+      throw new Error("Starter actor is missing.");
+    }
+    expect(actor.transform.positionM[0]).toBeCloseTo(1, 9);
+    expect(actor.transform.positionM[2]).toBeCloseTo(-0.5, 9);
+    expect(actorVisibleRigBounds(actor).minWorld[1]).toBeCloseTo(0, 9);
     expect(applied.next.revision).toBe(1);
   });
 

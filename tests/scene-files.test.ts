@@ -7,6 +7,15 @@ import {
 } from "../src/editor/scene-files";
 import { createStructuredRelationshipScene } from "./helpers/structured-fixtures";
 
+const copyWithoutProperty = (
+  value: Record<string, unknown>,
+  property: string,
+): Record<string, unknown> => {
+  const copy = { ...value };
+  delete copy[property];
+  return copy;
+};
+
 describe("SceneSpec files", () => {
   it("round-trips a valid scene", async () => {
     const original = createDefaultScene();
@@ -35,6 +44,43 @@ describe("SceneSpec files", () => {
       kind: "actor",
       pose: { preset: { id: "pose.lying-supine-v1" } },
     });
+  });
+
+  it("migrates a legacy v1 single-room file to canonical v4", async () => {
+    const current = createDefaultScene();
+    const legacy: Record<string, unknown> = {
+      ...current,
+      schemaVersion: 1,
+      entities: current.entities.map((entity) => {
+        const legacyEntity = copyWithoutProperty(
+          entity as unknown as Record<string, unknown>,
+          "lockMode",
+        );
+        if (entity.kind === "actor") {
+          legacyEntity.body = copyWithoutProperty(
+            entity.body as unknown as Record<string, unknown>,
+            "limbPresence",
+          );
+        }
+        return {
+          ...legacyEntity,
+          locked: false,
+        };
+      }),
+    };
+    delete legacy.spatialLayout;
+
+    const parsed = await parseSceneFile(
+      new Blob([JSON.stringify(legacy)], {
+        type: "application/json",
+      }),
+    );
+
+    expect(parsed.schemaVersion).toBe(4);
+    expect(parsed.spatialLayout).toBeNull();
+    expect(parsed.sceneId).toBe(current.sceneId);
+    expect(parsed.entities).toEqual(current.entities);
+    expect(parsed.constraints).toEqual(current.constraints);
   });
 
   it("rejects invalid JSON before any server request", async () => {

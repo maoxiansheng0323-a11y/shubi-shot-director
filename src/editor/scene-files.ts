@@ -1,3 +1,5 @@
+import { ZodError } from "zod";
+import { parseSceneSpecInput } from "../domain/scene-migrations";
 import { sceneSpecSchema, type SceneSpec } from "../domain/scene-schema";
 import {
   sceneClient,
@@ -56,16 +58,21 @@ export const parseSceneFile = async (file: Blob): Promise<SceneSpec> => {
     );
   }
 
-  const result = sceneSpecSchema.safeParse(input);
-  if (!result.success) {
+  try {
+    return parseSceneSpecInput(input);
+  } catch (cause) {
     throw new SceneFileError(
       "SCENE_FILE_INVALID",
       "The selected file is not a valid SceneSpec.",
-      { issues: result.error.issues },
+      {
+        issues:
+          cause instanceof ZodError
+            ? cause.issues
+            : [],
+        cause,
+      },
     );
   }
-
-  return result.data;
 };
 
 export const serializeSceneFile = (input: SceneSpec): string => {

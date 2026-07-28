@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 4,
   "sceneId": "scene_example_starter",
   "revision": 0,
   "title": "Starter Graybox Example",
@@ -20,6 +20,7 @@
       "height": 1080
     }
   },
+  "spatialLayout": null,
   "entities": [
     {
       "id": "environment_room_1",
@@ -32,7 +33,7 @@
         "scale": [1, 1, 1]
       },
       "visible": true,
-      "locked": true,
+      "lockMode": "none",
       "preset": {
         "registry": "builtin",
         "id": "room.small-v1",
@@ -58,7 +59,7 @@
         "scale": [1, 1, 1]
       },
       "visible": true,
-      "locked": false,
+      "lockMode": "none",
       "rig": {
         "registry": "builtin",
         "id": "rig.humanoid-v1",
@@ -68,7 +69,21 @@
       "body": {
         "heightM": 1.72,
         "shoulderWidthM": 0.42,
-        "build": "average"
+        "build": "average",
+        "limbPresence": {
+          "upper_arm_l": "present",
+          "forearm_l": "present",
+          "hand_l": "present",
+          "upper_arm_r": "present",
+          "forearm_r": "present",
+          "hand_r": "present",
+          "upper_leg_l": "present",
+          "lower_leg_l": "present",
+          "foot_l": "present",
+          "upper_leg_r": "present",
+          "lower_leg_r": "present",
+          "foot_r": "present"
+        }
       },
       "pose": {
         "preset": {
@@ -94,7 +109,7 @@
         "scale": [1, 1, 1]
       },
       "visible": true,
-      "locked": false,
+      "lockMode": "none",
       "preset": {
         "registry": "builtin",
         "id": "prop.block-v1",
@@ -123,7 +138,7 @@
         "scale": [1, 1, 1]
       },
       "visible": true,
-      "locked": false,
+      "lockMode": "none",
       "lens": {
         "projection": "perspective",
         "focalLengthMm": 45,

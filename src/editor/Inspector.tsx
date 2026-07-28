@@ -14,11 +14,17 @@ import type {
 } from "../domain/scene-schema";
 import { quaternionFromEulerDegrees } from "../domain/scene-math";
 import { ActorPresetControls } from "./ActorPresetControls";
+import { ActorLimbControls } from "./ActorLimbControls";
 import { CompositionChecks } from "./CompositionChecks";
+import type {
+  ActorLimbPartId,
+  ActorLimbPresenceMode,
+} from "../domain/actor-anatomy";
 
 export interface InspectorProps {
   scene: SceneSpec;
   selectedId: string | null;
+  selectedRegionId?: string | null;
   disabled?: boolean;
   onCommitTransform?: (entityId: string, transform: TransformSpec) => void;
   onCommitFocalLength?: (cameraId: string, focalLengthMm: number) => void;
@@ -33,6 +39,11 @@ export interface InspectorProps {
     actorId: string,
     surfaceEntityId: string | null,
     enabled: boolean,
+  ) => void;
+  onSetLimbPresence?: (
+    actorId: string,
+    partId: ActorLimbPartId,
+    mode: ActorLimbPresenceMode,
   ) => void;
 }
 
@@ -220,7 +231,8 @@ const TransformEditor = ({
     transformRef.current = entity.transform;
   }
   const rotationDegrees = eulerDegreesFromTransform(entity.transform);
-  const editingDisabled = disabled || entity.locked || !onCommit;
+  const editingDisabled =
+    disabled || entity.lockMode !== "none" || !onCommit;
 
   const commitPosition = (axisIndex: 0 | 1 | 2, value: number) => {
     const current = transformRef.current;
@@ -247,7 +259,35 @@ const TransformEditor = ({
     <section className="inspector-section">
       <div className="section-title-row">
         <h3>位置</h3>
-        <span>{entity.locked ? "已锁定" : "米"}</span>
+        <span
+          title={
+            entity.lockMode === "workflow"
+              ? "流程锁定"
+              : entity.lockMode === "user"
+                ? "用户保护"
+                : undefined
+          }
+        >
+          {entity.lockMode === "workflow"
+            ? (
+                <>
+                  <span aria-hidden="true">流程锁定</span>
+                  <span className="visually-hidden">
+                    Workflow locked
+                  </span>
+                </>
+              )
+            : entity.lockMode === "user"
+              ? (
+                  <>
+                    <span aria-hidden="true">用户保护</span>
+                    <span className="visually-hidden">
+                      User protected
+                    </span>
+                  </>
+                )
+              : "米"}
+        </span>
       </div>
       <div className="vector-readout">
         {(["x", "y", "z"] as const).map((axis, index) => (
@@ -468,14 +508,35 @@ const FocalLengthEditor = ({
 export const Inspector = ({
   scene,
   selectedId,
+  selectedRegionId = null,
   disabled = false,
   onCommitTransform,
   onCommitFocalLength,
   onApplyPose,
   onApplyRelationship,
   onSetGroundContact,
+  onSetLimbPresence,
 }: InspectorProps) => {
   const selected = scene.entities.find((entity) => entity.id === selectedId);
+  const selectedRegion = scene.spatialLayout?.regions.find(
+    (region) => region.id === selectedRegionId,
+  );
+  const selectedRegionBoundaries =
+    scene.spatialLayout?.boundaries.filter((boundary) =>
+      selectedRegion
+        ? boundary.regionIds.includes(selectedRegion.id)
+        : false,
+    ) ?? [];
+  const selectedRegionOpeningCount =
+    scene.spatialLayout?.openings.filter((opening) =>
+      selectedRegionBoundaries.some(
+        (boundary) => boundary.id === opening.boundaryId,
+      ),
+    ).length ?? 0;
+  const selectedRegionMemberships =
+    scene.spatialLayout?.memberships.filter(
+      (membership) => membership.regionId === selectedRegion?.id,
+    ) ?? [];
   const camera =
     selected?.kind === "camera"
       ? selected
@@ -493,12 +554,14 @@ export const Inspector = ({
       <div className="panel-heading">
         <div>
           <p className="panel-kicker">INSPECTOR</p>
-          <h2>{selected?.label ?? "未选择元素"}</h2>
+          <h2>{selected?.label ?? selectedRegion?.label ?? "未选择元素"}</h2>
         </div>
         {selected ? (
           <span className={`kind-pill kind-${selected.kind}`}>
             {selected.kind}
           </span>
+        ) : selectedRegion ? (
+          <span className="kind-pill">region</span>
         ) : null}
       </div>
 
@@ -532,6 +595,11 @@ export const Inspector = ({
                   </div>
                 </dl>
               </section>
+              <ActorLimbControls
+                actor={selected}
+                disabled={disabled}
+                onSetLimbPresence={onSetLimbPresence}
+              />
               <ActorPresetControls
                 actor={selected}
                 disabled={disabled}
@@ -558,6 +626,46 @@ export const Inspector = ({
             </section>
           ) : null}
         </>
+      ) : selectedRegion ? (
+        <section className="inspector-section">
+          <div className="section-title-row">
+            <h3>空间区域</h3>
+            <span>{selectedRegion.visible ? "可见" : "隐藏"}</span>
+          </div>
+          <dl className="property-list">
+            <div>
+              <dt>ID</dt>
+              <dd>{selectedRegion.id}</dd>
+            </div>
+            <div>
+              <dt>高度</dt>
+              <dd>{selectedRegion.heightM.toFixed(2)} m</dd>
+            </div>
+            <div>
+              <dt>轮廓</dt>
+              <dd>{selectedRegion.footprintXZ.length} 个顶点</dd>
+            </div>
+            <div>
+              <dt>边界</dt>
+              <dd>{selectedRegionBoundaries.length}</dd>
+            </div>
+            <div>
+              <dt>开口</dt>
+              <dd>{selectedRegionOpeningCount}</dd>
+            </div>
+            <div>
+              <dt>对象</dt>
+              <dd>{selectedRegionMemberships.length}</dd>
+            </div>
+          </dl>
+          {selectedRegionMemberships.length > 0 ? (
+            <p className="dimension-readout">
+              {selectedRegionMemberships
+                .map(({ entityId }) => entityId)
+                .join(" · ")}
+            </p>
+          ) : null}
+        </section>
       ) : (
         <div className="empty-inspector">
           <span>←</span>
@@ -575,7 +683,7 @@ export const Inspector = ({
             <FocalLengthEditor
               key={camera.id}
               cameraId={camera.id}
-              disabled={disabled || camera.locked}
+              disabled={disabled || camera.lockMode !== "none"}
               value={camera.lens.focalLengthMm}
               onCommit={onCommitFocalLength}
             />

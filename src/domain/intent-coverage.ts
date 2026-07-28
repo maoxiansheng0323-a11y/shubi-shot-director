@@ -1,5 +1,7 @@
 import {
+  ACTOR_LIMB_EVIDENCE_PATHS,
   intentReportSchema,
+  type ActorLimbEvidencePath,
   type IntentConstraint,
   type IntentEvidence,
   type IntentReport,
@@ -42,6 +44,31 @@ const PRIMARY_ENTITY_EVIDENCE_KINDS = new Set<IntentKind>([
   "entity-removal",
 ]);
 
+const createActorLimbPropertyKinds = (): Record<
+  ActorLimbEvidencePath,
+  readonly IntentKind[]
+> => {
+  const kinds = {} as Record<
+    ActorLimbEvidencePath,
+    readonly IntentKind[]
+  >;
+  for (const path of ACTOR_LIMB_EVIDENCE_PATHS) {
+    kinds[path] = ["actor-limb-presence"];
+  }
+  return kinds;
+};
+
+const actorLimbPropertyKinds = createActorLimbPropertyKinds();
+
+const ACTOR_LIMB_EVIDENCE_PATH_SET: ReadonlySet<string> = new Set(
+  ACTOR_LIMB_EVIDENCE_PATHS,
+);
+
+const isActorLimbEvidencePath = (
+  path: EntityEvidencePath,
+): path is ActorLimbEvidencePath =>
+  ACTOR_LIMB_EVIDENCE_PATH_SET.has(path);
+
 const ENTITY_PROPERTY_KINDS: Record<
   EntityEvidencePath,
   readonly IntentKind[]
@@ -61,9 +88,10 @@ const ENTITY_PROPERTY_KINDS: Record<
   ],
   "entity.transform.scale": ["scale"],
   "entity.visible": ["visibility"],
-  "entity.locked": [],
+  "entity.lockMode": ["lock-protection"],
   "actor.slot": ["actor-slot"],
   "actor.pose": ["pose", "relationship"],
+  ...actorLimbPropertyKinds,
   "camera.heightM": ["camera-height"],
   "camera.lens.focalLengthMm": ["focal-length"],
   "camera.lens.sensorWidthMm": ["focal-length"],
@@ -126,6 +154,9 @@ const entityPropertyExists = (
   entity: SceneEntity,
   path: EntityEvidencePath,
 ): boolean => {
+  if (isActorLimbEvidencePath(path)) {
+    return entity.kind === "actor";
+  }
   switch (path) {
     case "entity.kind":
     case "entity.parentId":
@@ -133,7 +164,7 @@ const entityPropertyExists = (
     case "entity.transform.rotation":
     case "entity.transform.scale":
     case "entity.visible":
-    case "entity.locked":
+    case "entity.lockMode":
       return true;
     case "actor.slot":
     case "actor.pose":
@@ -171,6 +202,16 @@ const scenePropertyKinds = (
     case "scene.compositionGoals.sideUiZone":
     case "scene.compositionGoals.criticalEntityIds":
       return ["composition-safety"];
+    case "scene.spatialLayout.regions":
+      return ["spatial-region", "region-visibility"];
+    case "scene.spatialLayout.boundaries":
+      return ["spatial-boundary"];
+    case "scene.spatialLayout.openings":
+      return ["spatial-opening"];
+    case "scene.spatialLayout.connections":
+      return ["spatial-connection"];
+    case "scene.spatialLayout.memberships":
+      return ["entity-region-membership"];
   }
 };
 
@@ -225,6 +266,58 @@ const scenePropertyAssessment = (
           };
         }
         break;
+      case "scene.spatialLayout.regions":
+        if (scene.spatialLayout !== null) {
+          return {
+            primary: true,
+            targetIds: new Set(
+              scene.spatialLayout.regions.map(({ id }) => id),
+            ),
+          };
+        }
+        break;
+      case "scene.spatialLayout.boundaries":
+        if (scene.spatialLayout !== null) {
+          return {
+            primary: true,
+            targetIds: new Set(
+              scene.spatialLayout.boundaries.map(({ id }) => id),
+            ),
+          };
+        }
+        break;
+      case "scene.spatialLayout.openings":
+        if (scene.spatialLayout !== null) {
+          return {
+            primary: true,
+            targetIds: new Set(
+              scene.spatialLayout.openings.map(({ id }) => id),
+            ),
+          };
+        }
+        break;
+      case "scene.spatialLayout.connections":
+        if (scene.spatialLayout !== null) {
+          return {
+            primary: true,
+            targetIds: new Set(
+              scene.spatialLayout.connections.map(({ id }) => id),
+            ),
+          };
+        }
+        break;
+      case "scene.spatialLayout.memberships":
+        if (scene.spatialLayout !== null) {
+          return {
+            primary: true,
+            targetIds: new Set(
+              scene.spatialLayout.memberships.flatMap(
+                ({ entityId, regionId }) => [entityId, regionId],
+              ),
+            ),
+          };
+        }
+        break;
     }
   }
   return undefined;
@@ -256,6 +349,7 @@ const entityKindsForAddedEntity = (
   if (entity.kind === "actor") {
     kinds.add("actor-slot");
     kinds.add("pose");
+    kinds.add("actor-limb-presence");
   }
   if (entity.kind === "camera") {
     kinds.add("camera-height");
@@ -339,7 +433,8 @@ const operationAssessment = (
         : undefined;
     }
     case "entity.flags.set":
-      return kind === "visibility"
+      return (kind === "visibility" && operation.visible !== undefined) ||
+        (kind === "lock-protection" && operation.lockMode !== undefined)
         ? { primary: true, targetIds: new Set([operation.entityId]) }
         : undefined;
     case "entity.preset.parameters.set":
@@ -352,6 +447,11 @@ const operationAssessment = (
       return (kind === "pose" || kind === "relationship") &&
         operationEntity(operation.entityId, report, context)?.kind === "actor"
         ? { primary: true, targetIds: new Set([operation.entityId]) }
+        : undefined;
+    case "actor.limb-presence.set":
+      return kind === "actor-limb-presence" &&
+        operationEntity(operation.actorId, report, context)?.kind === "actor"
+        ? { primary: true, targetIds: new Set([operation.actorId]) }
         : undefined;
     case "camera.lens.set":
       return kind === "focal-length" &&
@@ -407,6 +507,111 @@ const operationAssessment = (
         : undefined;
     case "scene.title.set":
       return undefined;
+    case "spatial.region.visibility.set":
+      return kind === "region-visibility"
+        ? { primary: true, targetIds: new Set([operation.regionId]) }
+        : undefined;
+    case "spatial.region.upsert":
+      return kind === "spatial-region"
+        ? { primary: true, targetIds: new Set([operation.value.id]) }
+        : undefined;
+    case "spatial.region.remove":
+      return kind === "spatial-region"
+        ? { primary: true, targetIds: new Set([operation.regionId]) }
+        : undefined;
+    case "spatial.boundary.upsert":
+      return kind === "spatial-boundary"
+        ? { primary: true, targetIds: new Set([operation.value.id]) }
+        : undefined;
+    case "spatial.boundary.visibility.set":
+      return kind === "spatial-boundary"
+        ? { primary: true, targetIds: new Set([operation.boundaryId]) }
+        : undefined;
+    case "spatial.boundary.remove":
+      return kind === "spatial-boundary"
+        ? { primary: true, targetIds: new Set([operation.boundaryId]) }
+        : undefined;
+    case "spatial.opening.upsert":
+      return kind === "spatial-opening"
+        ? { primary: true, targetIds: new Set([operation.value.id]) }
+        : undefined;
+    case "spatial.opening.remove":
+      return kind === "spatial-opening"
+        ? { primary: true, targetIds: new Set([operation.openingId]) }
+        : undefined;
+    case "spatial.connection.upsert":
+      return kind === "spatial-connection"
+        ? { primary: true, targetIds: new Set([operation.value.id]) }
+        : undefined;
+    case "spatial.connection.remove":
+      return kind === "spatial-connection"
+        ? { primary: true, targetIds: new Set([operation.connectionId]) }
+        : undefined;
+    case "spatial.membership.set":
+      return kind === "entity-region-membership"
+        ? {
+            primary: true,
+            targetIds: new Set([
+              operation.value.entityId,
+              operation.value.regionId,
+            ]),
+          }
+        : undefined;
+    case "spatial.membership.remove": {
+      if (kind !== "entity-region-membership") {
+        return undefined;
+      }
+      const membership = context.before?.spatialLayout?.memberships.find(
+        (candidate) => candidate.entityId === operation.entityId,
+      );
+      return {
+        primary: true,
+        targetIds: new Set(
+          membership
+            ? [operation.entityId, membership.regionId]
+            : [operation.entityId],
+        ),
+      };
+    }
+  }
+};
+
+const SPATIAL_INTENT_KINDS = new Set<IntentKind>([
+  "spatial-region",
+  "spatial-boundary",
+  "spatial-opening",
+  "spatial-connection",
+  "entity-region-membership",
+  "region-visibility",
+]);
+
+const spatialTargetIds = (
+  scene: SceneSpec,
+  kind: IntentKind,
+): ReadonlySet<string> => {
+  const layout = scene.spatialLayout;
+  if (layout === null) {
+    return new Set();
+  }
+  switch (kind) {
+    case "spatial-region":
+    case "region-visibility":
+      return new Set(layout.regions.map(({ id }) => id));
+    case "spatial-boundary":
+      return new Set(layout.boundaries.map(({ id }) => id));
+    case "spatial-opening":
+      return new Set(layout.openings.map(({ id }) => id));
+    case "spatial-connection":
+      return new Set(layout.connections.map(({ id }) => id));
+    case "entity-region-membership":
+      return new Set(
+        layout.memberships.flatMap(({ entityId, regionId }) => [
+          entityId,
+          regionId,
+        ]),
+      );
+    default:
+      return new Set();
   }
 };
 
@@ -415,6 +620,17 @@ const targetKindsAreValid = (
   report: IntentReport,
   context: IntentCoverageContext,
 ): boolean => {
+  if (SPATIAL_INTENT_KINDS.has(constraint.kind)) {
+    const availableTargets = new Set(
+      visibleScenes(report, context).flatMap((scene) => [
+        ...spatialTargetIds(scene, constraint.kind),
+      ]),
+    );
+    return (
+      constraint.targets.length > 0 &&
+      constraint.targets.every((targetId) => availableTargets.has(targetId))
+    );
+  }
   if (constraint.targets.length === 0) {
     return (
       constraint.kind === "output" ||
@@ -430,6 +646,7 @@ const targetKindsAreValid = (
   switch (constraint.kind) {
     case "actor-slot":
     case "pose":
+    case "actor-limb-presence":
       return (
         targetEntities.length > 0 &&
         targetEntities.every((entity) => entity?.kind === "actor")
@@ -508,6 +725,12 @@ const evidenceAssessment = (
         : undefined;
     }
     case "entity-property": {
+      if (
+        constraint.kind === "actor-limb-presence" &&
+        report.operation === "modify"
+      ) {
+        return undefined;
+      }
       if (!ENTITY_PROPERTY_KINDS[evidence.path].includes(constraint.kind)) {
         return undefined;
       }

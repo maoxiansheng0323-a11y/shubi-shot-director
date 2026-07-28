@@ -526,7 +526,7 @@ describe("structured submission API", () => {
                 ? {
                     ...entity,
                     id: marker,
-                    locked: true,
+                    lockMode: "workflow" as const,
                     transform: {
                       ...entity.transform,
                       positionM: [0, 2, 0] as [number, number, number],
@@ -544,8 +544,58 @@ describe("structured submission API", () => {
         };
       },
       400,
-      "LOCKED_ENTITY_CONFLICT",
-      "A requested scene entity is locked.",
+      "WORKFLOW_LOCKED",
+      "A requested scene entity is workflow locked.",
+    ],
+    [
+      "user-locked patch entity",
+      "/api/v1/patches",
+      () => ({
+        schemaVersion: 3,
+        patchId: "patch_api_user_lock",
+        sceneId: "scene_starter",
+        baseRevision: 0,
+        source: "natural-language",
+        preserveLock: false,
+        operations: [
+          {
+            op: "entity.flags.set",
+            entityId: "actor_generic_1",
+            lockMode: "user",
+          },
+          {
+            op: "entity.transform.translate",
+            entityId: "actor_generic_1",
+            deltaM: [0.25, 0, 0],
+            referenceSpace: "world",
+          },
+        ],
+      }),
+      400,
+      "USER_LOCKED",
+      "A requested scene entity is user protected.",
+    ],
+    [
+      "lock preservation conflict",
+      "/api/v1/patches",
+      () => ({
+        schemaVersion: 3,
+        patchId: "patch_api_preservation_conflict",
+        sceneId: "scene_starter",
+        baseRevision: 0,
+        source: "natural-language",
+        preserveLock: true,
+        operations: [
+          {
+            op: "entity.flags.set",
+            entityId: "actor_generic_1",
+            lockMode: "workflow",
+          },
+        ],
+      }),
+      400,
+      "LOCK_PRESERVATION_CONFLICT",
+      "The requested Patch would change preserved lock state.",
     ],
     [
       "stale patch",

@@ -2,7 +2,15 @@ import {
   actorAnchorWorldPoint,
   type ActorAnchor,
 } from "./humanoid-rig";
+import {
+  actorVisibleFramingPoints,
+  actorVisibleRigBounds,
+} from "./actor-visible-bounds";
 import { addVectors, rotateVector, transformPoint } from "./scene-math";
+import {
+  deriveBoundaryWallBoxes,
+  type SpatialRegion,
+} from "./spatial-layout";
 import type {
   ActorEntity,
   CameraEntity,
@@ -58,8 +66,11 @@ export const compositionIssueCodes = [
   "SUBJECT_OCCLUDED_APPROXIMATE",
   "TOPOLOGY_ENVIRONMENT_UNAVAILABLE",
   "CRITICAL_ENTITY_OUTSIDE_ROOM",
+  "CRITICAL_ENTITY_OUTSIDE_REGION",
+  "CRITICAL_ENTITY_REGION_UNASSIGNED",
   "SIGHTLINE_INTERSECTS_WALL",
   "CAMERA_COLLIDES_WALL",
+  "CAMERA_INSIDE_ACTOR_PROXY",
   "CAMERA_INSIDE_PROP",
 ] as const;
 
@@ -148,6 +159,12 @@ interface RoomProxy {
   depthM: number;
   heightM: number;
   wallThicknessM: number;
+}
+
+interface SpatialWallProxy {
+  boundaryId: string;
+  transform: TransformSpec;
+  bounds: Aabb;
 }
 
 interface CheckState {
@@ -296,35 +313,10 @@ const numberParameter = (
     : fallback;
 };
 
-const actorContactOffset = (actor: ActorEntity): number =>
-  numberParameter(
-    actor.pose.preset.parameters,
-    "contactOffsetM",
-    actor.body.heightM * 0.568,
-  );
-
-const actorLocalBounds = (
-  actor: ActorEntity,
-  lowerFraction = 0,
-): { min: Vec3; max: Vec3 } => {
-  const height = actor.body.heightM;
-  const bottom = -actorContactOffset(actor);
-  const top = height - actorContactOffset(actor);
-  const sliceBottom = bottom + (top - bottom) * lowerFraction;
-  const halfWidth = Math.max(actor.body.shoulderWidthM * 0.72, height * 0.16);
-  const halfDepth = height * 0.13;
-  return {
-    min: [-halfWidth, sliceBottom, -halfDepth],
-    max: [halfWidth, top, halfDepth],
-  };
-};
-
 const actorFullBoundsPoints = (actor: ActorEntity): Vec3[] => {
-  const bounds = actorLocalBounds(actor);
+  const bounds = actorVisibleRigBounds(actor);
   return [
-    ...boxCorners(bounds.min, bounds.max).map((point) =>
-      transformPoint(actor.transform, point),
-    ),
+    ...bounds.worldPoints,
     actorAnchorWorldPoint(actor, "face"),
     actorAnchorWorldPoint(actor, "head"),
     actorAnchorWorldPoint(actor, "chest"),
@@ -345,14 +337,7 @@ const actorFramingBoundsPoints = (
     medium: 0.3,
     full: 0,
   };
-  const bounds = actorLocalBounds(actor, lowerFraction[mode]);
-  return [
-    ...boxCorners(bounds.min, bounds.max).map((point) =>
-      transformPoint(actor.transform, point),
-    ),
-    actorAnchorWorldPoint(actor, "face"),
-    actorAnchorWorldPoint(actor, "head"),
-  ];
+  return actorVisibleFramingPoints(actor, lowerFraction[mode]);
 };
 
 const propFullBoundsPoints = (prop: PropEntity): Vec3[] => {
@@ -381,14 +366,19 @@ const createOcclusionProxy = (
   entity: SceneEntity,
 ): OcclusionProxy | null => {
   if (entity.kind === "actor") {
-    const scale = Math.max(...entity.transform.scale);
+    const bounds = actorVisibleRigBounds(entity);
+    const center: Vec3 = [
+      (bounds.minWorld[0] + bounds.maxWorld[0]) / 2,
+      (bounds.minWorld[1] + bounds.maxWorld[1]) / 2,
+      (bounds.minWorld[2] + bounds.maxWorld[2]) / 2,
+    ];
     return {
-      center: actorAnchorWorldPoint(entity, "chest"),
-      radiusM:
-        Math.max(
-          entity.body.heightM * 0.33,
-          entity.body.shoulderWidthM * 0.7,
-        ) * scale,
+      center,
+      radiusM: Math.hypot(
+        bounds.maxWorld[0] - center[0],
+        bounds.maxWorld[1] - center[1],
+        bounds.maxWorld[2] - center[2],
+      ),
     };
   }
 
@@ -579,6 +569,97 @@ const roomWalls = (room: RoomProxy): Aabb[] => {
   ];
 };
 
+const spatialWallProxies = (
+  scene: SceneSpec,
+  openingMode: "sight" | "passage",
+): SpatialWallProxy[] => {
+  const layout = scene.spatialLayout;
+  if (layout === null) {
+    return [];
+  }
+  return layout.boundaries.flatMap((boundary) => {
+    if (
+      !boundary.visible ||
+      !boundary.regionIds.some(
+        (regionId) =>
+          layout.regions.find((region) => region.id === regionId)
+            ?.visible === true,
+      )
+    ) {
+      return [];
+    }
+    return deriveBoundaryWallBoxes(
+      layout,
+      boundary,
+      (opening) => {
+        const connection = layout.connections.find(
+          (candidate) => candidate.openingId === opening.id,
+        );
+        return (
+          connection?.enabled === true &&
+          (openingMode === "sight"
+            ? connection.allowsSight
+            : connection.allowsPassage)
+        );
+      },
+    ).map((wall) => ({
+      boundaryId: wall.boundaryId,
+      transform: {
+        positionM: wall.position,
+        rotation: [
+          0,
+          Math.sin(wall.rotationY / 2),
+          0,
+          Math.cos(wall.rotationY / 2),
+        ],
+        scale: [1, 1, 1],
+      },
+      bounds: {
+        min: [
+          -wall.size[0] / 2,
+          -wall.size[1] / 2,
+          -wall.size[2] / 2,
+        ],
+        max: [
+          wall.size[0] / 2,
+          wall.size[1] / 2,
+          wall.size[2] / 2,
+        ],
+      },
+    }));
+  });
+};
+
+const pointInsideSpatialRegion = (
+  point: Vec3,
+  floorY: number,
+  region: SpatialRegion,
+): boolean => {
+  if (point[1] < floorY || point[1] > floorY + region.heightM) {
+    return false;
+  }
+  let inside = false;
+  const [x, , z] = point;
+  for (
+    let current = 0, previous = region.footprintXZ.length - 1;
+    current < region.footprintXZ.length;
+    previous = current, current += 1
+  ) {
+    const [currentX, currentZ] = region.footprintXZ[current];
+    const [previousX, previousZ] = region.footprintXZ[previous];
+    const crosses =
+      currentZ > z !== previousZ > z &&
+      x <
+        ((previousX - currentX) * (z - currentZ)) /
+          (previousZ - currentZ) +
+          currentX;
+    if (crosses) {
+      inside = !inside;
+    }
+  }
+  return inside;
+};
+
 const pointInsideAabb = (point: Vec3, bounds: Aabb): boolean =>
   point[0] >= bounds.min[0] &&
   point[0] <= bounds.max[0] &&
@@ -738,7 +819,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
   } else {
     cameraCollisionState.checked = true;
     cameraCollisionState.evidence.push(
-      `Active camera ${activeCamera.id} checked against room walls and visible props.`,
+      `Active camera ${activeCamera.id} checked against visible boundaries and props.`,
     );
   }
 
@@ -1238,8 +1319,10 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
   const rooms = scene.entities
     .map(roomProxy)
     .filter((room): room is RoomProxy => room !== null);
+  const sightlineSpatialWalls = spatialWallProxies(scene, "sight");
+  const collisionSpatialWalls = spatialWallProxies(scene, "passage");
   if (activeCamera && topologyState.required) {
-    if (rooms.length === 0) {
+    if (rooms.length === 0 && scene.spatialLayout === null) {
       addIssue(
         topologyState,
         issue(
@@ -1307,6 +1390,88 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
             );
           }
         }
+        if (scene.spatialLayout !== null) {
+          const membership = scene.spatialLayout.memberships.find(
+            (candidate) => candidate.entityId === target.id,
+          );
+          const region = membership
+            ? scene.spatialLayout.regions.find(
+                (candidate) => candidate.id === membership.regionId,
+              )
+            : undefined;
+          if (!membership || !region) {
+            addIssue(
+              topologyState,
+              issue(
+                "topology",
+                "CRITICAL_ENTITY_REGION_UNASSIGNED",
+                "warning",
+                "A critical actor or prop has no valid region membership.",
+                [target.id],
+                {
+                  cameraId: activeCamera.id,
+                  subjectEntityId: target.id,
+                },
+              ),
+            );
+          } else if (
+            !pointInsideSpatialRegion(
+              targetPoint,
+              scene.spatialLayout.floorY,
+              region,
+            )
+          ) {
+            addIssue(
+              topologyState,
+              issue(
+                "topology",
+                "CRITICAL_ENTITY_OUTSIDE_REGION",
+                "warning",
+                "A critical actor or prop center lies outside its assigned region.",
+                [region.id, target.id],
+                {
+                  cameraId: activeCamera.id,
+                  subjectEntityId: target.id,
+                  evidence: `${target.id} is outside ${region.id}.`,
+                },
+              ),
+            );
+          }
+          for (const wall of sightlineSpatialWalls) {
+            const cameraLocal = worldToLocalPoint(
+              wall.transform,
+              activeCamera.transform.positionM,
+            );
+            const targetLocal = worldToLocalPoint(
+              wall.transform,
+              targetPoint,
+            );
+            if (
+              segmentIntersectsAabb(
+                cameraLocal,
+                targetLocal,
+                wall.bounds,
+              )
+            ) {
+              addIssue(
+                topologyState,
+                issue(
+                  "topology",
+                  "SIGHTLINE_INTERSECTS_WALL",
+                  "error",
+                  "The active-camera sightline to a critical target crosses a spatial boundary.",
+                  [activeCamera.id, wall.boundaryId, target.id],
+                  {
+                    cameraId: activeCamera.id,
+                    subjectEntityId: target.id,
+                    evidence: `${activeCamera.id} to ${target.id} intersects ${wall.boundaryId}.`,
+                  },
+                ),
+              );
+              break;
+            }
+          }
+        }
       }
     }
   }
@@ -1330,6 +1495,57 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
               cameraId: activeCamera.id,
               evidence: `${activeCamera.id} room-local position (${cameraLocal.map((value) => value.toFixed(2)).join(", ")}).`,
             },
+          ),
+        );
+      }
+    }
+    for (const wall of collisionSpatialWalls) {
+      const cameraLocal = worldToLocalPoint(
+        wall.transform,
+        activeCamera.transform.positionM,
+      );
+      if (pointInsideAabb(cameraLocal, wall.bounds)) {
+        addIssue(
+          cameraCollisionState,
+          issue(
+            "cameraCollision",
+            "CAMERA_COLLIDES_WALL",
+            "error",
+            "The active camera is inside a spatial boundary.",
+            [activeCamera.id, wall.boundaryId],
+            {
+              cameraId: activeCamera.id,
+              evidence: `${activeCamera.id} intersects ${wall.boundaryId}.`,
+            },
+          ),
+        );
+      }
+    }
+    for (const entity of scene.entities) {
+      if (entity.kind !== "actor" || !entity.visible) {
+        continue;
+      }
+      const bounds = actorVisibleRigBounds(entity);
+      if (
+        pointInsideAabb(activeCamera.transform.positionM, {
+          min: bounds.minWorld,
+          max: bounds.maxWorld,
+        })
+      ) {
+        addIssue(
+          cameraCollisionState,
+          issue(
+            "cameraCollision",
+            "CAMERA_INSIDE_ACTOR_PROXY",
+            "error",
+            "The active camera is inside a visible actor AABB proxy and requires visual confirmation.",
+            [activeCamera.id, entity.id],
+            {
+              cameraId: activeCamera.id,
+              occluderEntityId: entity.id,
+              evidence: `${activeCamera.id} is inside the visible proxy for ${entity.id}.`,
+            },
+            true,
           ),
         );
       }

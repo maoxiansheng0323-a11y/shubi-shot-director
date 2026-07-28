@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { actorLimbPresenceModeSchema } from "./actor-anatomy";
+import { entityLockModeSchema } from "./entity-lock";
 import {
   cameraLensSchema,
   compositionGoalsSchema,
@@ -13,6 +15,41 @@ import {
   vec3Schema,
 } from "./shared-schemas";
 import { PATCH_SCHEMA_VERSION } from "./schema-versions";
+import {
+  entityRegionMembershipSchema,
+  spatialBoundarySchema,
+  spatialConnectionSchema,
+  spatialOpeningSchema,
+  spatialRegionSchema,
+} from "./spatial-layout";
+
+export const actorLimbPresenceUpdatesSchema = z
+  .object({
+    upper_arm_l: actorLimbPresenceModeSchema.optional(),
+    forearm_l: actorLimbPresenceModeSchema.optional(),
+    hand_l: actorLimbPresenceModeSchema.optional(),
+    upper_arm_r: actorLimbPresenceModeSchema.optional(),
+    forearm_r: actorLimbPresenceModeSchema.optional(),
+    hand_r: actorLimbPresenceModeSchema.optional(),
+    upper_leg_l: actorLimbPresenceModeSchema.optional(),
+    lower_leg_l: actorLimbPresenceModeSchema.optional(),
+    foot_l: actorLimbPresenceModeSchema.optional(),
+    upper_leg_r: actorLimbPresenceModeSchema.optional(),
+    lower_leg_r: actorLimbPresenceModeSchema.optional(),
+    foot_r: actorLimbPresenceModeSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (updates) => Object.keys(updates).length > 0,
+    "Actor limb presence updates must contain at least one part.",
+  )
+  .refine(
+    (updates) =>
+      Object.values(updates).every(
+        (mode) => mode === "present" || mode === "absent",
+      ),
+    "Actor limb presence updates cannot contain undefined modes.",
+  );
 
 const operationSchemas = [
   z
@@ -55,10 +92,16 @@ const operationSchemas = [
     .object({
       op: z.literal("entity.flags.set"),
       entityId: entityIdSchema,
-      visible: z.boolean(),
-      locked: z.boolean(),
+      visible: z.boolean().optional(),
+      lockMode: entityLockModeSchema.optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (operation) =>
+        operation.visible !== undefined ||
+        operation.lockMode !== undefined,
+      "Entity flags operation must set visible or lockMode.",
+    ),
   z
     .object({
       op: z.literal("entity.preset.parameters.set"),
@@ -71,6 +114,13 @@ const operationSchemas = [
       op: z.literal("actor.pose.set"),
       entityId: entityIdSchema,
       value: poseSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("actor.limb-presence.set"),
+      actorId: entityIdSchema,
+      updates: actorLimbPresenceUpdatesSchema,
     })
     .strict(),
   z
@@ -137,6 +187,80 @@ const operationSchemas = [
       value: z.string().min(1).max(120),
     })
     .strict(),
+  z
+    .object({
+      op: z.literal("spatial.region.visibility.set"),
+      regionId: entityIdSchema,
+      visible: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.region.upsert"),
+      value: spatialRegionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.region.remove"),
+      regionId: entityIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.boundary.upsert"),
+      value: spatialBoundarySchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.boundary.visibility.set"),
+      boundaryId: entityIdSchema,
+      visible: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.boundary.remove"),
+      boundaryId: entityIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.opening.upsert"),
+      value: spatialOpeningSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.opening.remove"),
+      openingId: entityIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.connection.upsert"),
+      value: spatialConnectionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.connection.remove"),
+      connectionId: entityIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.membership.set"),
+      value: entityRegionMembershipSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("spatial.membership.remove"),
+      entityId: entityIdSchema,
+    })
+    .strict(),
 ] as const;
 
 export const sceneOperationSchema = z.discriminatedUnion(
@@ -155,7 +279,8 @@ export const scenePatchSchema = z
     sceneId: entityIdSchema,
     baseRevision: z.number().int().nonnegative(),
     source: z.enum(["manual", "natural-language", "system"]),
-    operations: z.array(sceneOperationSchema).min(1).max(128),
+    preserveLock: z.boolean(),
+    operations: z.array(sceneOperationSchema).min(1).max(256),
   })
   .strict();
 

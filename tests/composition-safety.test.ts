@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { resolveActorLimbPresenceUpdates } from "../src/domain/actor-anatomy";
 import {
   analyzeComposition,
   COMPOSITION_SAFE_NDC_LIMIT,
 } from "../src/domain/composition-safety";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { actorAnchorWorldPoint } from "../src/domain/humanoid-rig";
-import { lookAtQuaternion } from "../src/domain/scene-math";
+import {
+  lookAtQuaternion,
+  quaternionFromEulerDegrees,
+} from "../src/domain/scene-math";
 import type {
   ActorEntity,
   CameraEntity,
@@ -40,6 +44,20 @@ const aimCameraAtFace = (
   camera.transform.rotation = lookAtQuaternion(
     camera.transform.positionM,
     actorAnchorWorldPoint(actor, "face"),
+  );
+};
+
+const spreadArms = (actor: ActorEntity): void => {
+  actor.pose.joints.upper_arm_l = quaternionFromEulerDegrees([0, 0, 90]);
+  actor.pose.joints.upper_arm_r = quaternionFromEulerDegrees([0, 0, -90]);
+  actor.pose.joints.forearm_l = [0, 0, 0, 1];
+  actor.pose.joints.forearm_r = [0, 0, 0, 1];
+};
+
+const removeBothArms = (actor: ActorEntity): void => {
+  actor.body.limbPresence = resolveActorLimbPresenceUpdates(
+    actor.body.limbPresence,
+    { upper_arm_l: "absent", upper_arm_r: "absent" },
   );
 };
 
@@ -245,6 +263,91 @@ describe("analyzeComposition", () => {
     expect(report.framingSafe.status).toBe("fail");
     expect(report.framingSafe.issueCodes).toContain(
       "FRAMING_BOUNDS_OUT_OF_FRAME",
+    );
+  });
+
+  it("does not let absent arms enlarge visible actor framing bounds", () => {
+    const presentScene = createAlignedScene();
+    const presentActor = getActor(presentScene);
+    const presentCamera = getCamera(presentScene);
+    spreadArms(presentActor);
+    presentActor.transform.scale = [4, 1, 1];
+    presentCamera.transform.positionM = [0, actorAnchorWorldPoint(presentActor, "face")[1], 13];
+    presentCamera.lens.focalLengthMm = 75;
+    aimCameraAtFace(presentCamera, presentActor);
+    presentScene.compositionGoals = {
+      framing: { mode: "full", targetEntityIds: [presentActor.id] },
+    };
+
+    const absentScene = structuredClone(presentScene);
+    const absentActor = getActor(absentScene);
+    removeBothArms(absentActor);
+
+    expect(analyzeComposition(presentScene).framingSafe.issueCodes).toContain(
+      "FRAMING_BOUNDS_OUT_OF_FRAME",
+    );
+    expect(analyzeComposition(absentScene).framingSafe.issueCodes).not.toContain(
+      "FRAMING_BOUNDS_OUT_OF_FRAME",
+    );
+  });
+
+  it("does not create an occlusion proxy from absent arms", () => {
+    const presentScene = createAlignedScene();
+    const subject = getActor(presentScene);
+    const occluder: ActorEntity = {
+      ...structuredClone(subject),
+      id: "actor_generic_2",
+      slot: "actor_generic_2",
+      transform: {
+        ...structuredClone(subject.transform),
+        positionM: [0.95, subject.transform.positionM[1], 1.5],
+      },
+    };
+    spreadArms(occluder);
+    presentScene.entities.push(occluder);
+
+    const absentScene = structuredClone(presentScene);
+    const absentOccluder = absentScene.entities.find(
+      (entity): entity is ActorEntity => entity.id === occluder.id && entity.kind === "actor",
+    );
+    if (!absentOccluder) {
+      throw new Error("Occluder fixture is missing.");
+    }
+    removeBothArms(absentOccluder);
+
+    expect(analyzeComposition(presentScene).occlusionSafe.issueCodes).toContain(
+      "ANCHOR_OCCLUDED_APPROXIMATE",
+    );
+    expect(analyzeComposition(absentScene).occlusionSafe.issueCodes).not.toContain(
+      "ANCHOR_OCCLUDED_APPROXIMATE",
+    );
+  });
+
+  it("reports only cameras inside the visible actor AABB proxy", () => {
+    const presentScene = createAlignedScene();
+    const presentActor = getActor(presentScene);
+    const presentCamera = getCamera(presentScene);
+    spreadArms(presentActor);
+    presentActor.transform.scale = [2, 1, 1];
+    presentCamera.transform.positionM = [1.4, 1.45, 0];
+    aimCameraAtFace(presentCamera, presentActor);
+
+    const absentScene = structuredClone(presentScene);
+    const absentActor = getActor(absentScene);
+    removeBothArms(absentActor);
+
+    const presentReport = analyzeComposition(presentScene);
+    const absentReport = analyzeComposition(absentScene);
+
+    expect(presentReport.cameraCollisionSafe).toMatchObject({
+      status: "fail",
+      approximate: true,
+    });
+    expect(presentReport.cameraCollisionSafe.issueCodes).toContain(
+      "CAMERA_INSIDE_ACTOR_PROXY",
+    );
+    expect(absentReport.cameraCollisionSafe.issueCodes).not.toContain(
+      "CAMERA_INSIDE_ACTOR_PROXY",
     );
   });
 

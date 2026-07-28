@@ -1,13 +1,20 @@
 import { z } from "zod";
+import { actorLimbPresenceSchema } from "./actor-anatomy";
+import { entityLockModeSchema } from "./entity-lock";
 import { SCENE_SCHEMA_VERSION } from "./schema-versions";
+import {
+  entityIdSchema,
+  finiteNumberSchema,
+  positiveFiniteNumberSchema,
+} from "./schema-primitives";
+import {
+  spatialLayoutSchema,
+  type SpatialLayout,
+} from "./spatial-layout";
 
-const finiteNumber = z.number().finite();
-const positiveFiniteNumber = finiteNumber.positive();
-const entityId = z
-  .string()
-  .min(3)
-  .max(64)
-  .regex(/^[a-z][a-z0-9_-]*$/);
+const finiteNumber = finiteNumberSchema;
+const positiveFiniteNumber = positiveFiniteNumberSchema;
+const entityId = entityIdSchema;
 
 export const vec3Schema = z.tuple([
   finiteNumber,
@@ -91,7 +98,7 @@ const baseEntityShape = {
   parentId: entityId.nullable(),
   transform: transformSchema,
   visible: z.boolean(),
-  locked: z.boolean(),
+  lockMode: entityLockModeSchema,
 };
 
 export const environmentEntitySchema = z
@@ -132,6 +139,7 @@ export const actorEntitySchema = z
         heightM: positiveFiniteNumber.min(1).max(2.4),
         shoulderWidthM: positiveFiniteNumber.min(0.25).max(0.8),
         build: z.enum(["slim", "average", "broad"]),
+        limbPresence: actorLimbPresenceSchema,
       })
       .strict(),
     pose: poseSchema,
@@ -281,6 +289,7 @@ export const sceneSpecSchema = z
     activeCameraId: entityId,
     output: outputSpecSchema,
     compositionGoals: compositionGoalsSchema.optional(),
+    spatialLayout: spatialLayoutSchema.nullable().default(null),
     entities: z.array(sceneEntitySchema).min(2).max(256),
     constraints: z.array(sceneConstraintSchema).max(256),
   })
@@ -321,6 +330,55 @@ export const sceneSpecSchema = z
         message: "activeCameraId must reference a camera entity.",
         path: ["activeCameraId"],
       });
+    }
+
+    if (
+      scene.spatialLayout !== null &&
+      scene.entities.some((entity) => entity.kind === "environment")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Connected-region scenes cannot contain environment entities.",
+        path: ["entities"],
+      });
+    }
+    if (scene.spatialLayout !== null) {
+      for (const [
+        membershipIndex,
+        membership,
+      ] of scene.spatialLayout.memberships.entries()) {
+        const entity = scene.entities.find(
+          (candidate) => candidate.id === membership.entityId,
+        );
+        if (!entity) {
+          context.addIssue({
+            code: "custom",
+            message: `Membership references missing scene entity: ${membership.entityId}`,
+            path: [
+              "spatialLayout",
+              "memberships",
+              membershipIndex,
+              "entityId",
+            ],
+          });
+        } else if (
+          entity.kind !== "actor" &&
+          entity.kind !== "prop" &&
+          entity.kind !== "camera"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: `Membership entity must be actor, prop, or camera: ${membership.entityId}`,
+            path: [
+              "spatialLayout",
+              "memberships",
+              membershipIndex,
+              "entityId",
+            ],
+          });
+        }
+      }
     }
 
     const compositionGoals = scene.compositionGoals;
@@ -525,6 +583,7 @@ export type CompositionFramingMode = z.infer<
 export type CompositionGoals = z.infer<typeof compositionGoalsSchema>;
 export type SceneConstraint = z.infer<typeof sceneConstraintSchema>;
 export type SceneSpec = z.infer<typeof sceneSpecSchema>;
+export type { SpatialLayout };
 
 export const identityQuaternion = (): QuaternionTuple => [0, 0, 0, 1];
 

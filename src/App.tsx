@@ -4,7 +4,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { TransformSpec } from "./domain/scene-schema";
+import type { SceneSpec, TransformSpec } from "./domain/scene-schema";
+import type {
+  ActorLimbPartId,
+  ActorLimbPresenceMode,
+} from "./domain/actor-anatomy";
 import { snapTransformToContact } from "./domain/contact-constraints";
 import {
   buildRelationshipOperations,
@@ -15,17 +19,25 @@ import { Outliner } from "./editor/Outliner";
 import { useEditorStore } from "./editor/editor-store";
 import {
   createCameraLensPatch,
-  createLockedPatch,
+  createLockModePatch,
   createOperationsPatch,
   createTransformPatch,
+  nextManualLockMode,
   transformsEqual,
 } from "./editor/manual-patches";
+import { applyActorLimbPresenceCommand } from "./editor/limb-presence-command";
 import {
   paneAfterSceneSelection,
   type CompactWorkspacePane,
 } from "./editor/compact-workspace";
 import { CompactWorkspaceTabs } from "./editor/CompactWorkspaceTabs";
 import { ViewportWorkspace } from "./editor/ViewportWorkspace";
+import {
+  commitShotCameraFocalLength,
+  commitShotCameraTransform,
+} from "./editor/shot-camera-commands";
+import type { ShotCameraGestureSession } from "./editor/shot-camera-session";
+import type { SpatialPreviewMode } from "./editor/spatial-preview";
 import { userFacingError } from "./editor/error-messages";
 import type { ShotExporterHandle } from "./three/ShotExporter";
 import { connectPreviewExportBridge } from "./three/preview-export-client";
@@ -41,12 +53,19 @@ const connectionLabels = {
 export const App = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exporterRef = useRef<ShotExporterHandle | null>(null);
+  const cameraDraftActiveRef = useRef(false);
   const consumedSceneEventRevisionRef = useRef<number | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [previewMode, setPreviewMode] =
+    useState<SpatialPreviewMode>("overview");
+  const [focusedRegionId, setFocusedRegionId] =
+    useState<string | null>(null);
   const [compactPane, setCompactPane] =
     useState<CompactWorkspacePane>("editor");
   const [exporting, setExporting] = useState(false);
+  const [savingScene, setSavingScene] = useState(false);
   const [exporterReady, setExporterReady] = useState(false);
+  const [cameraDraftActive, setCameraDraftActive] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const scene = useEditorStore((state) => state.scene);
@@ -92,7 +111,7 @@ export const App = () => {
       if (
         !currentScene ||
         !entity ||
-        entity.locked
+        entity.lockMode !== "none"
       ) {
         return;
       }
@@ -134,7 +153,11 @@ export const App = () => {
       const actor = currentScene?.entities.find(
         (entity) => entity.id === actorId,
       );
-      if (!currentScene || actor?.kind !== "actor" || actor.locked) {
+      if (
+        !currentScene ||
+        actor?.kind !== "actor" ||
+        actor.lockMode !== "none"
+      ) {
         return;
       }
       try {
@@ -210,7 +233,11 @@ export const App = () => {
       const actor = currentScene?.entities.find(
         (entity) => entity.id === actorId,
       );
-      if (!currentScene || actor?.kind !== "actor" || actor.locked) {
+      if (
+        !currentScene ||
+        actor?.kind !== "actor" ||
+        actor.lockMode !== "none"
+      ) {
         return;
       }
       const existing = currentScene.constraints.find(
@@ -253,6 +280,59 @@ export const App = () => {
     [],
   );
 
+  // The command layer submits one preserveLock: true Patch per gesture.
+  const commitFinalCameraTransform = useCallback(
+    (
+      session: ShotCameraGestureSession,
+      transform: TransformSpec,
+    ): Promise<SceneSpec | void> =>
+      commitShotCameraTransform(
+        useEditorStore.getState,
+        session,
+        transform,
+      ),
+    [],
+  );
+
+  const handleCameraDraftChange = useCallback((active: boolean): void => {
+    cameraDraftActiveRef.current = active;
+    setCameraDraftActive(active);
+  }, []);
+
+  const commitFinalCameraFocalLength = useCallback(
+    (
+      session: ShotCameraGestureSession,
+      focalLengthMm: number,
+    ): Promise<SceneSpec | void> =>
+      commitShotCameraFocalLength(
+        useEditorStore.getState,
+        session,
+        focalLengthMm,
+      ),
+    [],
+  );
+
+  const setLimbPresence = useCallback(
+    async (
+      actorId: string,
+      partId: ActorLimbPartId,
+      mode: ActorLimbPresenceMode,
+    ): Promise<void> => {
+      try {
+        await applyActorLimbPresenceCommand(
+          useEditorStore.getState,
+          actorId,
+          partId,
+          mode,
+        );
+        setLocalError(null);
+      } catch (error) {
+        setLocalError(userFacingError(error));
+      }
+    },
+    [],
+  );
+
   const commitFocalLength = useCallback(
     async (cameraId: string, focalLengthMm: number): Promise<void> => {
       const state = useEditorStore.getState();
@@ -263,7 +343,7 @@ export const App = () => {
       if (
         !currentScene ||
         camera?.kind !== "camera" ||
-        camera.locked ||
+        camera.lockMode !== "none" ||
         Math.abs(camera.lens.focalLengthMm - focalLengthMm) < 1e-8
       ) {
         return;
@@ -292,11 +372,10 @@ export const App = () => {
     }
     try {
       const updated = await state.applyPatch(
-        createLockedPatch(
+        createLockModePatch(
           currentScene,
           camera.id,
-          camera.visible,
-          !camera.locked,
+          nextManualLockMode(camera.lockMode),
         ),
       );
       const updatedCamera = updated.entities.find(
@@ -304,12 +383,26 @@ export const App = () => {
       );
       setLocalError(null);
       setActionNotice(
-        updatedCamera?.locked ? "最终镜头已锁定" : "最终镜头已解锁",
+        updatedCamera?.lockMode === "user"
+          ? "最终镜头已启用用户保护"
+          : "最终镜头已解锁",
       );
     } catch {
       // The store already exposes the server's readable error in the UI.
     }
   }, []);
+
+  const saveCurrentScene = useCallback(async (): Promise<void> => {
+    setSavingScene(true);
+    try {
+      const fileName = await saveScene();
+      if (fileName) {
+        setActionNotice(`已生成 ${fileName}`);
+      }
+    } finally {
+      setSavingScene(false);
+    }
+  }, [saveScene]);
 
   const exportPerspective = useCallback(async (): Promise<void> => {
     const state = useEditorStore.getState();
@@ -326,13 +419,17 @@ export const App = () => {
       !exporter ||
       state.connectionStatus !== "connected" ||
       state.loading ||
-      state.isMutating
+      state.isMutating ||
+      cameraDraftActive
     ) {
       setLocalError("最终镜头导出器尚未准备完成。");
       return;
     }
     const targetRevision = targetScene.revision;
-    const draftLabel = targetCamera.locked ? "" : " · 草稿（镜头未锁定）";
+    const draftLabel =
+      targetCamera.lockMode !== "none"
+        ? ""
+        : " · 草稿（镜头未锁定）";
     setExporting(true);
     setLocalError(null);
     try {
@@ -347,7 +444,7 @@ export const App = () => {
     } finally {
       setExporting(false);
     }
-  }, []);
+  }, [cameraDraftActive]);
 
   useEffect(() => useEditorStore.getState().initialize(), []);
 
@@ -355,7 +452,8 @@ export const App = () => {
     () =>
       connectPreviewExportBridge({
         getScene: () => useEditorStore.getState().scene,
-        getExporter: () => exporterRef.current,
+        getExporter: () =>
+          cameraDraftActiveRef.current ? null : exporterRef.current,
       }),
     [],
   );
@@ -363,6 +461,30 @@ export const App = () => {
   useEffect(() => {
     setLocalError(null);
   }, [scene?.sceneId, scene?.revision]);
+
+  useEffect(() => {
+    const layout = scene?.spatialLayout;
+    if (layout === null || layout === undefined) {
+      setFocusedRegionId(null);
+      setPreviewMode((mode) => (mode === "local" ? "overview" : mode));
+      return;
+    }
+    setFocusedRegionId((current) => {
+      if (
+        current !== null &&
+        layout.regions.some(
+          (region) => region.id === current && region.visible,
+        )
+      ) {
+        return current;
+      }
+      return (
+        layout.regions.find((region) => region.visible)?.id ??
+        layout.regions[0]?.id ??
+        null
+      );
+    });
+  }, [scene?.sceneId, scene?.spatialLayout]);
 
   useEffect(() => {
     if (
@@ -452,6 +574,7 @@ export const App = () => {
     loading || isMutating || connectionStatus !== "connected";
   const exportDisabled =
     exporting ||
+    cameraDraftActive ||
     interactionDisabled ||
     !exporterReady ||
     activeCamera?.kind !== "camera";
@@ -552,29 +675,46 @@ export const App = () => {
               interactionDisabled || activeCamera?.kind !== "camera"
             }
             onClick={() => void toggleActiveCameraLock()}
+            aria-label={
+              activeCamera?.lockMode === "workflow"
+                ? "Workflow locked. Unlock camera"
+                : activeCamera?.lockMode === "user"
+                  ? "User protected. Unlock camera"
+                  : "User protect camera"
+            }
+            title={
+              activeCamera?.lockMode === "workflow"
+                ? "流程锁定"
+                : activeCamera?.lockMode === "user"
+                  ? "用户保护"
+                  : "启用用户保护"
+            }
             type="button"
           >
-            {activeCamera?.locked ? "解锁镜头" : "锁定镜头"}
+            {activeCamera?.lockMode === "workflow"
+              ? "解除流程锁定"
+              : activeCamera?.lockMode === "user"
+                ? "解除用户保护"
+                : "用户保护镜头"}
           </button>
           <button
             className="button button-primary"
-            disabled={loading || isMutating || exporting}
-            onClick={() => {
-              const fileName = saveScene();
-              if (fileName) {
-                setActionNotice(`已生成 ${fileName}`);
-              }
-            }}
+            disabled={
+              loading || isMutating || exporting || savingScene
+            }
+            onClick={() =>
+              void saveCurrentScene().catch(() => undefined)
+            }
             type="button"
           >
-            保存场景
+            {savingScene ? "保存中…" : "保存场景"}
           </button>
           <button
             className="button button-export"
             disabled={exportDisabled}
             onClick={() => void exportPerspective()}
             title={
-              activeCamera?.locked
+              activeCamera?.lockMode !== "none"
                 ? "导出当前权威 revision"
                 : "镜头未锁定，将标记为草稿导出"
             }
@@ -611,14 +751,34 @@ export const App = () => {
       >
         <CompactWorkspaceTabs
           activePane={compactPane}
-          onChange={setCompactPane}
+          onChange={(pane) => {
+            setCompactPane(pane);
+            if (pane === "shot") {
+              setPreviewMode("shot");
+            } else if (pane === "editor" && previewMode === "shot") {
+              setPreviewMode("overview");
+            }
+          }}
         />
         <Outliner
           scene={scene}
           selectedId={selectedEntityId}
+          selectedRegionId={focusedRegionId}
           onSelect={(entityId) => {
             setSelectedEntityId(entityId);
+            const membership = scene.spatialLayout?.memberships.find(
+              (candidate) => candidate.entityId === entityId,
+            );
+            if (membership) {
+              setFocusedRegionId(membership.regionId);
+            }
             setCompactPane(paneAfterSceneSelection());
+          }}
+          onSelectRegion={(regionId) => {
+            setFocusedRegionId(regionId);
+            setSelectedEntityId(null);
+            setPreviewMode("local");
+            setCompactPane("editor");
           }}
         />
         <section
@@ -629,11 +789,40 @@ export const App = () => {
           <ViewportWorkspace
             scene={scene}
             selectedId={selectedEntityId}
-            onSelect={setSelectedEntityId}
+            onSelect={(entityId) => {
+              setSelectedEntityId(entityId);
+              const membership =
+                scene.spatialLayout?.memberships.find(
+                  (candidate) => candidate.entityId === entityId,
+                );
+              if (membership) {
+                setFocusedRegionId(membership.regionId);
+              }
+            }}
             toolMode={interactionDisabled ? "select" : toolMode}
             snapEnabled={snapEnabled}
             onCommitTransform={commitTransform}
+            interactionDisabled={interactionDisabled}
+            onUnlockUserProtectedCamera={toggleActiveCameraLock}
+            onCommitCameraTransform={commitFinalCameraTransform}
+            onCommitCameraFocalLength={commitFinalCameraFocalLength}
+            onCameraDraftChange={handleCameraDraftChange}
             registerExporter={registerExporter}
+            previewMode={previewMode}
+            focusedRegionId={focusedRegionId}
+            onPreviewModeChange={(mode) => {
+              setPreviewMode(mode);
+              if (mode === "shot") {
+                setCompactPane("shot");
+              } else if (compactPane === "shot") {
+                setCompactPane("editor");
+              }
+            }}
+            onFocusedRegionChange={(regionId) => {
+              setFocusedRegionId(regionId);
+              setSelectedEntityId(null);
+              setPreviewMode("local");
+            }}
           />
           {loading || isMutating ? (
             <div className="working-indicator" role="status">
@@ -645,7 +834,9 @@ export const App = () => {
         <Inspector
           scene={scene}
           selectedId={selectedEntityId}
+          selectedRegionId={focusedRegionId}
           disabled={interactionDisabled}
+          onSetLimbPresence={setLimbPresence}
           onCommitTransform={(entityId, transform) => {
             void commitTransform(entityId, transform);
           }}

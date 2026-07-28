@@ -72,7 +72,97 @@ const featureIds = [
   "export.software-png",
   "composition.segmented-report",
   "bridge.safe-shutdown",
+  "actor.limb-presence",
 ] as const;
+
+const entityLockModes = ["none", "workflow", "user"] as const;
+const patchPolicyFields = ["preserveLock"] as const;
+const lockErrorCodes = [
+  "USER_LOCKED",
+  "WORKFLOW_LOCKED",
+  "LOCK_PRESERVATION_CONFLICT",
+] as const;
+const actorLimbPartIds = [
+  "upper_arm_l",
+  "forearm_l",
+  "hand_l",
+  "upper_arm_r",
+  "forearm_r",
+  "hand_r",
+  "upper_leg_l",
+  "lower_leg_l",
+  "foot_l",
+  "upper_leg_r",
+  "lower_leg_r",
+  "foot_r",
+] as const;
+const actorLimbPresenceModes = ["present", "absent"] as const;
+const actorLimbErrorCodes = ["LIMB_HIERARCHY_CONFLICT"] as const;
+
+type SchemaVersionField =
+  | "sceneSchemaVersion"
+  | "patchSchemaVersion"
+  | "intentReportSchemaVersion";
+
+const SCHEMA_PRECEDENCE_CASES: ReadonlyArray<
+  readonly [string, string, SchemaVersionField, string]
+> = [
+  [
+    "scene schema",
+    "scene.create",
+    "sceneSchemaVersion",
+    "SCENE_SCHEMA_UNSUPPORTED",
+  ],
+  [
+    "patch schema",
+    "patch.apply",
+    "patchSchemaVersion",
+    "PATCH_SCHEMA_UNSUPPORTED",
+  ],
+  [
+    "intent schema",
+    "scene.submit",
+    "intentReportSchemaVersion",
+    "INTENT_REPORT_SCHEMA_UNSUPPORTED",
+  ],
+] as const;
+
+const LOCK_FIELD_FAILURES: ReadonlyArray<
+  readonly [string, Record<string, unknown>]
+> = [
+  ["missing entity lock modes", { entityLockModes: undefined }],
+  ["malformed entity lock modes", { entityLockModes: "none" }],
+  ["missing patch policy fields", { patchPolicyFields: undefined }],
+  ["malformed patch policy fields", { patchPolicyFields: "preserveLock" }],
+  ["missing lock error codes", { lockErrorCodes: undefined }],
+  ["malformed lock error codes", { lockErrorCodes: "USER_LOCKED" }],
+  ["missing actor limb part ids", { actorLimbPartIds: undefined }],
+  ["malformed actor limb part ids", { actorLimbPartIds: "hand_l" }],
+  ["missing actor limb presence modes", { actorLimbPresenceModes: undefined }],
+  ["malformed actor limb error codes", { actorLimbErrorCodes: "LIMB_HIERARCHY_CONFLICT" }],
+] as const;
+
+const SCHEMA_LOCK_PRECEDENCE_CASES: ReadonlyArray<
+  readonly [
+    string,
+    string,
+    SchemaVersionField,
+    Record<string, unknown>,
+    string,
+  ]
+> = SCHEMA_PRECEDENCE_CASES.flatMap(
+  ([schemaLabel, requestedAction, schemaField, code]) =>
+    LOCK_FIELD_FAILURES.map(
+    ([lockLabel, lockOverride]) =>
+      [
+        `${schemaLabel} before ${lockLabel}`,
+        requestedAction,
+        schemaField,
+        lockOverride,
+        code,
+      ] as const,
+    ),
+);
 
 const v2Manifest = (
   overrides: Record<string, unknown> = {},
@@ -81,9 +171,9 @@ const v2Manifest = (
   capabilitiesContractVersion: 2,
   applicationVersion: "1.0.0",
   bridgeProtocolVersion: 1,
-  sceneSchemaVersion: 1,
-  patchSchemaVersion: 1,
-  intentReportSchemaVersion: 1,
+  sceneSchemaVersion: 4,
+  patchSchemaVersion: 4,
+  intentReportSchemaVersion: 4,
   semanticAuthority: "host",
   inputContract: "structured-only",
   modelIntegration: "none",
@@ -91,6 +181,12 @@ const v2Manifest = (
   networkPolicy: "loopback-only",
   commands: [...commandIds],
   features: [...featureIds],
+  entityLockModes: [...entityLockModes],
+  patchPolicyFields: [...patchPolicyFields],
+  lockErrorCodes: [...lockErrorCodes],
+  actorLimbPartIds: [...actorLimbPartIds],
+  actorLimbPresenceModes: [...actorLimbPresenceModes],
+  actorLimbErrorCodes: [...actorLimbErrorCodes],
   ...overrides,
 });
 
@@ -130,6 +226,12 @@ interface PlannerModule {
   buildCompatibilityPlan: (
     input: Record<string, unknown>,
   ) => CompatibilityPlan;
+  validateCapabilitiesManifest: (
+    input: Record<string, unknown>,
+  ) => {
+    manifest?: Record<string, unknown>;
+    error?: PlanError;
+  };
 }
 
 interface Envelope {
@@ -265,9 +367,15 @@ const buildPlan = (
     requestedAction,
     doctorData,
     skillBridgeProtocolVersion: 1,
-    skillSceneSchemaVersion: 1,
-    skillPatchSchemaVersion: 1,
-    skillIntentReportSchemaVersion: 1,
+    skillSceneSchemaVersion: 4,
+    skillPatchSchemaVersion: 4,
+    skillIntentReportSchemaVersion: 4,
+    skillEntityLockModes: [...entityLockModes],
+    skillPatchPolicyFields: [...patchPolicyFields],
+    skillLockErrorCodes: [...lockErrorCodes],
+    skillActorLimbPartIds: [...actorLimbPartIds],
+    skillActorLimbPresenceModes: [...actorLimbPresenceModes],
+    skillActorLimbErrorCodes: [...actorLimbErrorCodes],
     ...overrides,
   });
 
@@ -402,6 +510,451 @@ describe("v2 compatibility planner", () => {
   });
 
   it.each([
+    ["missing entity lock modes", { entityLockModes: undefined }],
+    ["empty entity lock modes", { entityLockModes: [] }],
+    [
+      "duplicate entity lock modes",
+      { entityLockModes: ["none", "workflow", "user", "user"] },
+    ],
+    ["non-string entity lock mode", { entityLockModes: ["none", 42] }],
+    ["missing patch policy fields", { patchPolicyFields: undefined }],
+    ["empty patch policy fields", { patchPolicyFields: [] }],
+    [
+      "duplicate patch policy fields",
+      { patchPolicyFields: ["preserveLock", "preserveLock"] },
+    ],
+    ["non-string patch policy field", { patchPolicyFields: [42] }],
+    ["missing lock error codes", { lockErrorCodes: undefined }],
+    ["empty lock error codes", { lockErrorCodes: [] }],
+    [
+      "duplicate lock error codes",
+      {
+        lockErrorCodes: [
+          "USER_LOCKED",
+          "WORKFLOW_LOCKED",
+          "LOCK_PRESERVATION_CONFLICT",
+          "USER_LOCKED",
+        ],
+      },
+    ],
+    ["non-string lock error code", { lockErrorCodes: [42] }],
+    ["missing actor limb part ids", { actorLimbPartIds: undefined }],
+    ["empty actor limb part ids", { actorLimbPartIds: [] }],
+    [
+      "duplicate actor limb presence modes",
+      { actorLimbPresenceModes: ["present", "absent", "present"] },
+    ],
+    ["non-string actor limb error code", { actorLimbErrorCodes: [42] }],
+  ])("rejects a manifest with %s", (_label, manifestOverride) => {
+    const plan = buildPlan(
+      "scene.submit",
+      v2Manifest(manifestOverride),
+    );
+
+    expect(plan).toMatchObject({
+      mode: "incompatible",
+      actionAllowed: false,
+      allowedActions: [],
+      blockingError: { code: "CAPABILITIES_INVALID" },
+    });
+  });
+
+  it.each([
+    [
+      "entity lock modes",
+      { skillEntityLockModes: ["none", "workflow"] },
+    ],
+    [
+      "patch policy fields",
+      { skillPatchPolicyFields: ["keepLock"] },
+    ],
+    [
+      "lock error codes",
+      {
+        skillLockErrorCodes: [
+          "USER_LOCKED",
+          "WORKFLOW_LOCKED",
+          "ENTITY_LOCKED",
+        ],
+      },
+    ],
+    [
+      "actor limb part ids",
+      {
+        skillActorLimbPartIds: [
+          ...actorLimbPartIds.slice(0, -1),
+          "toe_r",
+        ],
+      },
+    ],
+    [
+      "actor limb presence modes",
+      { skillActorLimbPresenceModes: ["present"] },
+    ],
+    [
+      "actor limb error codes",
+      { skillActorLimbErrorCodes: ["UNKNOWN_LIMB_ERROR"] },
+    ],
+  ])("rejects %s that differ from the bundled Skill", (_label, overrides) => {
+    const plan = buildPlan("scene.submit", v2Manifest(), overrides);
+
+    expect(plan).toMatchObject({
+      mode: "incompatible",
+      actionAllowed: false,
+      allowedActions: [],
+      blockingError: { code: "CAPABILITIES_INVALID" },
+    });
+  });
+
+  it("requires a plain or null-prototype manifest with own required fields", () => {
+    const valid = v2Manifest();
+    const inherited = Object.create(valid) as Record<string, unknown>;
+    const nullPrototype = Object.assign(
+      Object.create(null) as Record<string, unknown>,
+      valid,
+    );
+
+    expect(
+      buildPlan(
+        "scene.submit",
+        [] as unknown as Record<string, unknown>,
+      ),
+    ).toMatchObject({
+      blockingError: { code: "CAPABILITIES_INVALID" },
+    });
+    expect(buildPlan("scene.submit", inherited)).toMatchObject({
+      blockingError: { code: "CAPABILITIES_INVALID" },
+    });
+    expect(buildPlan("scene.submit", nullPrototype)).toMatchObject({
+      mode: "compatible",
+      actionAllowed: true,
+      blockingError: null,
+    });
+  });
+
+  it.each(["getter", "proxy"] as const)(
+    "fails closed without leaking a throwing %s manifest",
+    (kind) => {
+      const marker = `PRIVATE_${kind.toUpperCase()}_MARKER`;
+      const valid = v2Manifest();
+      let doctorData: Record<string, unknown>;
+      if (kind === "getter") {
+        doctorData = { ...valid };
+        Object.defineProperty(doctorData, "service", {
+          enumerable: true,
+          get() {
+            throw new Error(marker);
+          },
+        });
+      } else {
+        doctorData = new Proxy(
+          { ...valid },
+          {
+            getPrototypeOf() {
+              throw new Error(marker);
+            },
+          },
+        );
+      }
+      let caught: unknown;
+      let plan: CompatibilityPlan | undefined;
+
+      try {
+        plan = buildPlan("scene.submit", doctorData);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeUndefined();
+      expect(plan).toMatchObject({
+        mode: "incompatible",
+        actionAllowed: false,
+        blockingError: { code: "CAPABILITIES_INVALID" },
+      });
+      expect(JSON.stringify(plan)).not.toContain(marker);
+    },
+  );
+
+  it.each(["offline", "live"] as const)(
+    "uses one stable snapshot of a stateful %s manifest",
+    (source) => {
+      const target = v2Manifest();
+      let lockModeReads = 0;
+      const manifest = new Proxy(target, {
+        get(current, key, receiver) {
+          if (key === "entityLockModes") {
+            lockModeReads += 1;
+            return lockModeReads === 1
+              ? [...entityLockModes]
+              : ["none", "workflow", "system"];
+          }
+          return Reflect.get(current, key, receiver);
+        },
+      });
+      const plan =
+        source === "offline"
+          ? buildPlan("scene.submit", manifest)
+          : buildPlan("scene.submit", v2Manifest(), {
+              liveRequested: true,
+              healthData: manifest,
+            });
+
+      expect(lockModeReads).toBe(0);
+      expect(plan).toMatchObject({
+        mode: "compatible",
+        actionAllowed: true,
+        liveVerified: source === "live",
+        blockingError: null,
+      });
+    },
+  );
+
+  it("returns one stable snapshot from direct manifest validation", () => {
+    const target = v2Manifest();
+    let lockModeReads = 0;
+    const manifest = new Proxy(target, {
+      get(current, key, receiver) {
+        if (key === "entityLockModes") {
+          lockModeReads += 1;
+          return lockModeReads === 1
+            ? [...entityLockModes]
+            : ["none", "workflow", "system"];
+        }
+        return Reflect.get(current, key, receiver);
+      },
+    });
+
+    const validated =
+      planner.validateCapabilitiesManifest(manifest);
+
+    expect(lockModeReads).toBe(0);
+    expect(validated.error).toBeUndefined();
+    expect(validated.manifest).toMatchObject({
+      entityLockModes: [...entityLockModes],
+    });
+  });
+
+  it.each([
+    ["offline", "BRIDGE_PROTOCOL_UNSUPPORTED", "PRIVATE_KNOWN_OFFLINE"],
+    ["live", "BRIDGE_PROTOCOL_UNSUPPORTED", "PRIVATE_KNOWN_LIVE"],
+    ["offline", "PRIVATE_OFFLINE_CODE", "PRIVATE_UNKNOWN_OFFLINE"],
+    ["live", "PRIVATE_LIVE_CODE", "PRIVATE_UNKNOWN_LIVE"],
+  ] as const)(
+    "fails closed for a forged %s proxy error",
+    (source, forgedCode, marker) => {
+      const target = v2Manifest();
+      const manifest = new Proxy(target, {
+        getPrototypeOf() {
+          throw { code: forgedCode, message: marker };
+        },
+      });
+      const plan =
+        source === "offline"
+          ? buildPlan("scene.submit", manifest)
+          : buildPlan("scene.submit", v2Manifest(), {
+              liveRequested: true,
+              healthData: manifest,
+            });
+      const serialized = JSON.stringify(plan);
+
+      expect(plan).toMatchObject({
+        mode: "incompatible",
+        actionAllowed: false,
+        blockingError: {
+          code: "CAPABILITIES_INVALID",
+          message: "The runtime capability manifest is invalid.",
+        },
+      });
+      expect(serialized).not.toContain(marker);
+      expect(serialized).not.toContain("PRIVATE_");
+    },
+  );
+
+  it.each([
+    [
+      "boundary",
+      {
+        semanticAuthority: "model",
+        bridgeProtocolVersion: 999,
+        sceneSchemaVersion: 5,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "SEMANTIC_BOUNDARY_VIOLATION",
+    ],
+    [
+      "protocol before altered lock capabilities",
+      {
+        bridgeProtocolVersion: 999,
+        sceneSchemaVersion: 5,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+    ],
+    [
+      "protocol before missing lock capabilities",
+      {
+        bridgeProtocolVersion: 999,
+        sceneSchemaVersion: 5,
+        entityLockModes: undefined,
+      },
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+    ],
+    [
+      "schema before lock capabilities",
+      {
+        sceneSchemaVersion: 5,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "SCENE_SCHEMA_UNSUPPORTED",
+    ],
+    [
+      "exact lock capabilities",
+      { entityLockModes: ["none", "workflow", "system"] },
+      "CAPABILITIES_INVALID",
+    ],
+  ] as const)(
+    "uses canonical offline precedence for %s",
+    (_label, override, code) => {
+      const plan = buildPlan("scene.submit", v2Manifest(override));
+
+      expect(plan.blockingError).toMatchObject({ code });
+    },
+  );
+
+  it.each([
+    [
+      "boundary",
+      {
+        semanticAuthority: "model",
+        bridgeProtocolVersion: 999,
+        sceneSchemaVersion: 5,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "SEMANTIC_BOUNDARY_VIOLATION",
+    ],
+    [
+      "protocol before altered lock capabilities",
+      {
+        bridgeProtocolVersion: 999,
+        sceneSchemaVersion: 5,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+    ],
+    [
+      "protocol before missing lock capabilities",
+      {
+        bridgeProtocolVersion: 999,
+        sceneSchemaVersion: 5,
+        entityLockModes: undefined,
+      },
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+    ],
+    [
+      "schema before lock capabilities",
+      {
+        sceneSchemaVersion: 5,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "SCENE_SCHEMA_UNSUPPORTED",
+    ],
+    [
+      "exact lock capabilities",
+      { entityLockModes: ["none", "workflow", "system"] },
+      "CAPABILITIES_INVALID",
+    ],
+  ] as const)(
+    "uses canonical live precedence for %s",
+    (_label, override, code) => {
+      const plan = buildPlan("scene.submit", v2Manifest(), {
+        liveRequested: true,
+        healthData: v2Manifest(override),
+      });
+
+      expect(plan.blockingError).toMatchObject({ code });
+    },
+  );
+
+  it.each(SCHEMA_LOCK_PRECEDENCE_CASES)(
+    "uses complete offline schema precedence for %s",
+    (
+      _label,
+      requestedAction,
+      schemaField,
+      lockOverride,
+      code,
+    ) => {
+      const plan = buildPlan(
+        requestedAction,
+        v2Manifest({
+          ...lockOverride,
+          [schemaField]: 5,
+        }),
+      );
+
+      expect(plan.blockingError).toMatchObject({ code });
+    },
+  );
+
+  it.each(SCHEMA_PRECEDENCE_CASES)(
+    "uses global offline schema precedence for %s with an unrelated action",
+    (_label, _schemaAction, schemaField, code) => {
+      const plan = buildPlan(
+        "doctor",
+        v2Manifest({
+          [schemaField]: 5,
+          lockErrorCodes: "malformed",
+        }),
+      );
+
+      expect(plan.blockingError).toMatchObject({ code });
+    },
+  );
+
+  it.each(SCHEMA_LOCK_PRECEDENCE_CASES)(
+    "uses complete live schema precedence for %s",
+    (
+      _label,
+      requestedAction,
+      schemaField,
+      lockOverride,
+      code,
+    ) => {
+      const plan = buildPlan(requestedAction, v2Manifest(), {
+        liveRequested: true,
+        healthData: v2Manifest({
+          ...lockOverride,
+          [schemaField]: 5,
+        }),
+      });
+
+      expect(plan.blockingError).toMatchObject({ code });
+    },
+  );
+
+  it("compares reordered capability sets without mutating the manifest", () => {
+    const manifest = v2Manifest({
+      commands: [...commandIds].reverse(),
+      features: [...featureIds].reverse(),
+      entityLockModes: [...entityLockModes].reverse(),
+      patchPolicyFields: [...patchPolicyFields].reverse(),
+      lockErrorCodes: [...lockErrorCodes].reverse(),
+      actorLimbPartIds: [...actorLimbPartIds].reverse(),
+      actorLimbPresenceModes: [...actorLimbPresenceModes].reverse(),
+      actorLimbErrorCodes: [...actorLimbErrorCodes],
+    });
+    const before = structuredClone(manifest);
+
+    const plan = buildPlan("scene.submit", manifest);
+
+    expect(plan).toMatchObject({
+      mode: "compatible",
+      actionAllowed: true,
+    });
+    expect(manifest).toEqual(before);
+  });
+
+  it.each([
     "clientKey",
     "clientkey",
     "CLIENTKEY",
@@ -528,19 +1081,19 @@ describe("v2 compatibility planner", () => {
   it.each([
     [
       "scene",
-      { sceneSchemaVersion: 2 },
+      { sceneSchemaVersion: 5 },
       ["scene.create", "scene.submit"],
       "SCENE_SCHEMA_UNSUPPORTED",
     ],
     [
       "patch",
-      { patchSchemaVersion: 2 },
+      { patchSchemaVersion: 5 },
       ["patch.apply", "patch.submit"],
       "PATCH_SCHEMA_UNSUPPORTED",
     ],
     [
       "intent",
-      { intentReportSchemaVersion: 2 },
+      { intentReportSchemaVersion: 5 },
       ["scene.submit", "patch.submit"],
       "INTENT_REPORT_SCHEMA_UNSUPPORTED",
     ],
@@ -599,6 +1152,34 @@ describe("v2 compatibility planner", () => {
       allowedActions: [],
       liveVerified: false,
       blockingError: { code: "SEMANTIC_BOUNDARY_VIOLATION" },
+    });
+  });
+
+  it.each([
+    ["entity lock modes", { entityLockModes: ["none", "workflow"] }],
+    ["patch policy fields", { patchPolicyFields: ["keepLock"] }],
+    [
+      "lock error codes",
+      {
+        lockErrorCodes: [
+          "USER_LOCKED",
+          "WORKFLOW_LOCKED",
+          "ENTITY_LOCKED",
+        ],
+      },
+    ],
+  ])("treats an offline/live %s mismatch as invalid", (_label, override) => {
+    const plan = buildPlan("scene.submit", v2Manifest(), {
+      liveRequested: true,
+      healthData: v2Manifest(override),
+    });
+
+    expect(plan).toMatchObject({
+      mode: "incompatible",
+      actionAllowed: false,
+      allowedActions: [],
+      liveVerified: false,
+      blockingError: { code: "CAPABILITIES_INVALID" },
     });
   });
 
@@ -1209,6 +1790,60 @@ describe("portable v2 Skill wrapper", () => {
     });
   });
 
+  it.each([
+    [
+      "missing entity lock modes",
+      { entityLockModes: undefined },
+      ["patch", "submit", "--file", "patch.json"],
+    ],
+    [
+      "mismatched entity lock modes",
+      { entityLockModes: ["none", "workflow", "system"] },
+      ["ensure"],
+    ],
+    [
+      "missing patch policy fields",
+      { patchPolicyFields: undefined },
+      ["patch", "submit", "--file", "patch.json"],
+    ],
+    [
+      "mismatched patch policy fields",
+      { patchPolicyFields: ["keepLock"] },
+      ["ensure"],
+    ],
+    [
+      "missing lock error codes",
+      { lockErrorCodes: undefined },
+      ["patch", "submit", "--file", "patch.json"],
+    ],
+    [
+      "mismatched lock error codes",
+      {
+        lockErrorCodes: [
+          "USER_LOCKED",
+          "WORKFLOW_LOCKED",
+          "ENTITY_LOCKED",
+        ],
+      },
+      ["ensure"],
+    ],
+  ] as const)(
+    "blocks %s before startup or scene mutation",
+    async (_label, manifestOverride, args) => {
+      const runtime = await createFixture(v2Manifest(manifestOverride));
+
+      const result = await runtime.run([...args]);
+
+      expectError(result, "CAPABILITIES_INVALID");
+      expect(await runtime.readActionIds()).toEqual(["doctor"]);
+      expect(await runtime.readState()).toMatchObject({
+        mutationCount: 0,
+        startupCount: 0,
+        revision: 0,
+      });
+    },
+  );
+
   it("blocks a semantic-boundary violation before forwarding", async () => {
     const runtime = await createFixture(
       v2Manifest({ requiresApiKey: false }),
@@ -1315,7 +1950,7 @@ describe("portable v2 Skill wrapper", () => {
 
   it("forwards an unrelated action when one schema is degraded", async () => {
     const runtime = await createFixture(
-      v2Manifest({ sceneSchemaVersion: 2 }),
+      v2Manifest({ sceneSchemaVersion: 5 }),
     );
 
     const result = await runtime.run(["snapshot"]);
@@ -1537,6 +2172,39 @@ describe("portable v2 Skill wrapper", () => {
     expect(source).not.toContain("NODE_OPTIONS");
   });
 
+  it.each([
+    [
+      "USER_LOCKED",
+      "A requested scene entity is user-locked.",
+    ],
+    [
+      "WORKFLOW_LOCKED",
+      "A requested scene entity is workflow-locked.",
+    ],
+    [
+      "LOCK_PRESERVATION_CONFLICT",
+      "The requested change conflicts with lock preservation.",
+    ],
+  ] as const)("maps %s to a safe stable message", async (code, message) => {
+    const marker = `PRIVATE_${code}_MARKER`;
+    const runtime = await createFixture(v2Manifest(), {
+      actionErrors: {
+        "patch.apply": { code, message: marker },
+      },
+    });
+
+    const result = await runtime.run([
+      "patch",
+      "apply",
+      "--file",
+      "patch.json",
+    ]);
+
+    const envelope = expectError(result, code, [marker]);
+    expect(envelope.error).toEqual({ code, message });
+    expect(await runtime.readState()).toMatchObject({ mutationCount: 0 });
+  });
+
   it("sanitizes forwarded runtime failures", async () => {
     const marker = "PRIVATE_RUNTIME_FAILURE_MARKER";
     const runtime = await createFixture(v2Manifest(), {
@@ -1589,6 +2257,27 @@ describe("forward compatibility fixture generator", () => {
     expect(created.tiers).toEqual([...defaultForwardTiers]);
     for (const tier of created.tiers) {
       expect(Object.keys(created.cases[tier])).toEqual(forwardCaseIds);
+      const fixture = JSON.parse(
+        await readFile(
+          path.join(
+            created.cases[tier].current,
+            "fixture-config.json",
+          ),
+          "utf8",
+        ),
+      ) as { doctorData: Record<string, unknown> };
+      expect(fixture.doctorData).toMatchObject({
+        capabilitiesContractVersion: 2,
+        sceneSchemaVersion: 4,
+        patchSchemaVersion: 4,
+        intentReportSchemaVersion: 4,
+        entityLockModes: [...entityLockModes],
+        patchPolicyFields: [...patchPolicyFields],
+        lockErrorCodes: [...lockErrorCodes],
+        actorLimbPartIds: [...actorLimbPartIds],
+        actorLimbPresenceModes: [...actorLimbPresenceModes],
+        actorLimbErrorCodes: [...actorLimbErrorCodes],
+      });
     }
   });
 });

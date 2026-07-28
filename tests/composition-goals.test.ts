@@ -9,13 +9,15 @@ import {
   scenePatchSchema,
 } from "../src/domain/scene-patch";
 import { sceneSpecSchema } from "../src/domain/scene-schema";
+import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 
 describe("optional SceneSpec composition goals", () => {
-  it("keeps legacy schemaVersion 1 scenes valid without adding a field", () => {
+  it("keeps composition goals optional in canonical scenes", () => {
     const scene = createDefaultScene();
     const parsed = sceneSpecSchema.parse(scene);
 
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(4);
+    expect(parsed.spatialLayout).toBeNull();
     expect("compositionGoals" in parsed).toBe(false);
   });
 
@@ -88,11 +90,12 @@ describe("composition goal patch operation", () => {
       throw new Error("Composition goal operation did not validate.");
     }
     const setPatch = scenePatchSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: PATCH_SCHEMA_VERSION,
       patchId: "patch_set_composition",
       sceneId: scene.sceneId,
       baseRevision: scene.revision,
       source: "manual",
+      preserveLock: false,
       operations: [setOperation],
     });
 
@@ -101,11 +104,12 @@ describe("composition goal patch operation", () => {
     expect(setResult.next.revision).toBe(1);
 
     const clearResult = applyScenePatch(setResult.next, {
-      schemaVersion: 1,
+      schemaVersion: PATCH_SCHEMA_VERSION,
       patchId: "patch_clear_composition",
       sceneId: scene.sceneId,
       baseRevision: setResult.next.revision,
       source: "manual",
+      preserveLock: false,
       operations: [
         {
           op: "scene.composition-goals.set",
@@ -125,11 +129,12 @@ describe("composition goal patch operation", () => {
 
     expect(() =>
       applyScenePatch(scene, {
-        schemaVersion: 1,
+        schemaVersion: PATCH_SCHEMA_VERSION,
         patchId: "patch_remove_critical",
         sceneId: scene.sceneId,
         baseRevision: scene.revision,
         source: "manual",
+        preserveLock: false,
         operations: [
           {
             op: "entity.remove",

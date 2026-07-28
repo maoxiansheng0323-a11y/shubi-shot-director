@@ -1,13 +1,15 @@
 import { lookAtQuaternion } from "./scene-math";
+import { createAllPresentLimbPresence } from "./actor-anatomy";
 import {
   identityQuaternion,
   sceneSpecSchema,
   type SceneSpec,
 } from "./scene-schema";
+import { SCENE_SCHEMA_VERSION } from "./schema-versions";
 
 export const createDefaultScene = (): SceneSpec =>
   sceneSpecSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: SCENE_SCHEMA_VERSION,
     sceneId: "scene_starter",
     revision: 0,
     title: "Starter Graybox",
@@ -40,7 +42,7 @@ export const createDefaultScene = (): SceneSpec =>
           scale: [1, 1, 1],
         },
         visible: true,
-        locked: true,
+        lockMode: "none",
         preset: {
           registry: "builtin",
           id: "room.small-v1",
@@ -66,7 +68,7 @@ export const createDefaultScene = (): SceneSpec =>
           scale: [1, 1, 1],
         },
         visible: true,
-        locked: false,
+        lockMode: "none",
         rig: {
           registry: "builtin",
           id: "rig.humanoid-v1",
@@ -77,6 +79,7 @@ export const createDefaultScene = (): SceneSpec =>
           heightM: 1.72,
           shoulderWidthM: 0.42,
           build: "average",
+          limbPresence: createAllPresentLimbPresence(),
         },
         pose: {
           preset: {
@@ -102,7 +105,7 @@ export const createDefaultScene = (): SceneSpec =>
           scale: [1, 1, 1],
         },
         visible: true,
-        locked: false,
+        lockMode: "none",
         preset: {
           registry: "builtin",
           id: "prop.block-v1",
@@ -126,7 +129,7 @@ export const createDefaultScene = (): SceneSpec =>
           scale: [1, 1, 1],
         },
         visible: true,
-        locked: false,
+        lockMode: "none",
         lens: {
           projection: "perspective",
           focalLengthMm: 45,

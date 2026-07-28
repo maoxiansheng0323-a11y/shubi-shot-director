@@ -1,0 +1,546 @@
+{
+  "intentReport": {
+    "schemaVersion": 4,
+    "operation": "create",
+    "allowPartial": false,
+    "recognizedConstraints": [
+      {
+        "id": "intent_spatial_regions_1",
+        "kind": "spatial-region",
+        "required": true,
+        "targets": ["region_alpha", "region_beta", "region_gamma"],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.spatialLayout.regions"
+          }
+        ]
+      },
+      {
+        "id": "intent_spatial_boundaries_1",
+        "kind": "spatial-boundary",
+        "required": true,
+        "targets": [
+          "boundary_alpha_west",
+          "boundary_alpha_north",
+          "boundary_alpha_south",
+          "boundary_alpha_beta",
+          "boundary_beta_north",
+          "boundary_beta_south",
+          "boundary_beta_gamma",
+          "boundary_gamma_north",
+          "boundary_gamma_south",
+          "boundary_gamma_east"
+        ],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.spatialLayout.boundaries"
+          }
+        ]
+      },
+      {
+        "id": "intent_spatial_openings_1",
+        "kind": "spatial-opening",
+        "required": true,
+        "targets": ["opening_alpha_beta", "opening_beta_gamma"],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.spatialLayout.openings"
+          }
+        ]
+      },
+      {
+        "id": "intent_spatial_connections_1",
+        "kind": "spatial-connection",
+        "required": true,
+        "targets": ["connection_alpha_beta", "connection_beta_gamma"],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.spatialLayout.connections"
+          }
+        ]
+      },
+      {
+        "id": "intent_spatial_memberships_1",
+        "kind": "entity-region-membership",
+        "required": true,
+        "targets": [
+          "actor_generic_1",
+          "prop_block_1",
+          "camera_shot_1",
+          "region_alpha",
+          "region_beta",
+          "region_gamma"
+        ],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.spatialLayout.memberships"
+          }
+        ]
+      },
+      {
+        "id": "intent_entity_presence_1",
+        "kind": "entity-presence",
+        "required": true,
+        "targets": ["actor_generic_1", "prop_block_1", "camera_shot_1"],
+        "evidence": [
+          {
+            "type": "entity",
+            "entityId": "actor_generic_1"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_block_1"
+          },
+          {
+            "type": "entity",
+            "entityId": "camera_shot_1"
+          }
+        ]
+      },
+      {
+        "id": "intent_actor_slot_1",
+        "kind": "actor-slot",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [
+          {
+            "type": "entity-property",
+            "entityId": "actor_generic_1",
+            "path": "actor.slot"
+          }
+        ]
+      },
+      {
+        "id": "intent_actor_limb_presence_1",
+        "kind": "actor-limb-presence",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_arm_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.forearm_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.hand_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_arm_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.forearm_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.hand_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_leg_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.lower_leg_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.foot_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_leg_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.lower_leg_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.foot_r" }
+        ]
+      },
+      {
+        "id": "intent_pose_1",
+        "kind": "pose",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [
+          {
+            "type": "entity-property",
+            "entityId": "actor_generic_1",
+            "path": "actor.pose"
+          }
+        ]
+      },
+      {
+        "id": "intent_contact_1",
+        "kind": "contact",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [
+          {
+            "type": "scene-constraint",
+            "constraintId": "constraint_ground_actor_1"
+          }
+        ]
+      },
+      {
+        "id": "intent_camera_target_1",
+        "kind": "camera-target",
+        "required": true,
+        "targets": ["camera_shot_1", "actor_generic_1"],
+        "evidence": [
+          {
+            "type": "scene-constraint",
+            "constraintId": "constraint_visible_actor_1"
+          }
+        ]
+      },
+      {
+        "id": "intent_focal_length_1",
+        "kind": "focal-length",
+        "required": true,
+        "targets": ["camera_shot_1"],
+        "evidence": [
+          {
+            "type": "entity-property",
+            "entityId": "camera_shot_1",
+            "path": "camera.lens.focalLengthMm"
+          }
+        ]
+      },
+      {
+        "id": "intent_framing_1",
+        "kind": "framing",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.compositionGoals.framing"
+          }
+        ]
+      },
+      {
+        "id": "intent_output_1",
+        "kind": "output",
+        "required": true,
+        "targets": [],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.output"
+          }
+        ]
+      }
+    ],
+    "unsupportedConstraints": [],
+    "unresolvedRelations": [],
+    "warnings": [],
+    "canApplySafely": true
+  },
+  "scene": {
+    "schemaVersion": 4,
+    "sceneId": "scene_connected_regions_1",
+    "revision": 0,
+    "title": "Connected regions graybox",
+    "coordinateSystem": {
+      "handedness": "right",
+      "upAxis": "+Y",
+      "cameraForwardAxis": "-Z",
+      "lengthUnit": "meter"
+    },
+    "activeCameraId": "camera_shot_1",
+    "output": {
+      "aspect": {
+        "width": 16,
+        "height": 9
+      },
+      "resolutionPx": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    "entities": [
+      {
+        "id": "actor_generic_1",
+        "label": "Generic actor",
+        "parentId": null,
+        "kind": "actor",
+        "slot": "actor_generic_1",
+        "transform": {
+          "positionM": [0, 0.977, 0],
+          "rotation": [0, 0, 0, 1],
+          "scale": [1, 1, 1]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "rig": {
+          "registry": "builtin",
+          "id": "rig.humanoid-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "body": {
+          "heightM": 1.72,
+          "shoulderWidthM": 0.42,
+          "build": "average",
+          "limbPresence": {
+            "upper_arm_l": "present",
+            "forearm_l": "present",
+            "hand_l": "present",
+            "upper_arm_r": "present",
+            "forearm_r": "present",
+            "hand_r": "present",
+            "upper_leg_l": "present",
+            "lower_leg_l": "present",
+            "foot_l": "present",
+            "upper_leg_r": "present",
+            "lower_leg_r": "present",
+            "foot_r": "present"
+          }
+        },
+        "pose": {
+          "preset": {
+            "registry": "builtin",
+            "id": "pose.standing-neutral-v1",
+            "version": 1,
+            "parameters": {
+              "contactOffsetM": 0.977
+            }
+          },
+          "joints": {}
+        },
+        "color": "#c7ced8"
+      },
+      {
+        "id": "prop_block_1",
+        "label": "Generic marker",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [4, 0.5, 0],
+          "rotation": [0, 0, 0, 1],
+          "scale": [1, 1, 1]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [0.8, 1, 0.8]
+        },
+        "color": "#9ba6b2"
+      },
+      {
+        "id": "camera_shot_1",
+        "label": "Shot camera",
+        "parentId": null,
+        "kind": "camera",
+        "transform": {
+          "positionM": [-5.4, 1.05, 0],
+          "rotation": [0, -0.7071067811865475, 0, 0.7071067811865476],
+          "scale": [1, 1, 1]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "lens": {
+          "projection": "perspective",
+          "focalLengthMm": 28,
+          "sensorWidthMm": 36,
+          "nearM": 0.05,
+          "farM": 200
+        }
+      }
+    ],
+    "constraints": [
+      {
+        "id": "constraint_ground_actor_1",
+        "type": "ground-contact",
+        "entityId": "actor_generic_1",
+        "surfaceEntityId": null,
+        "enabled": true
+      },
+      {
+        "id": "constraint_visible_actor_1",
+        "type": "keep-visible",
+        "cameraId": "camera_shot_1",
+        "subjectEntityId": "actor_generic_1",
+        "anchor": "face",
+        "enabled": true
+      }
+    ],
+    "compositionGoals": {
+      "framing": {
+        "mode": "full",
+        "targetEntityIds": ["actor_generic_1"]
+      },
+      "criticalEntityIds": ["actor_generic_1"]
+    },
+    "spatialLayout": {
+      "floorY": 0,
+      "regions": [
+        {
+          "id": "region_alpha",
+          "label": "Alpha",
+          "footprintXZ": [[-6, -2], [-2, -2], [-2, 2], [-6, 2]],
+          "heightM": 2.8,
+          "visible": true
+        },
+        {
+          "id": "region_beta",
+          "label": "Beta",
+          "footprintXZ": [[-2, -2], [2, -2], [2, 2], [-2, 2]],
+          "heightM": 2.8,
+          "visible": true
+        },
+        {
+          "id": "region_gamma",
+          "label": "Gamma",
+          "footprintXZ": [[2, -2], [6, -2], [6, 2], [2, 2]],
+          "heightM": 2.8,
+          "visible": true
+        }
+      ],
+      "boundaries": [
+        {
+          "id": "boundary_alpha_west",
+          "label": "Alpha West",
+          "regionIds": ["region_alpha"],
+          "startXZ": [-6, -2],
+          "endXZ": [-6, 2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_alpha_north",
+          "label": "Alpha North",
+          "regionIds": ["region_alpha"],
+          "startXZ": [-6, -2],
+          "endXZ": [-2, -2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_alpha_south",
+          "label": "Alpha South",
+          "regionIds": ["region_alpha"],
+          "startXZ": [-6, 2],
+          "endXZ": [-2, 2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_alpha_beta",
+          "label": "Alpha Beta",
+          "regionIds": ["region_alpha", "region_beta"],
+          "startXZ": [-2, -2],
+          "endXZ": [-2, 2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_beta_north",
+          "label": "Beta North",
+          "regionIds": ["region_beta"],
+          "startXZ": [-2, -2],
+          "endXZ": [2, -2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_beta_south",
+          "label": "Beta South",
+          "regionIds": ["region_beta"],
+          "startXZ": [-2, 2],
+          "endXZ": [2, 2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_beta_gamma",
+          "label": "Beta Gamma",
+          "regionIds": ["region_beta", "region_gamma"],
+          "startXZ": [2, -2],
+          "endXZ": [2, 2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_gamma_north",
+          "label": "Gamma North",
+          "regionIds": ["region_gamma"],
+          "startXZ": [2, -2],
+          "endXZ": [6, -2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_gamma_south",
+          "label": "Gamma South",
+          "regionIds": ["region_gamma"],
+          "startXZ": [2, 2],
+          "endXZ": [6, 2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_gamma_east",
+          "label": "Gamma East",
+          "regionIds": ["region_gamma"],
+          "startXZ": [6, -2],
+          "endXZ": [6, 2],
+          "heightM": 2.8,
+          "thicknessM": 0.1,
+          "visible": true
+        }
+      ],
+      "openings": [
+        {
+          "id": "opening_alpha_beta",
+          "label": "Alpha Beta Opening",
+          "boundaryId": "boundary_alpha_beta",
+          "offsetM": 1.4,
+          "widthM": 1.2,
+          "bottomM": 0,
+          "heightM": 2.1,
+          "visible": true
+        },
+        {
+          "id": "opening_beta_gamma",
+          "label": "Beta Gamma Opening",
+          "boundaryId": "boundary_beta_gamma",
+          "offsetM": 1.4,
+          "widthM": 1.2,
+          "bottomM": 0,
+          "heightM": 2.1,
+          "visible": true
+        }
+      ],
+      "connections": [
+        {
+          "id": "connection_alpha_beta",
+          "label": "Alpha Beta Connection",
+          "regionIds": ["region_alpha", "region_beta"],
+          "openingId": "opening_alpha_beta",
+          "allowsPassage": true,
+          "allowsSight": true,
+          "enabled": true
+        },
+        {
+          "id": "connection_beta_gamma",
+          "label": "Beta Gamma Connection",
+          "regionIds": ["region_beta", "region_gamma"],
+          "openingId": "opening_beta_gamma",
+          "allowsPassage": true,
+          "allowsSight": true,
+          "enabled": true
+        }
+      ],
+      "memberships": [
+        {
+          "entityId": "camera_shot_1",
+          "regionId": "region_alpha"
+        },
+        {
+          "entityId": "actor_generic_1",
+          "regionId": "region_beta"
+        },
+        {
+          "entityId": "prop_block_1",
+          "regionId": "region_gamma"
+        }
+      ]
+    }
+  }
+}

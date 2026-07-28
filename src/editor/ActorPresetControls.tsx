@@ -87,7 +87,7 @@ export const ActorPresetControls = ({
     setRelationshipSurfaceId(currentSurfaceValue);
   }, [actor.id, currentSurfaceValue]);
 
-  const editingDisabled = disabled || actor.locked;
+  const editingDisabled = disabled || actor.lockMode !== "none";
   const contactEnabled =
     contact?.type === "ground-contact" ? contact.enabled : false;
   const posePresets = listPosePresets();
@@ -102,7 +102,35 @@ export const ActorPresetControls = ({
     <section className="inspector-section preset-controls">
       <div className="section-title-row">
         <h3>姿势与接触</h3>
-        <span>PRESET</span>
+        <span
+          title={
+            actor.lockMode === "workflow"
+              ? "流程锁定"
+              : actor.lockMode === "user"
+                ? "用户保护"
+                : undefined
+          }
+        >
+          {actor.lockMode === "workflow"
+            ? (
+                <>
+                  <span aria-hidden="true">流程锁定</span>
+                  <span className="visually-hidden">
+                    Workflow locked
+                  </span>
+                </>
+              )
+            : actor.lockMode === "user"
+              ? (
+                  <>
+                    <span aria-hidden="true">用户保护</span>
+                    <span className="visually-hidden">
+                      User protected
+                    </span>
+                  </>
+                )
+              : "PRESET"}
+        </span>
       </div>
 
       <label className="control-field">

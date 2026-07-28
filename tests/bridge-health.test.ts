@@ -3,6 +3,7 @@ import {
   BridgeError,
   requestBridge,
   resolveBridgeConfiguration,
+  stopBridge,
   type BridgeConfiguration,
   validateBridgeHealth,
 } from "../cli/bridge";
@@ -83,10 +84,105 @@ const FORBIDDEN_CONFIGURATION_KEYS = [
   ...COMPACT_CONFIGURATION_KEYS.map((key) => key.toUpperCase()),
 ] as const;
 
+const LOCK_CAPABILITIES = {
+  entityLockModes: ["none", "workflow", "user"],
+  patchPolicyFields: ["preserveLock"],
+  lockErrorCodes: [
+    "USER_LOCKED",
+    "WORKFLOW_LOCKED",
+    "LOCK_PRESERVATION_CONFLICT",
+  ],
+} as const;
+const ANATOMY_CAPABILITIES = {
+  actorLimbPartIds: [
+    "upper_arm_l",
+    "forearm_l",
+    "hand_l",
+    "upper_arm_r",
+    "forearm_r",
+    "hand_r",
+    "upper_leg_l",
+    "lower_leg_l",
+    "foot_l",
+    "upper_leg_r",
+    "lower_leg_r",
+    "foot_r",
+  ],
+  actorLimbPresenceModes: ["present", "absent"],
+  actorLimbErrorCodes: ["LIMB_HIERARCHY_CONFLICT"],
+} as const;
+
+type SchemaVersionField =
+  | "sceneSchemaVersion"
+  | "patchSchemaVersion"
+  | "intentReportSchemaVersion";
+
+const SCHEMA_PRECEDENCE_CASES: ReadonlyArray<
+  readonly [string, SchemaVersionField, string, string]
+> = [
+  [
+    "scene schema",
+    "sceneSchemaVersion",
+    "SCENE_SCHEMA_UNSUPPORTED",
+    "The local bridge SceneSpec schema is unsupported.",
+  ],
+  [
+    "patch schema",
+    "patchSchemaVersion",
+    "PATCH_SCHEMA_UNSUPPORTED",
+    "The local bridge ScenePatch schema is unsupported.",
+  ],
+  [
+    "intent schema",
+    "intentReportSchemaVersion",
+    "INTENT_REPORT_SCHEMA_UNSUPPORTED",
+    "The local bridge IntentReport schema is unsupported.",
+  ],
+] as const;
+
+const LOCK_FIELD_FAILURES: ReadonlyArray<
+  readonly [string, Record<string, unknown>]
+> = [
+  ["missing entity lock modes", { entityLockModes: undefined }],
+  ["malformed entity lock modes", { entityLockModes: "none" }],
+  ["missing patch policy fields", { patchPolicyFields: undefined }],
+  ["malformed patch policy fields", { patchPolicyFields: "preserveLock" }],
+  ["missing lock error codes", { lockErrorCodes: undefined }],
+  ["malformed lock error codes", { lockErrorCodes: "USER_LOCKED" }],
+] as const;
+
+const SCHEMA_LOCK_PRECEDENCE_CASES: ReadonlyArray<
+  readonly [
+    string,
+    SchemaVersionField,
+    Record<string, unknown>,
+    string,
+    string,
+  ]
+> = SCHEMA_PRECEDENCE_CASES.flatMap(
+  ([schemaLabel, schemaField, code, message]) =>
+    LOCK_FIELD_FAILURES.map(
+    ([lockLabel, lockOverride]) =>
+      [
+        `${schemaLabel} before ${lockLabel}`,
+        schemaField,
+        lockOverride,
+        code,
+        message,
+      ] as const,
+    ),
+);
+
 const liveHealth = (
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> => ({
   ...getRuntimeCapabilityManifest(),
+  entityLockModes: [...LOCK_CAPABILITIES.entityLockModes],
+  patchPolicyFields: [...LOCK_CAPABILITIES.patchPolicyFields],
+  lockErrorCodes: [...LOCK_CAPABILITIES.lockErrorCodes],
+  actorLimbPartIds: [...ANATOMY_CAPABILITIES.actorLimbPartIds],
+  actorLimbPresenceModes: [...ANATOMY_CAPABILITIES.actorLimbPresenceModes],
+  actorLimbErrorCodes: [...ANATOMY_CAPABILITIES.actorLimbErrorCodes],
   status: "ready",
   sceneId: "scene_generic_health",
   revision: 7,
@@ -122,6 +218,14 @@ describe("validateBridgeHealth", () => {
       bridgeProtocolVersion: 9,
       commands: [...getRuntimeCapabilityManifest().commands].reverse(),
       features: [...getRuntimeCapabilityManifest().features].reverse(),
+      entityLockModes: [...LOCK_CAPABILITIES.entityLockModes].reverse(),
+      patchPolicyFields: [...LOCK_CAPABILITIES.patchPolicyFields].reverse(),
+      lockErrorCodes: [...LOCK_CAPABILITIES.lockErrorCodes].reverse(),
+      actorLimbPartIds: [...ANATOMY_CAPABILITIES.actorLimbPartIds].reverse(),
+      actorLimbPresenceModes: [
+        ...ANATOMY_CAPABILITIES.actorLimbPresenceModes,
+      ].reverse(),
+      actorLimbErrorCodes: [...ANATOMY_CAPABILITIES.actorLimbErrorCodes],
     };
     const input = liveHealth({
       applicationVersion: "live-diagnostic-version",
@@ -152,6 +256,12 @@ describe("validateBridgeHealth", () => {
       networkPolicy: "loopback-only",
       commands: getRuntimeCapabilityManifest().commands,
       features: getRuntimeCapabilityManifest().features,
+      entityLockModes: [...LOCK_CAPABILITIES.entityLockModes],
+      patchPolicyFields: [...LOCK_CAPABILITIES.patchPolicyFields],
+      lockErrorCodes: [...LOCK_CAPABILITIES.lockErrorCodes],
+      actorLimbPartIds: [...ANATOMY_CAPABILITIES.actorLimbPartIds],
+      actorLimbPresenceModes: [...ANATOMY_CAPABILITIES.actorLimbPresenceModes],
+      actorLimbErrorCodes: [...ANATOMY_CAPABILITIES.actorLimbErrorCodes],
       status: "ready",
       sceneId: "scene_generic_health",
       revision: 7,
@@ -330,6 +440,196 @@ describe("validateBridgeHealth", () => {
   });
 
   it.each([
+    ["missing entity lock modes", { entityLockModes: undefined }],
+    ["missing patch policy fields", { patchPolicyFields: undefined }],
+    ["missing lock error codes", { lockErrorCodes: undefined }],
+    ["empty entity lock modes", { entityLockModes: [] }],
+    ["duplicate patch policy fields", {
+      patchPolicyFields: ["preserveLock", "preserveLock"],
+    }],
+    ["non-string lock error code", {
+      lockErrorCodes: ["USER_LOCKED", 42],
+    }],
+    ["missing actor limb part ids", { actorLimbPartIds: undefined }],
+    ["empty actor limb part ids", { actorLimbPartIds: [] }],
+    ["duplicate actor limb presence modes", {
+      actorLimbPresenceModes: ["present", "absent", "present"],
+    }],
+    ["non-string actor limb error code", {
+      actorLimbErrorCodes: [42],
+    }],
+  ])("classifies malformed lock capability fields as invalid: %s", (_name, override) => {
+    expectBridgeError(
+      () => validateBridgeHealth(liveHealth(override)),
+      "CAPABILITIES_INVALID",
+      "The local bridge capabilities are invalid.",
+    );
+  });
+
+  it.each(SCHEMA_LOCK_PRECEDENCE_CASES)(
+    "uses schema precedence for %s",
+    (_label, schemaField, lockOverride, code, message) => {
+      const expected = getRuntimeCapabilityManifest();
+      expectBridgeError(
+        () =>
+          validateBridgeHealth(
+            liveHealth({
+              ...lockOverride,
+              [schemaField]:
+                (expected[schemaField] as number) + 1,
+            }),
+          ),
+        code,
+        message,
+      );
+    },
+  );
+
+  it.each([
+    [
+      "boundary",
+      {
+        semanticAuthority: "model",
+        bridgeProtocolVersion:
+          getRuntimeCapabilityManifest().bridgeProtocolVersion + 1,
+        sceneSchemaVersion:
+          getRuntimeCapabilityManifest().sceneSchemaVersion + 1,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "SEMANTIC_BOUNDARY_VIOLATION",
+      "The local bridge violates the host semantic boundary.",
+    ],
+    [
+      "protocol before altered lock capabilities",
+      {
+        bridgeProtocolVersion:
+          getRuntimeCapabilityManifest().bridgeProtocolVersion + 1,
+        sceneSchemaVersion:
+          getRuntimeCapabilityManifest().sceneSchemaVersion + 1,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+      "The local bridge protocol is unsupported.",
+    ],
+    [
+      "protocol before missing lock capabilities",
+      {
+        bridgeProtocolVersion:
+          getRuntimeCapabilityManifest().bridgeProtocolVersion + 1,
+        sceneSchemaVersion:
+          getRuntimeCapabilityManifest().sceneSchemaVersion + 1,
+        entityLockModes: undefined,
+      },
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+      "The local bridge protocol is unsupported.",
+    ],
+    [
+      "schema before lock capabilities",
+      {
+        sceneSchemaVersion:
+          getRuntimeCapabilityManifest().sceneSchemaVersion + 1,
+        entityLockModes: ["none", "workflow", "system"],
+      },
+      "SCENE_SCHEMA_UNSUPPORTED",
+      "The local bridge SceneSpec schema is unsupported.",
+    ],
+    [
+      "exact lock capabilities",
+      { entityLockModes: ["none", "workflow", "system"] },
+      "CAPABILITIES_INVALID",
+      "The local bridge capabilities are invalid.",
+    ],
+  ])(
+    "uses canonical compatibility precedence for %s",
+    (_name, override, code, message) => {
+      expectBridgeError(
+        () => validateBridgeHealth(liveHealth(override)),
+        code,
+        message,
+      );
+    },
+  );
+
+  it.each([
+    [
+      "removed entity lock mode",
+      { entityLockModes: ["none", "workflow"] },
+    ],
+    [
+      "altered entity lock mode",
+      { entityLockModes: ["none", "workflow", "system"] },
+    ],
+    [
+      "added entity lock mode",
+      {
+        entityLockModes: [
+          ...LOCK_CAPABILITIES.entityLockModes,
+          "temporary",
+        ],
+      },
+    ],
+    ["removed patch policy field", { patchPolicyFields: [] }],
+    ["altered patch policy field", { patchPolicyFields: ["keepLock"] }],
+    [
+      "added patch policy field",
+      {
+        patchPolicyFields: [
+          ...LOCK_CAPABILITIES.patchPolicyFields,
+          "allowLockChange",
+        ],
+      },
+    ],
+    [
+      "removed lock error code",
+      {
+        lockErrorCodes: LOCK_CAPABILITIES.lockErrorCodes.slice(0, -1),
+      },
+    ],
+    [
+      "altered lock error code",
+      {
+        lockErrorCodes: [
+          "USER_LOCKED",
+          "WORKFLOW_LOCKED",
+          "ENTITY_LOCKED",
+        ],
+      },
+    ],
+    [
+      "added lock error code",
+      {
+        lockErrorCodes: [
+          ...LOCK_CAPABILITIES.lockErrorCodes,
+          "UNKNOWN_LOCK",
+        ],
+      },
+    ],
+    [
+      "altered actor limb part id",
+      {
+        actorLimbPartIds: [
+          ...ANATOMY_CAPABILITIES.actorLimbPartIds.slice(0, -1),
+          "toe_r",
+        ],
+      },
+    ],
+    [
+      "removed actor limb presence mode",
+      { actorLimbPresenceModes: ["present"] },
+    ],
+    [
+      "altered actor limb error code",
+      { actorLimbErrorCodes: ["UNKNOWN_LIMB_ERROR"] },
+    ],
+  ])("rejects a lock or anatomy capability set with an %s", (_name, override) => {
+    expectBridgeError(
+      () => validateBridgeHealth(liveHealth(override)),
+      "CAPABILITIES_INVALID",
+      "The local bridge capabilities are invalid.",
+    );
+  });
+
+  it.each([
     ["malformed manifest", { applicationVersion: "" }],
     [
       "duplicate command IDs",
@@ -373,6 +673,355 @@ describe("validateBridgeHealth", () => {
       "CAPABILITIES_INVALID",
       "The local bridge capabilities are invalid.",
     );
+  });
+
+  it.each(["status", "sceneId", "revision", "instanceId", "uiUrl"])(
+    "rejects a throwing live health %s accessor without invoking or leaking it",
+    (field) => {
+      const marker = `PRIVATE_LIVE_${field.toUpperCase()}_GETTER`;
+      const input = liveHealth();
+      let reads = 0;
+      Object.defineProperty(input, field, {
+        enumerable: true,
+        get() {
+          reads += 1;
+          throw new Error(marker);
+        },
+      });
+      let caught: unknown;
+
+      try {
+        validateBridgeHealth(input);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(reads).toBe(0);
+      expect(caught).toBeInstanceOf(BridgeError);
+      expect(caught).toMatchObject({
+        code: "CAPABILITIES_INVALID",
+        message: "The local bridge capabilities are invalid.",
+      });
+      expect(String(caught)).not.toContain(marker);
+    },
+  );
+
+  it.each(["status", "sceneId", "revision", "instanceId", "uiUrl"])(
+    "redacts a throwing live health %s proxy",
+    (field) => {
+      const marker = `PRIVATE_LIVE_${field.toUpperCase()}_PROXY`;
+      const target = liveHealth();
+      const input = new Proxy(target, {
+        get(current, key, receiver) {
+          if (key === field) {
+            throw new Error(marker);
+          }
+          return Reflect.get(current, key, receiver);
+        },
+        getOwnPropertyDescriptor(current, key) {
+          if (key === field) {
+            throw new Error(marker);
+          }
+          return Reflect.getOwnPropertyDescriptor(current, key);
+        },
+      });
+      let caught: unknown;
+
+      try {
+        validateBridgeHealth(input);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(BridgeError);
+      expect(caught).toMatchObject({
+        code: "CAPABILITIES_INVALID",
+        message: "The local bridge capabilities are invalid.",
+      });
+      expect(String(caught)).not.toContain(marker);
+    },
+  );
+
+  it("rejects a malformed expected contract accessor without invoking it", () => {
+    const expected = {
+      ...getRuntimeCapabilityManifest(),
+    } as RuntimeCapabilityManifest;
+    let reads = 0;
+    Object.defineProperty(expected, "capabilitiesContractVersion", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return "invalid";
+      },
+    });
+
+    expectBridgeError(
+      () => validateBridgeHealth(liveHealth(), expected),
+      "CAPABILITIES_INVALID",
+      "The local bridge capabilities are invalid.",
+    );
+    expect(reads).toBe(0);
+  });
+
+  it("rejects a malformed expected capability-list accessor without invoking it", () => {
+    const expected = {
+      ...getRuntimeCapabilityManifest(),
+    } as RuntimeCapabilityManifest;
+    let reads = 0;
+    Object.defineProperty(expected, "commands", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return ["doctor"];
+      },
+    });
+
+    expectBridgeError(
+      () => validateBridgeHealth(liveHealth(), expected),
+      "CAPABILITIES_INVALID",
+      "The local bridge capabilities are invalid.",
+    );
+    expect(reads).toBe(0);
+  });
+
+  it("redacts a throwing expected contract accessor", () => {
+    const marker = "PRIVATE_EXPECTED_CONTRACT_GETTER";
+    const expected = {
+      ...getRuntimeCapabilityManifest(),
+    } as RuntimeCapabilityManifest;
+    Object.defineProperty(expected, "capabilitiesContractVersion", {
+      enumerable: true,
+      get() {
+        throw new Error(marker);
+      },
+    });
+    let caught: unknown;
+
+    try {
+      validateBridgeHealth(liveHealth(), expected);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(BridgeError);
+    expect(caught).toMatchObject({
+      code: "CAPABILITIES_INVALID",
+      message: "The local bridge capabilities are invalid.",
+    });
+    expect(String(caught)).not.toContain(marker);
+  });
+
+  it("redacts a throwing expected manifest proxy", () => {
+    const marker = "PRIVATE_EXPECTED_CONTRACT_PROXY";
+    const target = {
+      ...getRuntimeCapabilityManifest(),
+    };
+    delete (
+      target as Partial<RuntimeCapabilityManifest>
+    ).capabilitiesContractVersion;
+    const expected = new Proxy(target, {
+      get(_current, key) {
+        if (key === "capabilitiesContractVersion") {
+          throw new Error(marker);
+        }
+        return Reflect.get(_current, key);
+      },
+      getOwnPropertyDescriptor(current, key) {
+        if (key === "capabilitiesContractVersion") {
+          throw new Error(marker);
+        }
+        return Reflect.getOwnPropertyDescriptor(current, key);
+      },
+    }) as RuntimeCapabilityManifest;
+    let caught: unknown;
+
+    try {
+      validateBridgeHealth(liveHealth(), expected);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(BridgeError);
+    expect(caught).toMatchObject({
+      code: "CAPABILITIES_INVALID",
+      message: "The local bridge capabilities are invalid.",
+    });
+    expect(String(caught)).not.toContain(marker);
+  });
+
+  it("validates and returns one stable snapshot of a stateful live proxy", () => {
+    const target = liveHealth();
+    let validationPhase = 0;
+    let sceneDescriptorReads = 0;
+    const input = new Proxy(target, {
+      getPrototypeOf(current) {
+        validationPhase += 1;
+        return Reflect.getPrototypeOf(current);
+      },
+      get(current, key, receiver) {
+        if (key === "bridgeProtocolVersion") {
+          return validationPhase <= 1 ? 1 : 999;
+        }
+        return Reflect.get(current, key, receiver);
+      },
+      getOwnPropertyDescriptor(current, key) {
+        const descriptor = Reflect.getOwnPropertyDescriptor(
+          current,
+          key,
+        );
+        if (
+          key !== "sceneId" ||
+          descriptor === undefined ||
+          !("value" in descriptor)
+        ) {
+          return descriptor;
+        }
+        sceneDescriptorReads += 1;
+        return {
+          ...descriptor,
+          value:
+            sceneDescriptorReads === 1
+              ? "scene_snapshot"
+              : "scene_late_read",
+        };
+      },
+    });
+
+    expect(validateBridgeHealth(input)).toMatchObject({
+      bridgeProtocolVersion: 1,
+      sceneId: "scene_snapshot",
+    });
+  });
+
+  it("snapshots a nested stateful capability array before validation", () => {
+    const canonicalModes = [...LOCK_CAPABILITIES.entityLockModes];
+    const alteredModes = ["none", "workflow", "system"];
+    let iterations = 0;
+    const statefulModes = new Proxy(canonicalModes, {
+      get(current, key, receiver) {
+        if (key === Symbol.iterator) {
+          iterations += 1;
+          const values =
+            iterations === 1 ? canonicalModes : alteredModes;
+          return values[Symbol.iterator].bind(values);
+        }
+        return Reflect.get(current, key, receiver);
+      },
+    });
+
+    expect(
+      validateBridgeHealth(
+        liveHealth({ entityLockModes: statefulModes }),
+      ).entityLockModes,
+    ).toEqual(canonicalModes);
+  });
+
+  it.each([
+    [
+      "input",
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+      "PRIVATE_KNOWN_INPUT_MESSAGE",
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+      "The local bridge protocol is unsupported.",
+    ],
+    [
+      "expected",
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+      "PRIVATE_KNOWN_EXPECTED_MESSAGE",
+      "BRIDGE_PROTOCOL_UNSUPPORTED",
+      "The local bridge protocol is unsupported.",
+    ],
+    [
+      "input",
+      "PRIVATE_INPUT_CODE",
+      "PRIVATE_UNKNOWN_INPUT_MESSAGE",
+      "CAPABILITIES_INVALID",
+      "The local bridge capabilities are invalid.",
+    ],
+    [
+      "expected",
+      "PRIVATE_EXPECTED_CODE",
+      "PRIVATE_UNKNOWN_EXPECTED_MESSAGE",
+      "CAPABILITIES_INVALID",
+      "The local bridge capabilities are invalid.",
+    ],
+  ] as const)(
+    "canonicalizes a forged BridgeError from the %s path",
+    (source, forgedCode, marker, code, message) => {
+      const forged = new BridgeError(forgedCode, marker);
+      const target =
+        source === "input"
+          ? liveHealth()
+          : { ...getRuntimeCapabilityManifest() };
+      const trappedField =
+        source === "input"
+          ? "service"
+          : "capabilitiesContractVersion";
+      const proxy = new Proxy(target, {
+        getOwnPropertyDescriptor(current, key) {
+          if (key === trappedField) {
+            throw forged;
+          }
+          return Reflect.getOwnPropertyDescriptor(current, key);
+        },
+      });
+      let caught: unknown;
+
+      try {
+        if (source === "input") {
+          validateBridgeHealth(proxy);
+        } else {
+          validateBridgeHealth(
+            liveHealth(),
+            proxy as unknown as RuntimeCapabilityManifest,
+          );
+        }
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(BridgeError);
+      expect(caught).toMatchObject({ code, message });
+      expect(String(caught)).not.toContain(marker);
+      expect((caught as BridgeError).code).not.toContain("PRIVATE");
+    },
+  );
+
+  it("compares reordered capability sets without mutating callers", () => {
+    const expected = {
+      ...getRuntimeCapabilityManifest(),
+      commands: [...getRuntimeCapabilityManifest().commands].reverse(),
+      features: [...getRuntimeCapabilityManifest().features].reverse(),
+      entityLockModes: [...LOCK_CAPABILITIES.entityLockModes].reverse(),
+      patchPolicyFields: [...LOCK_CAPABILITIES.patchPolicyFields],
+      lockErrorCodes: [...LOCK_CAPABILITIES.lockErrorCodes].reverse(),
+    };
+    const input = liveHealth({
+      commands: [...getRuntimeCapabilityManifest().commands].reverse(),
+      features: [...getRuntimeCapabilityManifest().features].reverse(),
+      entityLockModes: [...LOCK_CAPABILITIES.entityLockModes].reverse(),
+      patchPolicyFields: [...LOCK_CAPABILITIES.patchPolicyFields],
+      lockErrorCodes: [...LOCK_CAPABILITIES.lockErrorCodes].reverse(),
+    });
+    const inputArrays = {
+      commands: [...(input.commands as string[])],
+      features: [...(input.features as string[])],
+      entityLockModes: [...(input.entityLockModes as string[])],
+      patchPolicyFields: [...(input.patchPolicyFields as string[])],
+      lockErrorCodes: [...(input.lockErrorCodes as string[])],
+    };
+    const expectedArrays = {
+      commands: [...expected.commands],
+      features: [...expected.features],
+      entityLockModes: [...expected.entityLockModes],
+      patchPolicyFields: [...expected.patchPolicyFields],
+      lockErrorCodes: [...expected.lockErrorCodes],
+    };
+
+    validateBridgeHealth(input, expected);
+
+    expect(input).toMatchObject(inputArrays);
+    expect(expected).toMatchObject(expectedArrays);
   });
 
   it.each([
@@ -420,6 +1069,111 @@ describe("validateBridgeHealth", () => {
       "CAPABILITIES_INVALID",
       "The local bridge capabilities are invalid.",
     );
+  });
+});
+
+describe("requestBridge", () => {
+  it.each([
+    ["USER_LOCKED", "A requested scene entity is user-locked."],
+    [
+      "WORKFLOW_LOCKED",
+      "A requested scene entity is workflow-locked.",
+    ],
+    [
+      "LOCK_PRESERVATION_CONFLICT",
+      "The requested change conflicts with lock preservation.",
+    ],
+  ] as const)(
+    "redacts an upstream %s message",
+    async (code, message) => {
+      const marker = `PRIVATE_${code}_UPSTREAM_MARKER`;
+      const fetchMock = vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error: { code, message: marker },
+          }),
+          {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const configuration = resolveBridgeConfiguration({
+        SHUBI_SHOT_URL: "http://127.0.0.1:4317",
+      });
+      let caught: unknown;
+
+      try {
+        await requestBridge(configuration, "/api/v1/patch", {
+          method: "POST",
+          body: "{}",
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toMatchObject({
+        name: "BridgeError",
+        code,
+        message,
+      });
+      expect(String(caught)).not.toContain(marker);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    },
+  );
+});
+
+describe("stopBridge", () => {
+  it("safely stops an owned bridge whose scene schemas are older", async () => {
+    const manifest = getRuntimeCapabilityManifest();
+    const instanceId = "instance_0123456789abcdef0123456789abcdef";
+    const oldHealth = liveHealth({
+      sceneSchemaVersion: manifest.sceneSchemaVersion - 1,
+      patchSchemaVersion: manifest.patchSchemaVersion - 1,
+      intentReportSchemaVersion: manifest.intentReportSchemaVersion - 1,
+      instanceId,
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, data: oldHealth }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            data: { service: manifest.service, status: "stopping", instanceId },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockRejectedValueOnce(new TypeError("Bridge stopped."));
+    vi.stubGlobal("fetch", fetchMock);
+    const configuration = resolveBridgeConfiguration({
+      SHUBI_SHOT_URL: "http://127.0.0.1:4317",
+    });
+
+    await expect(stopBridge(configuration)).resolves.toEqual({
+      stopped: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "http://127.0.0.1:4317/api/v1/shutdown",
+    );
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        "X-Shubi-Shot-Instance": instanceId,
+      }),
+    });
   });
 });
 

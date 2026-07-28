@@ -1,6 +1,6 @@
 {
   "intentReport": {
-    "schemaVersion": 1,
+    "schemaVersion": 4,
     "operation": "create",
     "allowPartial": false,
     "recognizedConstraints": [
@@ -56,6 +56,26 @@
             "entityId": "actor_generic_1",
             "path": "actor.slot"
           }
+        ]
+      },
+      {
+        "id": "intent_actor_limb_presence_1",
+        "kind": "actor-limb-presence",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_arm_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.forearm_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.hand_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_arm_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.forearm_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.hand_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_leg_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.lower_leg_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.foot_l" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.upper_leg_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.lower_leg_r" },
+          { "type": "entity-property", "entityId": "actor_generic_1", "path": "entity.body.limbPresence.foot_r" }
         ]
       },
       {
@@ -115,7 +135,7 @@
     "canApplySafely": true
   },
   "scene": {
-    "schemaVersion": 1,
+    "schemaVersion": 4,
     "sceneId": "scene_quickstart_1",
     "revision": 0,
     "title": "Quick-start graybox scene",
@@ -136,6 +156,7 @@
         "height": 1080
       }
     },
+    "spatialLayout": null,
     "entities": [
       {
         "id": "environment_room_1",
@@ -148,7 +169,7 @@
           "scale": [1, 1, 1]
         },
         "visible": true,
-        "locked": true,
+        "lockMode": "none",
         "preset": {
           "registry": "builtin",
           "id": "room.small-v1",
@@ -174,7 +195,7 @@
           "scale": [1, 1, 1]
         },
         "visible": true,
-        "locked": false,
+        "lockMode": "none",
         "rig": {
           "registry": "builtin",
           "id": "rig.humanoid-v1",
@@ -184,7 +205,21 @@
         "body": {
           "heightM": 1.72,
           "shoulderWidthM": 0.42,
-          "build": "average"
+          "build": "average",
+          "limbPresence": {
+            "upper_arm_l": "present",
+            "forearm_l": "present",
+            "hand_l": "present",
+            "upper_arm_r": "present",
+            "forearm_r": "present",
+            "hand_r": "present",
+            "upper_leg_l": "present",
+            "lower_leg_l": "present",
+            "foot_l": "present",
+            "upper_leg_r": "present",
+            "lower_leg_r": "present",
+            "foot_r": "present"
+          }
         },
         "pose": {
           "preset": {
@@ -210,7 +245,7 @@
           "scale": [1, 1, 1]
         },
         "visible": true,
-        "locked": false,
+        "lockMode": "none",
         "preset": {
           "registry": "builtin",
           "id": "prop.block-v1",
@@ -239,7 +274,7 @@
           "scale": [1, 1, 1]
         },
         "visible": true,
-        "locked": false,
+        "lockMode": "none",
         "lens": {
           "projection": "perspective",
           "focalLengthMm": 45,

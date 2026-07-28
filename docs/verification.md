@@ -348,6 +348,37 @@ review note rather than being promoted to `SAFE`. The isolated runtime stopped,
 its port closed, its transient submissions were removed, and the existing
 `4317` preview remained available.
 
+## Generic connected-region acceptance
+
+Use the public abstract submission:
+
+```powershell
+node .agents/skills/shubi-shot-director/scripts/director.mjs scene submit --file examples/connected-regions.scene-submission.json
+node .agents/skills/shubi-shot-director/scripts/director.mjs snapshot
+node .agents/skills/shubi-shot-director/scripts/director.mjs composition inspect --json
+```
+
+Require:
+
+- `SceneSpec`, `ScenePatch`, and `IntentReport` version `2`;
+- region IDs exactly `region_alpha`, `region_beta`, and `region_gamma`;
+- no `environment` entity when `spatialLayout` is non-null;
+- two shared-boundary openings and two explicit connections;
+- actor, prop, and camera memberships in different regions;
+- topology safety passes through both aligned openings;
+- the Overview shows every visible region and outer/shared walls;
+- selecting Beta opens Local preview with Beta opaque, adjacent regions faded,
+  and no SceneSession revision change;
+- Shot Preview removes editor fading and remains export-ready;
+- legacy v1 quick-start input migrates to canonical v2 with
+  `spatialLayout: null`.
+
+Focused automated coverage:
+
+```powershell
+pnpm vitest run tests/spatial-layout.test.ts tests/spatial-patch.test.ts tests/spatial-intent.test.ts tests/spatial-composition.test.ts tests/spatial-preview.test.ts tests/software-png-spatial.test.ts tests/public-example.test.ts tests/structured-submission-cli.test.ts
+```
+
 ## Intentional first-version boundaries
 
 - Contact supports world ground, room floors, and horizontal box or plane
@@ -434,3 +465,356 @@ visibility, default branch `main`, initial version `v0.2.1`, and MIT license;
 The internal repository has no configured remote. No remote, public
 repository, push, release tag, package, or artifact publication was created as
 part of this verification.
+
+## 2026-07-27 v0.3.0 lock provenance acceptance
+
+This checkpoint was run on branch `codex/lock-provenance` from feature commit
+`b4da88f` before adding this record. The complete `pnpm verify` gate passed with
+49 test files and 1,272 tests, followed by schema generation, type checking,
+ESLint, the production build, and a 168-file public audit with zero findings.
+The production build retained only the known non-blocking Vite advisory for
+the approximately 1.33 MB application chunk.
+
+The live Skill/runtime contract reported application version `0.3.0`,
+capability contract v2, and SceneSpec, ScenePatch, and IntentReport v3. Its
+canonical entity lock modes were exactly `none`, `workflow`, and `user`; the
+Patch policy fields were exactly `preserveLock`; and the lock error codes were
+`USER_LOCKED`, `WORKFLOW_LOCKED`, and `LOCK_PRESERVATION_CONFLICT`.
+
+The generic browser acceptance scene was `scene_lock_acceptance`. Its revision
+sequence was:
+
+```text
+1 generic connected-region scene submitted with editable entities
+2 two generic props changed to workflow locks by an explicit Patch
+3 preserveLock correction moved prop_generic_1 by +0.25 m on world X
+4 prop_generic_2 changed to a user lock by an explicit Patch
+5 explicit save checkpoint changed the remaining camera to a workflow lock
+```
+
+At revision 3, both workflow locks were preserved without an unlock operation
+or authorization prompt. The correction changed only
+`prop_generic_1.transform.positionM` from `[0, 0.6, -0.65]` to
+`[0.25, 0.6, -0.65]`. At revision 4, a second `preserveLock: true` translation
+against the user-protected prop failed with `USER_LOCKED` and a non-zero exit.
+The scene remained at revision 4, the user lock remained `user`, and the prop
+position remained `[4, 0.5, 0.65]`.
+
+The real browser was inspected at 1280 x 720. Overview, Local Alpha, Local
+Beta, and Shot Preview all rendered. Local previews retained an opaque focused
+region with readable faded neighbors; Shot Preview removed editor fading and
+showed both generic props through the connected regions. Workflow and user
+lock labels were distinct, and transform controls were disabled for both lock
+modes. The save checkpoint advanced exactly once from revision 4 to 5, kept
+the user-protected prop unchanged, changed only the remaining `none` camera to
+`workflow`, and reported `scene_lock_acceptance.scene.json`. A repeated save
+of the fully locked revision did not advance the revision.
+
+The browser automation backend did not expose a blob download event or a host
+download path for the scene JSON, so the downloaded file itself was not
+available for independent browser-artifact inspection. The authoritative
+revision transition, post-save lock modes, repeated-save stability, and UI
+success notice were verified directly.
+
+Deterministic composition inspection at revision 5 passed framing, topology,
+and camera-collision checks. Its conservative proxy kept occlusion at `CHECK`
+with an approximate 35.1% overlap, so the rendered final camera was reviewed
+instead of promoting the report to `SAFE`. Both generic props were visibly
+distinct and inside frame, the connected openings remained readable, and no
+prop crossed the output boundary.
+
+With that exact browser Shot Preview connected at revision 5, CLI export
+produced `.shubi-shot/exports/lock-preservation.png` with:
+
+- 1920 x 1080 decoded dimensions;
+- 55,153 bytes;
+- SHA-256
+  `1b1f89dffcbdf7403afd216086724e1bac179d592b7235909ba18dd3c65d96f9`;
+- no export warnings.
+
+The exported PNG was inspected at full resolution and matched the accepted
+final-camera preview. All scene submissions and exports remained under the
+ignored `.shubi-shot` directory; no transient artifact is part of the tracked
+source.
+
+## 2026-07-27 v0.4.0 actor limb presence acceptance
+
+This checkpoint was run on branch `codex/lock-provenance` from feature commit
+`324a8b1` before adding this record. The Skill validator passed. The complete
+`pnpm verify` gate passed with 55 test files and 1,451 tests, followed by
+schema generation, type checking, ESLint, the production build, and a
+181-file public audit with zero findings. The production build retained only
+the known non-blocking Vite advisory for the approximately 1.34 MB application
+chunk.
+
+The live Skill/runtime contract reported application version `0.4.0`,
+capability contract v2, and SceneSpec, ScenePatch, and IntentReport v4. It
+reported feature `actor.limb-presence`, the twelve canonical arm and leg part
+IDs, presence modes `present` and `absent`, and error code
+`LIMB_HIERARCHY_CONFLICT`. The lock contract remained the three canonical
+modes `none`, `workflow`, and `user` with Patch field `preserveLock`. The
+bridge remained structured-only and loopback-only with no model or credential
+integration. An owned incompatible older bridge was stopped safely through
+the wrapper before the compatible v0.4.0 bridge started; the regression is
+covered by the 1,451-test verifier.
+
+The generic acceptance scene was `scene_generic_limb_1`. Its revision sequence
+was:
+
+```text
+6  connected scene submitted with all twelve limbs present
+7  actor changed to workflow lock by an explicit Patch
+8  preserveLock Patch removed the right arm and both lower legs and feet
+9  actor changed to user lock by an explicit Patch
+10 undo restored workflow lock
+11 redo restored user lock
+12 undo restored workflow lock
+13 explicit save changed the remaining prop and camera to workflow locks
+14 saved schema-v4 scene loaded after an owned bridge restart
+15 preserveLock Patch restored the left lower leg for history testing
+16 undo restored the saved missing-limb state
+17 redo restored the left lower leg
+18 final undo restored the target missing-limb state
+```
+
+The revision 7 to 8 workflow correction required no authorization prompt and
+contained no explicit unlock operation. The actor remained `workflow`; the
+minimal transition changed only the seven canonical limb fields implied by
+the hierarchy plus deterministic actor Y contact. A contradictory request for
+an absent right upper arm with a present right hand failed with
+`LIMB_HIERARCHY_CONFLICT` and left revision 8 unchanged. After the explicit
+user lock at revision 9, a `preserveLock: true` limb request failed with
+`USER_LOCKED`; the before and after scene hashes were both
+`61d56bee970ff6705bc42bf6ff6f0ce0f12e469c3ecae9ba474cb9eb262405c7`.
+
+The saved scene used schema version 4 at revision 13. The actor, prop, and
+camera were all `workflow` locked, and the canonical limb map retained the
+complete left arm and both upper legs while the right arm, both lower legs,
+and both feet were absent. Its SHA-256 was
+`c72597d2c4f319d31bf5fa51ec3733bb079932be5c627c57869aa5b9f14a651f`.
+Restart and load retained that exact map. The revision 15 restore changed the
+left lower leg to present and adjusted actor Y from `0.4816` m to `0.8858` m;
+undo and redo restored the exact anatomy, contact transform, and workflow lock
+while advancing revisions monotonically.
+
+The real in-app browser was inspected at 1280 x 720. Overview rendered both
+connected regions, their shared opening, the actor, and the prop readably.
+Local Beta showed no detached right hand, detached feet, or phantom support.
+The actor Inspector exposed exactly twelve presence controls in four labeled
+groups: left arm, right arm, left leg, and right leg. Every control matched the
+current SceneSpec, was disabled while workflow locked, and displayed the text
+`流程锁定，无法编辑`. Shot Preview at revision 18 showed the right arm and both
+lower legs and feet absent, deterministic contact at the visible upper-leg
+end, no bottom crop, and the connected opening and prop still readable. Save
+and export controls remained reachable and the browser reported the revision
+as synchronized.
+
+Composition inspection at revision 18 passed anchor, full-actor framing,
+occlusion, topology, and camera-collision checks. Caption safety was correctly
+unchecked because no caption target was configured; approximate framing and
+occlusion remained subject to the completed visual review. Export from that
+connected Shot Preview produced `.shubi-shot/exports/actor-limb-presence.png`
+with:
+
+- scene ID `scene_generic_limb_1`, revision 18;
+- 1920 x 1080 IHDR dimensions and PNG signature `89504e470d0a1a0a`;
+- 70,944 bytes;
+- SHA-256
+  `bea62f49b3c3b8077a91fb233d37730395fcdbb0e036f80d0583c448e51f2982`;
+- no export warnings.
+
+The exported PNG was inspected at full resolution and matched the accepted
+revision 18 Shot Preview. All submission, saved-scene, and export artifacts
+remained generic and ignored under `.shubi-shot`; none is part of the tracked
+source.
+
+## 2026-07-28 actor-relative left/right correction
+
+The humanoid projection now follows its declared facing direction consistently:
+actors face local `+Z`, so anatomical left is local `+X` and anatomical right
+is local `-X`. Shoulder and hip placement use that convention, and the paired
+Z-rotation signs in every built-in pose were corrected with it so arms and legs
+continue to bend away from the torso on their anatomical sides.
+
+The generic browser acceptance reused `scene_generic_limb_1`. At revision 19,
+a diagnostic rotation presented the actor front-on to the existing shot camera
+without changing its limb map, camera, or workflow lock. The Inspector showed
+all three left-arm parts as `present`, all three right-arm parts as `absent`,
+both lower legs and feet as `absent`, and every control disabled by the
+workflow lock. Shot Preview showed the only remaining arm on viewer right,
+which is the actor's anatomical left in a front-facing view. No browser warning
+or error was reported.
+
+Export from that connected Shot Preview produced
+`.shubi-shot/exports/actor-side-correction.png` with:
+
+- scene ID `scene_generic_limb_1`, revision 19;
+- 1920 x 1080 IHDR dimensions and PNG signature `89504e470d0a1a0a`;
+- 75,111 bytes;
+- SHA-256
+  `06811337bfc7a815e20e3b68ed2b0db6ccc9b65755707533485f2631a5b0b774`;
+- no export warnings.
+
+The full-resolution export matched the accepted Shot Preview. A final undo
+advanced the scene to revision 20 while restoring actor rotation to identity;
+the workflow lock, limb presence map, and camera remained unchanged. The
+diagnostic Patch and PNG stayed transient under the ignored `.shubi-shot`
+directory and were removed after evidence collection.
+
+## 2026-07-28 direct Shot Preview camera navigation acceptance
+
+This checkpoint was completed on branch `codex/lock-provenance`. The direct
+camera feature commits were `e6fc781`, `887d8b5`, `97d80a9`, `66e1f47`, and
+`246bc61`. Real-browser acceptance exposed a passive React wheel-listener
+error; commit `4c21655` replaced that path with an explicitly non-passive
+native listener and added a regression contract.
+
+The complete `pnpm verify` gate then passed with 59 test files and 1,490 tests,
+followed by schema generation, type checking, ESLint, the production build,
+and a 191-file public audit with zero findings. The build retained only the
+known non-blocking Vite advisory for the approximately 1.35 MB application
+chunk. Director doctor reported application v0.4.0, capability contract v2,
+SceneSpec/ScenePatch/IntentReport v4, `structured-only`,
+`credential-forbidden`, and `loopback-only`. The repository Skill contract
+tests passed; the optional generic Python Skill validator was not run because
+the available Python environment did not include PyYAML, and no dependency
+was installed for this acceptance.
+
+The in-app browser at 1440 x 900 verified the page identity, nonblank WebGL
+canvas, synchronized scene state, empty application warning/error log, and
+the active Shot Preview controls. Its direct interaction record included:
+
+```text
+30 -> 31  left drag; position changed, rotation/lens/lock exact
+31 -> 32  normal wheel; focal length 26.0 -> 26.5 mm
+32 -> 33  modifier-wheel probe; control layer delivered a normal step
+33 -> 34  inverse probe; focal length returned to 26.5 mm
+34 -> 35  ArrowUp
+35 -> 36  ArrowDown
+36 -> 37  ArrowLeft
+37 -> 38  ArrowRight
+38 -> 39  PageUp
+39 -> 40  PageDown
+40 -> 41  Shift+ArrowUp; 0.5 m
+41 -> 42  Alt+ArrowDown; 0.02 m
+42 -> 43  undo
+43 -> 44  redo
+```
+
+The in-app control layer could not synthesize a right-button drag or pass
+modifiers through a wheel event, so installed Playwright 1.56 Chromium was
+used only to supplement those missing input capabilities. The post-fix
+supplemental run used 1440 x 900 and 800 x 720 viewports and recorded:
+
+```text
+57         inactive ArrowUp and active Escape; no revision
+57 -> 58  external Patch during left-drag; draft cancelled, camera unchanged
+58 -> 59  right-drag orbit; radius 5.992162351775484 m before and after
+59 -> 60  normal wheel; -0.5 mm
+60 -> 61  Shift+wheel; +2.0 mm
+61 -> 62  Alt+wheel; -0.1 mm
+62 -> 63  explicit user protection
+63         pointer, wheel, and keyboard attempts; no revision or camera change
+63 -> 64  explicit workflow-lock restoration
+64 -> 65  atomic final-camera transform/lens correction
+```
+
+Every accepted camera gesture created one revision and one undo step. The
+workflow lock remained `workflow` without an unlock revision or authorization
+prompt. The external revision cancelled the stale draft and kept the eligible
+mode active. User protection exited and disabled the mode, and protected input
+created neither a draft nor a Patch. At 800 x 720 the fixed-size camera control
+and focal readout remained inside the viewport and did not overlap the preview
+mode switcher. After the listener fix, the repeated wheel run produced no
+passive-listener errors; headless Chromium reported only environment-level
+software-WebGL and readback performance warnings.
+
+The final generic scene was `scene_generic_limb_1` revision 65. The camera was
+still workflow locked at 26.5 mm. Composition inspection reported every
+required section passing: anchor, full-actor framing, approximate occlusion,
+topology, and camera collision. Overall status remained `CHECK` only because
+no optional caption target was configured. The connected Shot Preview and the
+full-resolution export were inspected together and matched.
+
+Export from that exact connected revision produced
+`.shubi-shot/exports/shot-camera-navigation.png` with:
+
+- scene ID `scene_generic_limb_1`, revision 65;
+- 1920 x 1080 IHDR dimensions and PNG signature `89504e470d0a1a0a`;
+- 67,219 bytes;
+- SHA-256
+  `f32b3aa157f70e034a6fff302dec67acd4693335d613700080fb6a73918abf08`;
+- no export warnings.
+
+All Playwright scripts, patches, screenshots, and exports used generic data in
+the ignored `.shubi-shot` directory and were removed after evidence capture.
+
+## 2026-07-28 always-on Shot Preview controls acceptance
+
+This follow-up removed the hidden camera-control activation state and added a
+six-button movement pad while retaining the existing pointer, wheel, keyboard,
+lock-preservation, and undo paths. The complete `pnpm verify` gate passed with
+60 test files and 1,503 tests, followed by schema generation, TypeScript,
+ESLint, the production build, and a 197-file public audit with zero findings.
+The production build retained only the known non-blocking Vite advisory for
+the approximately 1.35 MB application chunk. `director doctor` again confirmed
+application v0.4.0, capability contract v2, schema v4, `structured-only`,
+`credential-forbidden`, and `loopback-only`.
+
+The in-app browser verified the current generic scene at the default desktop
+viewport and at 800 x 900. Shot Preview exposed all six enabled movement
+buttons immediately after opening, with no activation toggle. The buttons,
+83.5 mm readout, preview label, and mode switcher did not overlap at either
+viewport, and the application warning/error log remained empty.
+
+The focused interaction record was:
+
+```text
+116 -> 117  forward movement button; position changed
+117 -> 118  ArrowRight while the button retained focus; position changed
+118         right-click on the camera surface; no context menu
+118 -> 119  wheel; focal length 83.5 -> 84.0 mm
+119 -> 120  undo wheel
+120 -> 121  undo keyboard movement
+121 -> 122  undo movement-button click
+```
+
+The three undo operations restored the exact pre-acceptance camera transform
+and 83.5 mm focal length. The restored position was
+`[0.11528559961414596, 7.191705214524558, -0.0053269027436609745]`, rotation
+remained exact, and `lockMode` remained `none`. The scene revision advanced to
+122 because authoritative undo is revisioned; no scene file was saved or
+overwritten during this acceptance.
+
+## 2026-07-28 protected Shot Preview control recovery acceptance
+
+Commit `d326d3d` clarifies why direct controls are unavailable on a
+user-protected final camera and suppresses the right-button context menu before
+the protection guard can short-circuit pointer handling. The protected Shot
+Preview now keeps the six movement buttons visible, identifies the protection
+state, and provides an explicit `解除保护并调整` action. The action uses the
+existing user-lock transition path; it does not weaken the user-lock boundary
+or silently mutate a protected camera.
+
+The regression was developed test-first. The focused UI contract test failed
+on the missing early right-button suppression and missing in-preview unlock
+wiring, then passed after the implementation. The complete `pnpm verify` gate
+passed with 60 test files and 1,506 tests, followed by schema generation,
+TypeScript, ESLint, the production build, and a 198-file public audit with zero
+findings. The build retained only the known non-blocking Vite advisory for the
+approximately 1.36 MB application chunk.
+
+The in-app browser verified the running source worktree at the default desktop
+viewport and at 800 x 900. With the camera user protected, all six movement
+buttons remained visible and disabled, the in-preview unlock action remained
+enabled, and a right click on the camera surface produced no host context menu.
+The compact control group measured 367 x 69 pixels inside a 776 x 436.5 pixel
+Shot Preview with no horizontal page overflow. No application warning or error
+was reported.
+
+After the explicit in-preview unlock action, all six movement buttons became
+enabled. A movement-button round trip advanced revisions 134 -> 135 -> 136,
+and a keyboard round trip advanced revisions 136 -> 137 -> 138 while restoring
+the starting camera state. A final compact protection/unlock check advanced
+revisions 138 -> 139 -> 140 and left the camera unlocked for handoff. No scene
+file was saved or overwritten during this acceptance.

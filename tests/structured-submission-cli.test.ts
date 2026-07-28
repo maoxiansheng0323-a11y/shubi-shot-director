@@ -21,6 +21,9 @@ const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const directorScript = fileURLToPath(
   new URL("../scripts/director.mjs", import.meta.url),
 );
+const legacyQuickstartSubmission = fileURLToPath(
+  new URL("../examples/quickstart.scene-submission.json", import.meta.url),
+);
 const temporaryDirectories: string[] = [];
 
 interface CliResult {
@@ -250,6 +253,45 @@ describe("Director CLI structured submissions", () => {
     }
   }, 20_000);
 
+  it("migrates a v1 single-room scene submission through the public CLI", async () => {
+    const initial = createStructuredScene();
+    const session = new SceneSession(initial);
+    const { server, bridgeUrl } = await startApi(session);
+    try {
+      const result = await runDirector(
+        [
+          "scene",
+          "submit",
+          "--file",
+          legacyQuickstartSubmission,
+        ],
+        bridgeUrl,
+      );
+
+      expect(result).toMatchObject({
+        exitCode: 0,
+        signal: null,
+        stderr: "",
+      });
+      expect(parseSingleJsonLine(result.stdout)).toMatchObject({
+        ok: true,
+        data: {
+          action: "submit",
+          kind: "scene",
+          sceneId: "scene_quickstart_1",
+          revision: initial.revision + 1,
+        },
+      });
+      expect(session.snapshot()).toMatchObject({
+        schemaVersion: 4,
+        sceneId: "scene_quickstart_1",
+        spatialLayout: null,
+      });
+    } finally {
+      await closeServer(server);
+    }
+  }, 20_000);
+
   it("submits a compound patch as one undoable transaction", async () => {
     const directory = await temporaryDirectory();
     const initial = createStructuredScene();
@@ -330,6 +372,96 @@ describe("Director CLI structured submissions", () => {
       await closeServer(server);
     }
   }, 20_000);
+
+  it.each([1, 2] as const)(
+    "migrates a v%s patch submission without shifting evidence indices",
+    async (schemaVersion) => {
+      const directory = await temporaryDirectory();
+      const initial = createStructuredScene();
+      const legacySubmission = structuredClone(
+        createPatchSubmission(initial),
+      ) as {
+        intentReport: {
+          schemaVersion: number;
+          recognizedConstraints: unknown[];
+        };
+        patch: {
+          schemaVersion: number;
+          preserveLock?: boolean;
+          operations: unknown[];
+        };
+      };
+      legacySubmission.intentReport.schemaVersion = schemaVersion;
+      legacySubmission.intentReport.recognizedConstraints = [
+        {
+          id: "intent_legacy_visibility_1",
+          kind: "visibility",
+          required: true,
+          targets: ["actor_generic_1"],
+          evidence: [{ type: "patch-operation", operationIndex: 0 }],
+        },
+        {
+          id: "intent_legacy_output_1",
+          kind: "output",
+          required: true,
+          targets: [],
+          evidence: [{ type: "patch-operation", operationIndex: 1 }],
+        },
+      ];
+      legacySubmission.patch.schemaVersion = schemaVersion;
+      delete legacySubmission.patch.preserveLock;
+      legacySubmission.patch.operations = [
+        {
+          op: "entity.flags.set",
+          entityId: "actor_generic_1",
+          visible: false,
+          locked: true,
+        },
+        createStructuredPatch(initial).operations[1],
+      ];
+      const file = path.join(
+        directory,
+        `legacy-v${schemaVersion}-patch-submission.json`,
+      );
+      await writeFile(file, JSON.stringify(legacySubmission), "utf8");
+
+      const session = new SceneSession(initial);
+      const { server, bridgeUrl } = await startApi(session);
+      try {
+        const result = await runDirector(
+          ["patch", "submit", "--file", file],
+          bridgeUrl,
+        );
+
+        expect(result).toMatchObject({
+          exitCode: 0,
+          signal: null,
+          stderr: "",
+        });
+        expect(parseSingleJsonLine(result.stdout)).toMatchObject({
+          ok: true,
+          data: {
+            action: "submit",
+            kind: "patch",
+            sceneId: initial.sceneId,
+            revision: initial.revision + 1,
+          },
+        });
+        expect(session.snapshot()).toMatchObject({
+          schemaVersion: 4,
+          entities: expect.arrayContaining([
+            expect.objectContaining({
+              id: "actor_generic_1",
+              visible: false,
+            }),
+          ]),
+        });
+      } finally {
+        await closeServer(server);
+      }
+    },
+    20_000,
+  );
 
   it("keeps malformed files and strict option errors local", async () => {
     const directory = await temporaryDirectory();

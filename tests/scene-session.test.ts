@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SceneDomainError } from "../src/domain/apply-scene-patch";
 import { SceneSession } from "../server/scene-session";
+import { resolveActorLimbPresenceUpdates } from "../src/domain/actor-anatomy";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { buildRelationshipOperations } from "../src/domain/presets";
 import { createStructuredTwoActorScene } from "./helpers/structured-fixtures";
@@ -109,6 +110,47 @@ describe("SceneSession history", () => {
       revision: 3,
       title: "Replacement scene",
     });
+  });
+
+  it("preserves saved limb absences through replace, undo, and redo", () => {
+    const initial = createDefaultScene();
+    const saved = structuredClone(initial);
+    saved.sceneId = "scene_saved_limb_presence";
+    const savedActor = saved.entities.find(
+      (entity) => entity.kind === "actor",
+    );
+    if (!savedActor || savedActor.kind !== "actor") {
+      throw new Error("Missing generic saved actor fixture.");
+    }
+    savedActor.body.limbPresence = resolveActorLimbPresenceUpdates(
+      savedActor.body.limbPresence,
+      { upper_arm_r: "absent", lower_leg_l: "absent" },
+    );
+    const savedPresence = structuredClone(savedActor.body.limbPresence);
+    const session = new SceneSession(initial);
+
+    const replaced = session.replaceScene(saved);
+    expect(
+      replaced.entities.find((entity) => entity.kind === "actor"),
+    ).toMatchObject({ body: { limbPresence: savedPresence } });
+    expect(session.snapshot()).toEqual(replaced);
+
+    const undone = session.undo();
+    expect(
+      undone?.entities.find((entity) => entity.kind === "actor"),
+    ).toMatchObject({
+      body: {
+        limbPresence: {
+          upper_arm_r: "present",
+          lower_leg_l: "present",
+        },
+      },
+    });
+
+    const redone = session.redo();
+    expect(
+      redone?.entities.find((entity) => entity.kind === "actor"),
+    ).toMatchObject({ body: { limbPresence: savedPresence } });
   });
 
   it("keeps replacement revisions monotonic so stale patches cannot hit an ABA scene", () => {

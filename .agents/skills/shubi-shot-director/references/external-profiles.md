@@ -24,6 +24,8 @@ Load an external `project-profile.json` only when the user supplies its exact pa
 5. If an alias remains ambiguous, ask the user only when the choice changes the result. Do not guess.
 6. Discard the path, file content, aliases, and normalized lookup after host planning.
 
+An anatomy instruction explicitly supplied in the current user request is not profile data. Convert it only in Host memory into canonical generic part states before authoring. It must not enter the alias profile, runtime input, repository, logs, screenshots, saved source metadata, or any extra SceneSpec field.
+
 Never pass the profile path, profile content, alias text, or normalized lookup to the Director runtime. Never copy them into the repository, transient submissions, IntentReport, SceneSpec, ScenePatch, saved scenes, logs, screenshots, fixtures, or exports.
 
 If the exact file cannot be read or validated, report a generic host-side profile error without echoing the path or content. The runtime has no profile command or profile input.

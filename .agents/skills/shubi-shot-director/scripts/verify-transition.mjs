@@ -3,6 +3,26 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { tsImport } from "tsx/esm/api";
+
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../..",
+);
+const { snapTransformToContact } = await tsImport(
+  pathToFileURL(
+    path.join(repositoryRoot, "src/domain/contact-constraints.ts"),
+  ).href,
+  import.meta.url,
+);
+
+const actorLimbChains = [
+  ["upper_arm_l", "forearm_l", "hand_l"],
+  ["upper_arm_r", "forearm_r", "hand_r"],
+  ["upper_leg_l", "lower_leg_l", "foot_l"],
+  ["upper_leg_r", "lower_leg_r", "foot_r"],
+];
 
 const args = process.argv.slice(2);
 const options = new Map();
@@ -29,18 +49,20 @@ const before = await readJson("--before");
 const after = await readJson("--after");
 const patch = await readJson("--patch");
 
-const canonicalScene = (scene) => ({
-  title: scene.title,
-  activeCameraId: scene.activeCameraId,
-  output: scene.output,
-  compositionGoals: scene.compositionGoals,
-  entities: Object.fromEntries(
-    (scene.entities ?? []).map((entity) => [entity.id, entity]),
-  ),
-  constraints: Object.fromEntries(
-    (scene.constraints ?? []).map((constraint) => [constraint.id, constraint]),
-  ),
-});
+const canonicalScene = (scene) => {
+  const persistentScene = { ...scene };
+  delete persistentScene.sceneId;
+  delete persistentScene.revision;
+  return {
+    ...persistentScene,
+    entities: Object.fromEntries(
+      (scene.entities ?? []).map((entity) => [entity.id, entity]),
+    ),
+    constraints: Object.fromEntries(
+      (scene.constraints ?? []).map((constraint) => [constraint.id, constraint]),
+    ),
+  };
+};
 
 const differences = [];
 const walk = (left, right, prefix = "") => {
@@ -75,6 +97,58 @@ const walk = (left, right, prefix = "") => {
 };
 walk(canonicalScene(before), canonicalScene(after));
 
+const actorLimbClosure = (updates) => {
+  const closure = new Set();
+  for (const [partId, mode] of Object.entries(updates ?? {})) {
+    const chain = actorLimbChains.find((candidate) =>
+      candidate.includes(partId),
+    );
+    const partIndex = chain?.indexOf(partId) ?? -1;
+    if (!chain || partIndex === -1) {
+      continue;
+    }
+    const affected =
+      mode === "absent"
+        ? chain.slice(partIndex)
+        : mode === "present"
+          ? chain.slice(0, partIndex + 1)
+          : [];
+    for (const affectedPartId of affected) {
+      closure.add(affectedPartId);
+    }
+  }
+  return closure;
+};
+
+const hasDeterministicContactCorrection = (actorId) => {
+  const afterActor = (after.entities ?? []).find(
+    (entity) => entity.id === actorId && entity.kind === "actor",
+  );
+  const hasEnabledContact = (after.constraints ?? []).some(
+    (constraint) =>
+      constraint.type === "ground-contact" &&
+      constraint.enabled === true &&
+      constraint.entityId === actorId,
+  );
+  if (!afterActor || !hasEnabledContact) {
+    return false;
+  }
+  try {
+    const snapped = snapTransformToContact(
+      after,
+      actorId,
+      afterActor.transform,
+    );
+    return (
+      Math.abs(
+        snapped.positionM[1] - afterActor.transform.positionM[1],
+      ) <= 1e-9
+    );
+  } catch {
+    return false;
+  }
+};
+
 const allowedPrefixes = new Set();
 for (const operation of patch.operations ?? []) {
   switch (operation.op) {
@@ -91,8 +165,12 @@ for (const operation of patch.operations ?? []) {
       allowedPrefixes.add(`entities.${operation.entityId}.transform`);
       break;
     case "entity.flags.set":
-      allowedPrefixes.add(`entities.${operation.entityId}.visible`);
-      allowedPrefixes.add(`entities.${operation.entityId}.locked`);
+      if ("visible" in operation) {
+        allowedPrefixes.add(`entities.${operation.entityId}.visible`);
+      }
+      if ("lockMode" in operation) {
+        allowedPrefixes.add(`entities.${operation.entityId}.lockMode`);
+      }
       break;
     case "entity.preset.parameters.set":
       allowedPrefixes.add(`entities.${operation.entityId}.preset.parameters`);
@@ -100,6 +178,18 @@ for (const operation of patch.operations ?? []) {
     case "actor.pose.set":
       allowedPrefixes.add(`entities.${operation.entityId}.pose`);
       allowedPrefixes.add(`entities.${operation.entityId}.transform.positionM`);
+      break;
+    case "actor.limb-presence.set":
+      for (const partId of actorLimbClosure(operation.updates)) {
+        allowedPrefixes.add(
+          `entities.${operation.actorId}.body.limbPresence.${partId}`,
+        );
+      }
+      if (hasDeterministicContactCorrection(operation.actorId)) {
+        allowedPrefixes.add(
+          `entities.${operation.actorId}.transform.positionM.1`,
+        );
+      }
       break;
     case "camera.lens.set":
       allowedPrefixes.add(`entities.${operation.entityId}.lens`);

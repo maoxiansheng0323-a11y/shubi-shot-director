@@ -91,6 +91,34 @@ const FORBIDDEN_CONFIGURATION_KEYS = [
   ...COMPACT_CONFIGURATION_KEYS.map((key) => key.toUpperCase()),
 ] as const;
 
+const LOCK_CAPABILITIES = {
+  entityLockModes: ["none", "workflow", "user"],
+  patchPolicyFields: ["preserveLock"],
+  lockErrorCodes: [
+    "USER_LOCKED",
+    "WORKFLOW_LOCKED",
+    "LOCK_PRESERVATION_CONFLICT",
+  ],
+} as const;
+const ANATOMY_CAPABILITIES = {
+  actorLimbPartIds: [
+    "upper_arm_l",
+    "forearm_l",
+    "hand_l",
+    "upper_arm_r",
+    "forearm_r",
+    "hand_r",
+    "upper_leg_l",
+    "lower_leg_l",
+    "foot_l",
+    "upper_leg_r",
+    "lower_leg_r",
+    "foot_r",
+  ],
+  actorLimbPresenceModes: ["present", "absent"],
+  actorLimbErrorCodes: ["LIMB_HIERARCHY_CONFLICT"],
+} as const;
+
 interface CliResult {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
@@ -405,6 +433,140 @@ describe("Director CLI bridge compatibility gate", () => {
       "network policy",
       { networkPolicy: "public" },
       "SEMANTIC_BOUNDARY_VIOLATION",
+      "scene",
+    ],
+    [
+      "removed entity lock mode",
+      { entityLockModes: ["none", "workflow"] },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "altered entity lock mode",
+      { entityLockModes: ["none", "workflow", "system"] },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "added entity lock mode",
+      {
+        entityLockModes: [
+          ...LOCK_CAPABILITIES.entityLockModes,
+          "temporary",
+        ],
+      },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "removed patch policy field",
+      { patchPolicyFields: [] },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "altered patch policy field",
+      { patchPolicyFields: ["keepLock"] },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "added patch policy field",
+      {
+        patchPolicyFields: [
+          ...LOCK_CAPABILITIES.patchPolicyFields,
+          "allowLockChange",
+        ],
+      },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "removed lock error code",
+      {
+        lockErrorCodes: LOCK_CAPABILITIES.lockErrorCodes.slice(0, -1),
+      },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "altered lock error code",
+      {
+        lockErrorCodes: [
+          "USER_LOCKED",
+          "WORKFLOW_LOCKED",
+          "ENTITY_LOCKED",
+        ],
+      },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "added lock error code",
+      {
+        lockErrorCodes: [
+          ...LOCK_CAPABILITIES.lockErrorCodes,
+          "UNKNOWN_LOCK",
+        ],
+      },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "missing actor limb part ids",
+      { actorLimbPartIds: undefined },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "empty actor limb presence modes",
+      { actorLimbPresenceModes: [] },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "duplicate actor limb error codes",
+      {
+        actorLimbErrorCodes: [
+          ...ANATOMY_CAPABILITIES.actorLimbErrorCodes,
+          ...ANATOMY_CAPABILITIES.actorLimbErrorCodes,
+        ],
+      },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "non-string actor limb part id",
+      {
+        actorLimbPartIds: [
+          ...ANATOMY_CAPABILITIES.actorLimbPartIds.slice(0, -1),
+          42,
+        ],
+      },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "altered actor limb part id",
+      {
+        actorLimbPartIds: [
+          ...ANATOMY_CAPABILITIES.actorLimbPartIds.slice(0, -1),
+          "toe_r",
+        ],
+      },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "altered actor limb presence mode",
+      { actorLimbPresenceModes: ["present", "missing"] },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "altered actor limb error code",
+      { actorLimbErrorCodes: ["UNKNOWN_LIMB_ERROR"] },
+      "CAPABILITIES_INVALID",
       "scene",
     ],
     ...FORBIDDEN_CONFIGURATION_KEYS.map((key, index) => [

@@ -1,4 +1,9 @@
 import { rotateVector } from "./scene-math";
+import { actorVisibleRigBounds } from "./actor-visible-bounds";
+import {
+  mutationBlockedByLock,
+  type EntityLockErrorCode,
+} from "./entity-lock";
 import {
   sceneSpecSchema,
   transformSchema,
@@ -13,8 +18,8 @@ export type ContactConstraintErrorCode =
   | "UNSUPPORTED_SURFACE"
   | "SURFACE_NOT_HORIZONTAL"
   | "CONTACT_TARGET_UNSUPPORTED"
-  | "CONTACT_OFFSET_INVALID"
   | "AMBIGUOUS_GROUND_CONTACT"
+  | EntityLockErrorCode
   | "LOCKED_ENTITY_CONFLICT";
 
 export class ContactConstraintError extends Error {
@@ -28,7 +33,8 @@ export class ContactConstraintError extends Error {
 }
 
 const HORIZONTAL_EPSILON = 1e-5;
-const CONTACT_EPSILON_M = 1e-6;
+const LEGACY_CONTACT_TOLERANCE_M = 0.001;
+const CONTACT_NUMERIC_EPSILON_M = 1e-9;
 
 const entityById = (
   scene: SceneSpec,
@@ -117,7 +123,10 @@ export const isSupportedContactSurface = (
   }
 };
 
-const actorContactOffsetM = (entity: SceneEntity): number => {
+const actorContactOffsetM = (
+  entity: SceneEntity,
+  transform: TransformSpec,
+): number => {
   if (entity.kind !== "actor") {
     throw new ContactConstraintError(
       "CONTACT_TARGET_UNSUPPORTED",
@@ -125,14 +134,7 @@ const actorContactOffsetM = (entity: SceneEntity): number => {
     );
   }
 
-  const offset = entity.pose.preset.parameters.contactOffsetM;
-  if (typeof offset !== "number" || !Number.isFinite(offset) || offset < 0) {
-    throw new ContactConstraintError(
-      "CONTACT_OFFSET_INVALID",
-      "The actor pose must provide a non-negative contactOffsetM.",
-    );
-  }
-  return offset;
+  return actorVisibleRigBounds(entity, transform).supportOffsetM;
 };
 
 type GroundContactConstraint = Extract<
@@ -183,14 +185,13 @@ export const snapTransformToContact = (
     constraint.surfaceEntityId === null
       ? 0
       : surfaceTopY(scene, constraint.surfaceEntityId);
-  const scaledOffset =
-    actorContactOffsetM(entity) * candidate.scale[1];
+  const supportOffsetM = actorContactOffsetM(entity, candidate);
 
   return {
     ...candidate,
     positionM: [
       candidate.positionM[0],
-      surfaceY + scaledOffset,
+      surfaceY + supportOffsetM,
       candidate.positionM[2],
     ],
   };
@@ -199,9 +200,10 @@ export const snapTransformToContact = (
 const transformNeedsVerticalMove = (
   before: TransformSpec,
   after: TransformSpec,
+  toleranceM: number,
 ): boolean =>
   Math.abs(before.positionM[1] - after.positionM[1]) >
-  CONTACT_EPSILON_M;
+  toleranceM;
 
 /**
  * Enforces enabled actor ground contacts without mutating the supplied scene.
@@ -213,8 +215,13 @@ const transformNeedsVerticalMove = (
 export const enforceGroundContacts = (
   scene: SceneSpec,
   affectedEntityIds?: ReadonlySet<string>,
+  options: { preserveLock?: boolean } = {},
 ): SceneSpec => {
   const nextScene = structuredClone(scene);
+  const contactToleranceM =
+    affectedEntityIds === undefined
+      ? LEGACY_CONTACT_TOLERANCE_M
+      : CONTACT_NUMERIC_EPSILON_M;
 
   for (const constraint of nextScene.constraints) {
     if (constraint.type !== "ground-contact" || !constraint.enabled) {
@@ -242,13 +249,25 @@ export const enforceGroundContacts = (
       entity.transform,
     );
 
-    if (entity.locked && transformNeedsVerticalMove(entity.transform, snapped)) {
-      throw new ContactConstraintError(
-        "LOCKED_ENTITY_CONFLICT",
-        "A locked actor cannot be moved to satisfy ground contact.",
+    if (
+      transformNeedsVerticalMove(
+        entity.transform,
+        snapped,
+        contactToleranceM,
+      )
+    ) {
+      const lockError = mutationBlockedByLock(
+        entity.lockMode,
+        options.preserveLock === true,
       );
+      if (lockError !== null) {
+        throw new ContactConstraintError(
+          lockError,
+          "A locked actor cannot be moved to satisfy ground contact.",
+        );
+      }
+      entity.transform = snapped;
     }
-    entity.transform = snapped;
   }
 
   return sceneSpecSchema.parse(nextScene);
