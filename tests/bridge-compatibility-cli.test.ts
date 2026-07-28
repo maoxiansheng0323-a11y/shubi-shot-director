@@ -379,6 +379,15 @@ describe("Director CLI bridge compatibility gate", () => {
       "scene",
     ],
     [
+      "workspace routing",
+      {
+        workspaceRoutingVersion:
+          getRuntimeCapabilityManifest().workspaceRoutingVersion + 1,
+      },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
       "SceneSpec schema",
       {
         sceneSchemaVersion:

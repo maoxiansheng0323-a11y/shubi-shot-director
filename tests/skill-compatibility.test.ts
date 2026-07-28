@@ -65,6 +65,7 @@ const commandIds = [
 ] as const;
 
 const featureIds = [
+  "bridge.thread-workspaces",
   "input.intent-report.validate",
   "input.scene-submission.atomic",
   "input.patch-submission.atomic",
@@ -171,6 +172,7 @@ const v2Manifest = (
   capabilitiesContractVersion: 2,
   applicationVersion: "1.0.0",
   bridgeProtocolVersion: 1,
+  workspaceRoutingVersion: 1,
   sceneSchemaVersion: 4,
   patchSchemaVersion: 4,
   intentReportSchemaVersion: 4,
@@ -290,6 +292,14 @@ const createObservedCopiedWrapper = async (): Promise<{
   await Promise.all([
     copyFile(wrapperPath, copiedWrapperPath),
     copyFile(
+      path.join(sourceSkillDirectory, "scripts", "workspace-identity.mjs"),
+      path.join(copiedScriptsDirectory, "workspace-identity.mjs"),
+    ),
+    copyFile(
+      path.join(sourceSkillDirectory, "scripts", "workspace-registry.mjs"),
+      path.join(copiedScriptsDirectory, "workspace-registry.mjs"),
+    ),
+    copyFile(
       path.join(sourceSkillDirectory, "scripts", "compatibility-plan.mjs"),
       path.join(copiedScriptsDirectory, "compatibility-plan.mjs"),
     ),
@@ -367,6 +377,7 @@ const buildPlan = (
     requestedAction,
     doctorData,
     skillBridgeProtocolVersion: 1,
+    skillWorkspaceRoutingVersion: 1,
     skillSceneSchemaVersion: 4,
     skillPatchSchemaVersion: 4,
     skillIntentReportSchemaVersion: 4,
@@ -549,6 +560,46 @@ describe("v2 compatibility planner", () => {
     const plan = buildPlan(
       "scene.submit",
       v2Manifest(manifestOverride),
+    );
+
+    expect(plan).toMatchObject({
+      mode: "incompatible",
+      actionAllowed: false,
+      allowedActions: [],
+      blockingError: { code: "CAPABILITIES_INVALID" },
+    });
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["zero", 0],
+    ["fractional", 1.5],
+    ["unsupported", 2],
+  ])(
+    "rejects a manifest with %s workspace routing version",
+    (_label, workspaceRoutingVersion) => {
+      const plan = buildPlan(
+        "scene.submit",
+        v2Manifest({ workspaceRoutingVersion }),
+      );
+
+      expect(plan).toMatchObject({
+        mode: "incompatible",
+        actionAllowed: false,
+        allowedActions: [],
+        blockingError: { code: "CAPABILITIES_INVALID" },
+      });
+    },
+  );
+
+  it("rejects a manifest without the canonical thread-workspace feature", () => {
+    const plan = buildPlan(
+      "scene.submit",
+      v2Manifest({
+        features: featureIds.filter(
+          (feature) => feature !== "bridge.thread-workspaces",
+        ),
+      }),
     );
 
     expect(plan).toMatchObject({
@@ -1314,6 +1365,11 @@ describe("portable v2 Skill wrapper", () => {
         commands: [...commandIds],
         compatibilityCommand:
           "compatibility plan --action <action> [--live]",
+        workspaceCommands: [
+          "workspace current",
+          "workspace list",
+          "workspace attach --id <workspace-id>",
+        ],
       },
     });
     expect(await runtime.readActionIds()).toEqual([]);

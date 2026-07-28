@@ -48,6 +48,7 @@ const EXPECTED_COMMAND_IDS = [
 ] as const;
 
 const EXPECTED_FEATURE_IDS = [
+  "bridge.thread-workspaces",
   "input.intent-report.validate",
   "input.scene-submission.atomic",
   "input.patch-submission.atomic",
@@ -181,9 +182,11 @@ describe("runtime capability manifest", () => {
     ) as { version: string };
     const manifest = getRuntimeCapabilityManifest();
 
+    expect(packageMetadata.version).toBe("0.5.0");
     expect(APPLICATION_VERSION).toBe(packageMetadata.version);
     expect(runtimeCapabilities).toMatchObject({
       CAPABILITIES_CONTRACT_VERSION: 2,
+      WORKSPACE_ROUTING_VERSION: 1,
       INTENT_REPORT_SCHEMA_VERSION: 4,
       PATCH_POLICY_FIELDS: EXPECTED_PATCH_POLICY_FIELDS,
       LOCK_ERROR_CODES: EXPECTED_LOCK_ERROR_CODES,
@@ -200,6 +203,7 @@ describe("runtime capability manifest", () => {
       capabilitiesContractVersion: 2,
       applicationVersion: packageMetadata.version,
       bridgeProtocolVersion: 1,
+      workspaceRoutingVersion: 1,
       sceneSchemaVersion: SCENE_SCHEMA_VERSION,
       patchSchemaVersion: PATCH_SCHEMA_VERSION,
       intentReportSchemaVersion: 4,
@@ -584,6 +588,8 @@ describe("runtime capability manifest", () => {
       { capabilitiesContractVersion: 1.5 },
       { bridgeProtocolVersion: 0 },
       { bridgeProtocolVersion: 1.5 },
+      { workspaceRoutingVersion: 0 },
+      { workspaceRoutingVersion: 1.5 },
       { sceneSchemaVersion: 0 },
       { sceneSchemaVersion: 1.5 },
       { patchSchemaVersion: 0 },
@@ -595,6 +601,24 @@ describe("runtime capability manifest", () => {
     for (const override of invalidVersions) {
       expectCapabilityError(
         () => parseRuntimeCapabilityManifest({ ...valid, ...override }),
+        "CAPABILITIES_INVALID",
+      );
+    }
+  });
+
+  it("requires the canonical workspace routing version", () => {
+    const valid = {
+      ...getRuntimeCapabilityManifest(),
+      workspaceRoutingVersion: 1,
+    };
+
+    for (const workspaceRoutingVersion of [undefined, 0, 1.5, 2]) {
+      expectCapabilityError(
+        () =>
+          parseRuntimeCapabilityManifest({
+            ...valid,
+            workspaceRoutingVersion,
+          }),
         "CAPABILITIES_INVALID",
       );
     }

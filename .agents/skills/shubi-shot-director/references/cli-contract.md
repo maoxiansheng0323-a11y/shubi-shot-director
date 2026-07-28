@@ -14,6 +14,9 @@ The Director performs only a deterministic structured compile: schema validation
 
 ```text
 doctor
+workspace current
+workspace list
+workspace attach --id <workspace-id>
 ensure
 status
 stop
@@ -30,7 +33,22 @@ redo
 open --system
 ```
 
-`ensure` reuses a healthy compatible loopback bridge or starts one. `snapshot` returns the authoritative SceneSpec plus undo/redo availability.
+`workspace current` returns the current opaque workspace ID, route source, port, status, legacy flag, and loopback `uiUrl`. `workspace list` returns generic workspace state without thread identifiers or runtime-directory paths. `workspace attach --id` changes only the current conversation's binding to an existing canonical workspace ID. It never copies or mutates a scene.
+
+With a valid Codex thread, `ensure` reuses or starts only that thread's compatible loopback bridge. Every later live command automatically receives the same workspace port and runtime directory. Separate Codex conversations receive separate workspaces by default, and each workspace owns its SceneSession, revision history, and connected Shot Preview. Users never choose ports or directories.
+
+The wrapper hashes the raw thread ID and never passes the raw thread ID to runtime processes, scene files, logs, screenshots, or exports. Without a valid thread ID, commands preserve the legacy single-workspace environment behavior.
+
+Workspace operations never create SceneSpec revisions. `snapshot` returns the authoritative SceneSpec plus undo/redo availability for the current workspace.
+
+Stable workspace errors are:
+
+- `WORKSPACE_ID_INVALID`
+- `WORKSPACE_NOT_FOUND`
+- `WORKSPACE_STATE_INVALID`
+- `WORKSPACE_LOCK_UNAVAILABLE`
+- `WORKSPACE_PORT_UNAVAILABLE`
+- `WORKSPACE_THREAD_ID_UNAVAILABLE`
 
 ## Host-authored submissions
 
@@ -87,6 +105,7 @@ Failure:
 - `WORKFLOW_LOCKED`: re-author the Patch with `preserveLock: true` without asking the user.
 - Other entity, lock, contact, or schema error: refresh state and correct only the structured input.
 - Bridge unavailable or incompatible: run `doctor`, then `ensure` and `health`; do not bypass compatibility.
+- Workspace routing failure: inspect `workspace current` and `workspace list`; never guess or reuse another workspace's port.
 
 ## Persistence, history, and export
 
@@ -95,6 +114,7 @@ Failure:
 - `scene save` and `export png` refuse overwrite unless `--force` is explicit.
 - `scene load` validates before replacing the authoritative scene.
 - `undo` and `redo` create new authoritative revisions; never assume an old revision number returns.
+- `stop` stops only the current workspace. It preserves other conversations and their bridges.
 - `composition inspect --json` returns deterministic segmented checks.
 - `export png` requires an open connected Shot Preview at the current scene revision. It requests the browser-rendered final camera and never falls back to a separately rendered approximation.
 - Export success requires returned scene ID, revision, dimensions, SHA-256, and generic warning codes.

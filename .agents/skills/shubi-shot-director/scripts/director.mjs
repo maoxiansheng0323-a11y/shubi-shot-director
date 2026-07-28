@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL } from "node:url";
 
 const skillDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -19,6 +19,7 @@ const generatedSchemaDirectory = path.join(
   "generated",
 );
 const bundledBridgeProtocolVersion = 1;
+const bundledWorkspaceRoutingVersion = 1;
 const bundledEntityLockModes = Object.freeze([
   "none",
   "workflow",
@@ -156,6 +157,14 @@ for (const token of modelConfigurationOptionTokens) {
   }
 }
 let SkillRuntimeErrorClass;
+let WorkspaceRoutingErrorClass;
+let attachWorkspace;
+let deriveThreadWorkspaceId;
+let ensureWorkspaceRoute;
+let isWorkspaceId;
+let listWorkspaces;
+let readThreadBinding;
+let updateWorkspaceRoute;
 
 const WRAPPER_ERROR_MESSAGES = Object.freeze({
   CLI_UNKNOWN_COMMAND: "Unknown command.",
@@ -215,6 +224,15 @@ const WRAPPER_ERROR_MESSAGES = Object.freeze({
     "The requested limb target is not an editable actor.",
   CAPABILITY_NOT_AVAILABLE:
     "The requested runtime capability is not available.",
+  WORKSPACE_ID_INVALID: "The workspace ID is invalid.",
+  WORKSPACE_NOT_FOUND: "The workspace was not found.",
+  WORKSPACE_STATE_INVALID: "The workspace routing state is invalid.",
+  WORKSPACE_LOCK_UNAVAILABLE:
+    "The workspace routing lock is unavailable.",
+  WORKSPACE_PORT_UNAVAILABLE:
+    "No loopback port is available for the workspace.",
+  WORKSPACE_THREAD_ID_UNAVAILABLE:
+    "A Codex thread is required for workspace attachment.",
 });
 
 const stableRuntimeErrorCodes = new Set([
@@ -262,8 +280,13 @@ const outputError = (error) => {
   const isSkillRuntimeError =
     SkillRuntimeErrorClass !== undefined &&
     error instanceof SkillRuntimeErrorClass;
+  const isWorkspaceRoutingError =
+    WorkspaceRoutingErrorClass !== undefined &&
+    error instanceof WorkspaceRoutingErrorClass;
   const safeError =
-    isSkillRuntimeError || error instanceof WrapperError
+    isSkillRuntimeError ||
+    isWorkspaceRoutingError ||
+    error instanceof WrapperError
       ? error
       : new WrapperError("RUNTIME_UNAVAILABLE");
   output({
@@ -375,6 +398,37 @@ const actionFromArgs = (args) => {
       throw new WrapperError("CLI_UNKNOWN_ARGUMENT");
     }
     return { kind: "doctor" };
+  }
+  if (command === "workspace") {
+    const workspaceCommand = args[1];
+    if (
+      (workspaceCommand === "current" ||
+        workspaceCommand === "list") &&
+      args.length === 2
+    ) {
+      return {
+        kind: "workspace",
+        command: workspaceCommand,
+      };
+    }
+    if (
+      workspaceCommand === "attach" &&
+      args[2] === "--id" &&
+      args.length === 4
+    ) {
+      return {
+        kind: "workspace",
+        command: workspaceCommand,
+        workspaceId: args[3],
+      };
+    }
+    if (
+      workspaceCommand === "attach" &&
+      (args[2] !== "--id" || args[3] === undefined)
+    ) {
+      throw new WrapperError("CLI_ARGUMENT_REQUIRED");
+    }
+    throw new WrapperError("CLI_UNKNOWN_ARGUMENT");
   }
   if (
     [
@@ -550,6 +604,8 @@ const readBundledContractVersions = async () => {
       metadata?.capabilitiesContractVersion !== 2 ||
       metadata?.bridgeProtocolVersion !==
         bundledBridgeProtocolVersion ||
+      metadata?.workspaceRoutingVersion !==
+        bundledWorkspaceRoutingVersion ||
       metadata?.semanticAuthority !== "host" ||
       metadata?.inputContract !== "structured-only" ||
       metadata?.modelIntegration !== "none" ||
@@ -587,6 +643,8 @@ const readBundledContractVersions = async () => {
     }
     return {
       skillBridgeProtocolVersion: metadata.bridgeProtocolVersion,
+      skillWorkspaceRoutingVersion:
+        metadata.workspaceRoutingVersion,
       skillSceneSchemaVersion: metadata.sceneSchemaVersion,
       skillPatchSchemaVersion: metadata.patchSchemaVersion,
       skillIntentReportSchemaVersion: metadata.intentReportSchemaVersion,
@@ -611,7 +669,10 @@ const setDefined = (target, name, value) => {
   }
 };
 
-const runtimeChildEnvironment = (environment = process.env) => {
+const runtimeChildEnvironment = (
+  environment = process.env,
+  workspaceRoute,
+) => {
   const child = {};
   setDefined(child, "PATH", environment.PATH ?? environment.Path);
   setDefined(
@@ -656,23 +717,34 @@ const runtimeChildEnvironment = (environment = process.env) => {
     "__CF_USER_TEXT_ENCODING",
     environment.__CF_USER_TEXT_ENCODING,
   );
-  setDefined(child, "SHUBI_SHOT_URL", environment.SHUBI_SHOT_URL);
-  setDefined(child, "SHUBI_SHOT_PORT", environment.SHUBI_SHOT_PORT);
+  const routed =
+    workspaceRoute === undefined
+      ? {
+          url: environment.SHUBI_SHOT_URL,
+          port: environment.SHUBI_SHOT_PORT,
+          runtimeDirectory: environment.SHUBI_SHOT_RUNTIME_DIR,
+        }
+      : {
+          port: String(workspaceRoute.port),
+          runtimeDirectory: workspaceRoute.runtimeDirectory,
+        };
+  setDefined(child, "SHUBI_SHOT_URL", routed.url);
+  setDefined(child, "SHUBI_SHOT_PORT", routed.port);
   setDefined(
     child,
     "SHUBI_SHOT_RUNTIME_DIR",
-    environment.SHUBI_SHOT_RUNTIME_DIR,
+    routed.runtimeDirectory,
   );
   return child;
 };
 
-const runRuntime = (runtime, args) =>
+const runRuntime = (runtime, args, workspaceRoute) =>
   new Promise((resolve) => {
     let child;
     try {
       child = spawn(process.execPath, [runtime.entrypoint, ...args], {
         cwd: runtime.runtimeRoot,
-        env: runtimeChildEnvironment(),
+        env: runtimeChildEnvironment(process.env, workspaceRoute),
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
@@ -779,8 +851,8 @@ const runtimeEnvelopeError = (envelope) => {
   );
 };
 
-const invokeRuntimeJson = async (runtime, args) => {
-  const result = await runRuntime(runtime, args);
+const invokeRuntimeJson = async (runtime, args, workspaceRoute) => {
+  const result = await runRuntime(runtime, args, workspaceRoute);
   if (result.unavailable) {
     throw new WrapperError("RUNTIME_UNAVAILABLE");
   }
@@ -805,6 +877,7 @@ const createPlan = async (
     requestedAction,
     live = false,
     skillBridgeProtocolVersion,
+    skillWorkspaceRoutingVersion,
     skillSceneSchemaVersion,
     skillPatchSchemaVersion,
     skillIntentReportSchemaVersion,
@@ -815,14 +888,16 @@ const createPlan = async (
     skillActorLimbPresenceModes,
     skillActorLimbErrorCodes,
   },
+  workspaceRoute,
 ) => {
   const doctorData = requireEnvelopeData(
-    await invokeRuntimeJson(runtime, ["doctor"]),
+    await invokeRuntimeJson(runtime, ["doctor"], workspaceRoute),
   );
   const baseInput = {
     doctorData,
     requestedAction,
     skillBridgeProtocolVersion,
+    skillWorkspaceRoutingVersion,
     skillSceneSchemaVersion,
     skillPatchSchemaVersion,
     skillIntentReportSchemaVersion,
@@ -844,7 +919,7 @@ const createPlan = async (
     });
   }
   const healthData = requireEnvelopeData(
-    await invokeRuntimeJson(runtime, ["health"]),
+    await invokeRuntimeJson(runtime, ["health"], workspaceRoute),
   );
   return buildCompatibilityPlan({
     ...baseInput,
@@ -853,30 +928,162 @@ const createPlan = async (
   });
 };
 
-const forwardRuntime = async (runtime, args) => {
-  const result = await runRuntime(runtime, args);
+const forwardRuntime = async (runtime, args, workspaceRoute) => {
+  const result = await runRuntime(runtime, args, workspaceRoute);
   if (result.unavailable) {
-    outputError(new WrapperError("RUNTIME_UNAVAILABLE"));
+    throw new WrapperError("RUNTIME_UNAVAILABLE");
+  }
+  const envelope = parseRuntimeEnvelope(result.stdout);
+
+  if (runtimeSuccessContradictsProcess(envelope, result)) {
+    throw new WrapperError("RUNTIME_COMMAND_FAILED");
+  }
+  if (!envelope.ok) {
+    throw runtimeEnvelopeError(envelope);
+  }
+  return {
+    envelope,
+    exitCode: result.exitCode ?? 1,
+  };
+};
+
+const workspaceRoutingRoot = (runtime) =>
+  path.join(runtime.runtimeRoot, ".shubi-shot", "workspace-routing");
+
+const legacyRuntimeDirectory = (runtime) =>
+  path.join(runtime.runtimeRoot, ".shubi-shot");
+
+const loadWorkspaceRouting = async () => {
+  if (WorkspaceRoutingErrorClass !== undefined) {
     return;
   }
-  let envelope;
-  try {
-    envelope = parseRuntimeEnvelope(result.stdout);
-  } catch (error) {
-    outputError(error);
+  const [identity, registry] = await Promise.all([
+    import("./workspace-identity.mjs"),
+    import("./workspace-registry.mjs"),
+  ]);
+  deriveThreadWorkspaceId = identity.deriveThreadWorkspaceId;
+  isWorkspaceId = identity.isWorkspaceId;
+  attachWorkspace = registry.attachWorkspace;
+  ensureWorkspaceRoute = registry.ensureWorkspaceRoute;
+  listWorkspaces = registry.listWorkspaces;
+  readThreadBinding = registry.readThreadBinding;
+  updateWorkspaceRoute = registry.updateWorkspaceRoute;
+  WorkspaceRoutingErrorClass = registry.WorkspaceRoutingError;
+};
+
+const resolveInvocationWorkspace = async (runtime) => {
+  const threadWorkspaceId = deriveThreadWorkspaceId(
+    process.env.CODEX_THREAD_ID,
+  );
+  if (threadWorkspaceId === undefined) {
+    return undefined;
+  }
+  const routingRoot = workspaceRoutingRoot(runtime);
+  const binding = await readThreadBinding(
+    routingRoot,
+    threadWorkspaceId,
+  );
+  const route = await ensureWorkspaceRoute({
+    routingRoot,
+    workspaceId: binding ?? threadWorkspaceId,
+    legacyRuntimeDirectory: legacyRuntimeDirectory(runtime),
+  });
+  return Object.freeze({
+    route,
+    source: binding === undefined ? "thread" : "binding",
+  });
+};
+
+const workspaceSummary = (route, source) =>
+  Object.freeze({
+    workspaceId: route.workspaceId,
+    source,
+    port: route.port,
+    status: route.status,
+    legacy: route.legacy,
+    uiUrl: `http://127.0.0.1:${route.port}`,
+  });
+
+const handleWorkspaceInvocation = async (runtime, invocation) => {
+  const routingRoot = workspaceRoutingRoot(runtime);
+  if (invocation.command === "list") {
+    output({
+      ok: true,
+      data: {
+        workspaces: await listWorkspaces({ routingRoot }),
+      },
+    });
     return;
   }
 
-  if (runtimeSuccessContradictsProcess(envelope, result)) {
-    outputError(new WrapperError("RUNTIME_COMMAND_FAILED"));
+  const threadWorkspaceId = deriveThreadWorkspaceId(
+    process.env.CODEX_THREAD_ID,
+  );
+  if (invocation.command === "attach") {
+    if (threadWorkspaceId === undefined) {
+      throw new WrapperError("WORKSPACE_THREAD_ID_UNAVAILABLE");
+    }
+    if (!isWorkspaceId(invocation.workspaceId)) {
+      throw new WorkspaceRoutingErrorClass("WORKSPACE_ID_INVALID");
+    }
+    const workspaceId = await attachWorkspace({
+      routingRoot,
+      threadWorkspaceId,
+      targetWorkspaceId: invocation.workspaceId,
+    });
+    output({
+      ok: true,
+      data: {
+        workspaceId,
+        attached: true,
+      },
+    });
     return;
   }
-  if (!envelope.ok) {
-    outputError(runtimeEnvelopeError(envelope));
+
+  if (threadWorkspaceId === undefined) {
+    output({
+      ok: true,
+      data: {
+        workspaceId: null,
+        source: "legacy",
+      },
+    });
     return;
   }
-  output(envelope);
-  process.exitCode = result.exitCode ?? 1;
+  const resolved = await resolveInvocationWorkspace(runtime);
+  output({
+    ok: true,
+    data: workspaceSummary(resolved.route, resolved.source),
+  });
+};
+
+const validateStartedWorkspace = (route, data) => {
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    Array.isArray(data) ||
+    typeof data.uiUrl !== "string" ||
+    typeof data.instanceId !== "string" ||
+    !/^instance_[0-9a-f]{32}$/u.test(data.instanceId)
+  ) {
+    throw new WrapperError("RUNTIME_RESPONSE_INVALID");
+  }
+  let url;
+  try {
+    url = new URL(data.uiUrl);
+  } catch {
+    throw new WrapperError("RUNTIME_RESPONSE_INVALID");
+  }
+  if (
+    url.protocol !== "http:" ||
+    url.hostname !== "127.0.0.1" ||
+    Number(url.port) !== route.port ||
+    url.origin !== data.uiUrl
+  ) {
+    throw new WrapperError("RUNTIME_RESPONSE_INVALID");
+  }
+  return data.instanceId;
 };
 
 const main = async () => {
@@ -893,6 +1100,11 @@ const main = async () => {
         commands: [...stableActionIds],
         compatibilityCommand:
           "compatibility plan --action <action> [--live]",
+        workspaceCommands: [
+          "workspace current",
+          "workspace list",
+          "workspace attach --id <workspace-id>",
+        ],
       },
     });
     return;
@@ -900,12 +1112,25 @@ const main = async () => {
   const locator = await import("./runtime-locator.mjs");
   SkillRuntimeErrorClass = locator.SkillRuntimeError;
   const runtime = await locator.resolveRuntime();
+  if (invocation.kind === "workspace") {
+    await loadWorkspaceRouting();
+    await handleWorkspaceInvocation(runtime, invocation);
+    return;
+  }
   const {
     ACTION_POLICY,
     buildCompatibilityPlan,
     validateCapabilitiesManifest,
   } = await import("./compatibility-plan.mjs");
   const contractVersions = await readBundledContractVersions();
+  if (invocation.kind !== "doctor") {
+    await loadWorkspaceRouting();
+  }
+  const workspaceContext =
+    invocation.kind === "doctor"
+      ? undefined
+      : await resolveInvocationWorkspace(runtime);
+  const workspaceRoute = workspaceContext?.route;
 
   if (invocation.kind === "doctor") {
     const doctorData = requireEnvelopeData(
@@ -941,7 +1166,7 @@ const main = async () => {
       requestedAction: invocation.requestedAction,
       live: invocation.live,
       ...contractVersions,
-    });
+    }, workspaceRoute);
     output({ ok: true, data: plan });
     return;
   }
@@ -953,7 +1178,7 @@ const main = async () => {
     requestedAction: invocation.action,
     live: needsLiveProof,
     ...contractVersions,
-  });
+  }, workspaceRoute);
   const startupCapabilityUnavailable =
     plan.actionAllowed &&
     actionPolicy.mayStartBridge &&
@@ -974,7 +1199,54 @@ const main = async () => {
     process.exitCode = 1;
     return;
   }
-  await forwardRuntime(runtime, runtimeArgs);
+  let forwarded;
+  try {
+    forwarded = await forwardRuntime(
+      runtime,
+      runtimeArgs,
+      workspaceRoute,
+    );
+    if (
+      workspaceRoute !== undefined &&
+      (invocation.action === "ensure" ||
+        invocation.action === "open.system")
+    ) {
+      const instanceId = validateStartedWorkspace(
+        workspaceRoute,
+        forwarded.envelope.data,
+      );
+      await updateWorkspaceRoute({
+        routingRoot: workspaceRoutingRoot(runtime),
+        workspaceId: workspaceRoute.workspaceId,
+        status: "ready",
+        instanceId,
+      });
+    } else if (
+      workspaceRoute !== undefined &&
+      invocation.action === "stop"
+    ) {
+      await updateWorkspaceRoute({
+        routingRoot: workspaceRoutingRoot(runtime),
+        workspaceId: workspaceRoute.workspaceId,
+        status: "stopped",
+      });
+    }
+  } catch (error) {
+    if (
+      workspaceRoute !== undefined &&
+      (invocation.action === "ensure" ||
+        invocation.action === "open.system")
+    ) {
+      await updateWorkspaceRoute({
+        routingRoot: workspaceRoutingRoot(runtime),
+        workspaceId: workspaceRoute.workspaceId,
+        status: "stopped",
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
+  output(forwarded.envelope);
+  process.exitCode = forwarded.exitCode;
 };
 
 void main().catch(outputError);

@@ -2,6 +2,7 @@ export const PLAN_CONTRACT_VERSION = 2;
 
 const RUNTIME_SERVICE = "shubi-shot-director";
 const CAPABILITIES_CONTRACT_VERSION = 2;
+const WORKSPACE_ROUTING_VERSION = 1;
 const EXPECTED_BOUNDARY = Object.freeze({
   semanticAuthority: "host",
   inputContract: "structured-only",
@@ -84,6 +85,7 @@ export const ACTION_POLICY = Object.freeze({
 
 const ACTION_IDS = Object.freeze(Object.keys(ACTION_POLICY));
 const REQUIRED_FEATURE_IDS = Object.freeze([
+  "bridge.thread-workspaces",
   "input.intent-report.validate",
   "input.scene-submission.atomic",
   "input.patch-submission.atomic",
@@ -263,6 +265,7 @@ const MANIFEST_ROOT_KEYS = new Set([
   "capabilitiesContractVersion",
   "applicationVersion",
   "bridgeProtocolVersion",
+  "workspaceRoutingVersion",
   "sceneSchemaVersion",
   "patchSchemaVersion",
   "intentReportSchemaVersion",
@@ -453,6 +456,7 @@ const inspectCapabilitiesBoundary = (input) => {
     const headerFields = [
       "service",
       "bridgeProtocolVersion",
+      "workspaceRoutingVersion",
       "sceneSchemaVersion",
       "patchSchemaVersion",
       "intentReportSchemaVersion",
@@ -466,6 +470,7 @@ const inspectCapabilitiesBoundary = (input) => {
     }
     if (
       !isPositiveInteger(record.bridgeProtocolVersion) ||
+      record.workspaceRoutingVersion !== WORKSPACE_ROUTING_VERSION ||
       !isPositiveInteger(record.sceneSchemaVersion) ||
       !isPositiveInteger(record.patchSchemaVersion) ||
       !isPositiveInteger(record.intentReportSchemaVersion) ||
@@ -487,6 +492,7 @@ const inspectCapabilitiesBoundary = (input) => {
       header: {
         capabilitiesContractVersion: contractVersion,
         bridgeProtocolVersion: record.bridgeProtocolVersion,
+        workspaceRoutingVersion: WORKSPACE_ROUTING_VERSION,
         sceneSchemaVersion: record.sceneSchemaVersion,
         patchSchemaVersion: record.patchSchemaVersion,
         intentReportSchemaVersion: record.intentReportSchemaVersion,
@@ -512,6 +518,7 @@ const validateCapabilitiesSnapshot = (input) => {
       record.applicationVersion.length === 0 ||
       !isUniqueStringArray(record.commands) ||
       !isUniqueStringArray(record.features) ||
+      !record.features.includes("bridge.thread-workspaces") ||
       !isNonEmptyUniqueStringArray(record.entityLockModes) ||
       !isNonEmptyUniqueStringArray(record.patchPolicyFields) ||
       !isNonEmptyUniqueStringArray(record.lockErrorCodes) ||
@@ -527,6 +534,7 @@ const validateCapabilitiesSnapshot = (input) => {
         capabilitiesContractVersion: CAPABILITIES_CONTRACT_VERSION,
         applicationVersion: record.applicationVersion,
         bridgeProtocolVersion: record.bridgeProtocolVersion,
+        workspaceRoutingVersion: WORKSPACE_ROUTING_VERSION,
         sceneSchemaVersion: record.sceneSchemaVersion,
         patchSchemaVersion: record.patchSchemaVersion,
         intentReportSchemaVersion: record.intentReportSchemaVersion,
@@ -557,6 +565,7 @@ const compareLiveManifest = (
   offline,
   input,
   skillBridgeProtocolVersion,
+  skillWorkspaceRoutingVersion,
 ) => {
   const inspected = inspectCapabilitiesBoundary(input);
   if (inspected.error !== undefined) {
@@ -568,6 +577,13 @@ const compareLiveManifest = (
     liveHeader.bridgeProtocolVersion !== skillBridgeProtocolVersion
   ) {
     return invalid("BRIDGE_PROTOCOL_UNSUPPORTED");
+  }
+  if (
+    liveHeader.workspaceRoutingVersion !==
+      offline.workspaceRoutingVersion ||
+    liveHeader.workspaceRoutingVersion !== skillWorkspaceRoutingVersion
+  ) {
+    return invalid("CAPABILITIES_INVALID");
   }
   if (liveHeader.sceneSchemaVersion !== offline.sceneSchemaVersion) {
     return invalid("SCENE_SCHEMA_UNSUPPORTED");
@@ -719,6 +735,8 @@ export const buildCompatibilityPlan = (input) => {
   const requestedAction = input.requestedAction;
   if (
     !isPositiveInteger(input.skillBridgeProtocolVersion) ||
+    input.skillWorkspaceRoutingVersion !==
+      WORKSPACE_ROUTING_VERSION ||
     !isPositiveInteger(input.skillSceneSchemaVersion) ||
     !isPositiveInteger(input.skillPatchSchemaVersion) ||
     !isPositiveInteger(input.skillIntentReportSchemaVersion) ||
@@ -768,6 +786,15 @@ export const buildCompatibilityPlan = (input) => {
     return incompatiblePlan(
       requestedAction,
       compatibilityError("BRIDGE_PROTOCOL_UNSUPPORTED"),
+    );
+  }
+  if (
+    inspected.header.workspaceRoutingVersion !==
+    input.skillWorkspaceRoutingVersion
+  ) {
+    return incompatiblePlan(
+      requestedAction,
+      compatibilityError("CAPABILITIES_INVALID"),
     );
   }
   const schemas = schemaCompatibility(inspected.header, input);
@@ -835,6 +862,7 @@ export const buildCompatibilityPlan = (input) => {
         manifest,
         healthData,
         input.skillBridgeProtocolVersion,
+        input.skillWorkspaceRoutingVersion,
       );
       if (compared.error !== undefined) {
         return incompatiblePlan(requestedAction, compared.error);

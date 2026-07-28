@@ -4,6 +4,7 @@
   "entrypoint": "scripts/director.mjs",
   "capabilitiesContractVersion": 2,
   "bridgeProtocolVersion": 1,
+  "workspaceRoutingVersion": 1,
   "sceneSchemaVersion": 4,
   "patchSchemaVersion": 4,
   "intentReportSchemaVersion": 4,

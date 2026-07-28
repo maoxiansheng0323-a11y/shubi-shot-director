@@ -14,6 +14,7 @@ export { INTENT_REPORT_SCHEMA_VERSION };
 export const BRIDGE_SERVICE = "shubi-shot-director" as const;
 export const CAPABILITIES_CONTRACT_VERSION = 2 as const;
 export const BRIDGE_PROTOCOL_VERSION = 1 as const;
+export const WORKSPACE_ROUTING_VERSION = 1 as const;
 export const SEMANTIC_AUTHORITY = "host" as const;
 export const INPUT_CONTRACT = "structured-only" as const;
 export const MODEL_INTEGRATION = "none" as const;
@@ -67,6 +68,7 @@ export const CLI_HELP_COMMANDS = CLI_COMMAND_DEFINITIONS.map(
 );
 
 export const RUNTIME_FEATURE_IDS = [
+  "bridge.thread-workspaces",
   "input.intent-report.validate",
   "input.scene-submission.atomic",
   "input.patch-submission.atomic",
@@ -82,6 +84,7 @@ export interface RuntimeCapabilityManifest {
   capabilitiesContractVersion: number;
   applicationVersion: string;
   bridgeProtocolVersion: number;
+  workspaceRoutingVersion: number;
   sceneSchemaVersion: number;
   patchSchemaVersion: number;
   intentReportSchemaVersion: number;
@@ -104,6 +107,7 @@ export interface RuntimeCapabilityCompatibilityHeader {
   service: typeof BRIDGE_SERVICE;
   capabilitiesContractVersion: number;
   bridgeProtocolVersion: number;
+  workspaceRoutingVersion: number;
   sceneSchemaVersion: number;
   patchSchemaVersion: number;
   intentReportSchemaVersion: number;
@@ -227,6 +231,7 @@ const MANIFEST_REQUIRED_FIELDS = [
   "capabilitiesContractVersion",
   "applicationVersion",
   "bridgeProtocolVersion",
+  "workspaceRoutingVersion",
   "sceneSchemaVersion",
   "patchSchemaVersion",
   "intentReportSchemaVersion",
@@ -403,6 +408,7 @@ const inspectRuntimeCapabilityCompatibilityHeader = (
     typeof record.bridgeProtocolVersion !== "number" ||
     !Number.isInteger(record.bridgeProtocolVersion) ||
     record.bridgeProtocolVersion < 1 ||
+    record.workspaceRoutingVersion !== WORKSPACE_ROUTING_VERSION ||
     typeof record.sceneSchemaVersion !== "number" ||
     !Number.isInteger(record.sceneSchemaVersion) ||
     record.sceneSchemaVersion < 1 ||
@@ -434,6 +440,7 @@ const inspectRuntimeCapabilityCompatibilityHeader = (
       service: BRIDGE_SERVICE,
       capabilitiesContractVersion: record.capabilitiesContractVersion,
       bridgeProtocolVersion: record.bridgeProtocolVersion,
+      workspaceRoutingVersion: WORKSPACE_ROUTING_VERSION,
       sceneSchemaVersion: record.sceneSchemaVersion,
       patchSchemaVersion: record.patchSchemaVersion,
       intentReportSchemaVersion: record.intentReportSchemaVersion,
@@ -471,6 +478,7 @@ export const parseRuntimeCapabilityManifest = (
       record.applicationVersion.length === 0 ||
       !isUniqueStringArray(record.commands) ||
       !isUniqueStringArray(record.features) ||
+      !record.features.includes("bridge.thread-workspaces") ||
       !isNonEmptyUniqueStringArray(record.entityLockModes) ||
       !isNonEmptyUniqueStringArray(record.patchPolicyFields) ||
       !isNonEmptyUniqueStringArray(record.lockErrorCodes) ||
@@ -503,6 +511,7 @@ export const getRuntimeCapabilityManifest =
     capabilitiesContractVersion: CAPABILITIES_CONTRACT_VERSION,
     applicationVersion: APPLICATION_VERSION,
     bridgeProtocolVersion: BRIDGE_PROTOCOL_VERSION,
+    workspaceRoutingVersion: WORKSPACE_ROUTING_VERSION,
     sceneSchemaVersion: SCENE_SCHEMA_VERSION,
     patchSchemaVersion: PATCH_SCHEMA_VERSION,
     intentReportSchemaVersion: INTENT_REPORT_SCHEMA_VERSION,

@@ -13,9 +13,12 @@ Before changing to this Skill directory, resolve any explicitly supplied relativ
 
 1. Change to this Skill directory.
 2. Run `node scripts/director.mjs doctor`.
-3. Require capability contract v2 with canonical SceneSpec, ScenePatch, and IntentReport schema version 4, plus `semanticAuthority: "host"`, `inputContract: "structured-only"`, `modelIntegration: "none"`, `credentialPolicy: "forbidden"`, and `networkPolicy: "loopback-only"`.
-4. Run `node scripts/director.mjs ensure` only after `doctor` is compatible.
-5. Keep the returned loopback `uiUrl`. Open it in the integrated browser; use `open --system` only when necessary or requested.
+3. Require capability contract v2 with workspace routing version 1, `bridge.thread-workspaces`, canonical SceneSpec, ScenePatch, and IntentReport schema version 4, plus `semanticAuthority: "host"`, `inputContract: "structured-only"`, `modelIntegration: "none"`, `credentialPolicy: "forbidden"`, and `networkPolicy: "loopback-only"`.
+4. Run `node scripts/director.mjs workspace current`. Retain the returned opaque workspace ID in host context.
+5. Run `node scripts/director.mjs ensure` only after `doctor` is compatible. Retain its loopback `uiUrl` with the workspace ID and open it in the integrated browser; use `open --system` only when necessary or requested.
+6. Route every later command in this Codex conversation automatically to that same workspace. Separate Codex conversations receive separate workspaces by default, so independent scenes can progress in parallel.
+
+The wrapper hashes the raw thread ID only to derive an opaque workspace ID. The raw thread ID is never passed to runtime processes, scene files, logs, screenshots, or exports. Each workspace owns its bridge, SceneSession, revision history, runtime directory, port, and Shot Preview. Users do not choose those ports or directories.
 
 Portable or native relative `--file` paths are resolved against the directory where the Skill wrapper is invoked before it switches to the runtime working directory. Windows drive-relative paths are rejected; use a portable relative path or a fully absolute path supplied by the user.
 
@@ -108,13 +111,15 @@ The intermediate none state exists only on the Patch working clone; it is never 
 
 ## Recover without broadening scope
 
+- Run `workspace current` to recover this conversation's automatic route. Run `workspace list` to inspect generic workspace IDs and health. Use `workspace attach --id <workspace-id>` only after host-side selection of an existing generic workspace ID; attachment never copies or mutates a scene.
+- `stop` stops only the current workspace. It must not stop another conversation's bridge.
 - On `STALE_REVISION`, discard the old Patch, fetch a fresh snapshot, and re-author the minimal Patch against the new state. Never change only `baseRevision` on an old absolute edit.
 - On `INTENT_REPORT_INVALID`, correct the strict structured report.
 - On `UNSUPPORTED_DESCRIPTION`, stop unless the user explicitly authorizes a partial modification that the public schemas can represent.
 - On `INTENT_COVERAGE_INCOMPLETE`, correct targets or evidence; do not weaken a required constraint.
 - On `LIMB_HIERARCHY_CONFLICT`, rewrite one consistent `actor.limb-presence.set` operation. On `ACTOR_LIMB_TARGET_INVALID`, refresh and retarget the actor; never fallback to another entity type.
 - On `USER_LOCKED`, stop and ask for explicit confirmation. On `WORKFLOW_LOCKED`, re-author the ordinary correction with `preserveLock: true` without asking the user. For other entity, lock, or contact errors, refresh the snapshot and follow [recovery-and-concurrency.md](references/recovery-and-concurrency.md).
-- On bridge failure, run `ensure`, then `health`, and retry the unchanged structured submission only after compatibility is restored.
+- On bridge failure, confirm `workspace current`, run `ensure`, then `health`, and retry the unchanged structured submission only after compatibility is restored.
 
 ## Keep outputs generic
 

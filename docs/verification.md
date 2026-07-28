@@ -818,3 +818,104 @@ and a keyboard round trip advanced revisions 136 -> 137 -> 138 while restoring
 the starting camera state. A final compact protection/unlock check advanced
 revisions 138 -> 139 -> 140 and left the camera unlocked for handoff. No scene
 file was saved or overwritten during this acceptance.
+
+## 2026-07-29 parallel scene workspace acceptance
+
+This checkpoint was completed on the isolated
+`codex/parallel-scene-workspaces` branch. The two-workspace real-process
+checkpoint is commit `e7eb66c`, followed by the stale-list attribution fix in
+`f4efbcd`; no merge, push, release, or primary-checkout change was performed.
+
+The complete `pnpm verify` gate passed with 64 test files and 1,539 tests,
+followed by schema generation, TypeScript, ESLint, the production build, and a
+207-file public audit with zero findings. The build retained only the known
+non-blocking Vite advisory for the approximately 1.36 MB application chunk.
+The official generic Skill validator also passed. Director doctor reported
+application v0.5.0, capability contract v2, bridge protocol v1, workspace
+routing v1, and SceneSpec/ScenePatch/IntentReport v4. It also confirmed the
+`bridge.thread-workspaces`, `structured-only`, `credential-forbidden`, and
+`loopback-only` contracts.
+
+Two generic conversation workspaces were allocated concurrently:
+
+```text
+workspace_98496f3ab8d6be40295d4fcca9423b3f  127.0.0.1:4319
+workspace_3f4a2ed073484bd9ea85f5b8a7ac02df  127.0.0.1:4318
+```
+
+They started with distinct bridge instance IDs and independent runtime
+directories. The first workspace received `scene_connected_regions_1`; the
+second received `scene_quickstart_1`. Each structured scene submission
+advanced only its target workspace to revision 1, and each one-operation
+output Patch advanced only its target workspace to revision 2. The automated
+real-process isolation test additionally submitted, snapshotted, patched, and
+stopped two disposable workspaces while auditing stdout, stderr, descriptors,
+runtime files, and inputs for raw conversation identifiers. No identifier leak
+or path escape was found.
+
+An independent forward review then identified a recovery-list edge case: a
+stopped workspace could inherit live metadata if another workspace later
+reused its old port. The fix prevents `starting` and `stopped` descriptors from
+probing ports and accepts live `ready` health only when both the bridge instance
+ID and exact loopback URL match the descriptor. Regression coverage includes
+stopped port reuse, unavailable health, instance mismatch, URL mismatch, and
+the exact-match positive case. The focused registry/wrapper/real-process gate
+passed with 3 test files and 15 tests, and the final independent review passed.
+
+The in-app browser inspected both loopback pages at 1280 x 720. Both Overview
+and Shot Preview rendered, their visible scene IDs and revisions matched their
+own snapshots, and browser warning/error logs were empty. On the connected
+regions workspace:
+
+```text
+2 -> 3  forward movement button; X -5.40 -> -5.30 m
+3 -> 4  ArrowRight; Z 0.00 -> 0.10 m
+4 -> 5  wheel delivery probe
+5 -> 6  focused wheel/right-button interaction; no host context menu
+```
+
+The accepted wheel probe changed focal length from 28.0 to 28.5 mm. Throughout
+those interactions the quick-start workspace stayed at revision 2 with camera
+position `[4.2, 2.2, 5.8]` and 45 mm focal length. This proved that browser
+editing in one conversation did not refresh or mutate the other.
+
+### Main integration and release gate
+
+After the isolated branch was fast-forwarded into `main`, the complete gate
+was rerun from the integrated checkout. An existing local scene exposed that
+the real-process workspace test had shared the checkout's live routing
+directory. The test now creates a disposable runtime root, and its cleanup is
+contained there. It no longer claims, stops, or writes routing metadata beside
+an existing user scene.
+
+Full-suite process pressure also showed that the former one-second health
+probe could report a running loopback bridge as unavailable. A delayed-health
+regression now covers that condition, and health probes allow a five-second
+response window while connection-refused failures still return immediately.
+The direct server preflight test has a separate 15-second process-start budget.
+
+The final integrated `pnpm verify` gate passed with 64 test files and 1,540
+tests. TypeScript, ESLint, the production build, and the 207-file public audit
+also passed with zero findings. The build retained only the known non-blocking
+Vite large-chunk advisory.
+
+Connected Shot Preview exports produced:
+
+- `.shubi-shot/exports/workspace-a.png`: `scene_connected_regions_1`,
+  revision 6, 1920 x 1080, 73,295 bytes, SHA-256
+  `979945dedcd4969640c7281c897fbd8e3848a13b4ddeb965ee6d44d84b589500`;
+- `.shubi-shot/exports/workspace-b.png`: `scene_quickstart_1`, revision 2,
+  1920 x 1080, 115,316 bytes, SHA-256
+  `1eb2444a18487c6e906a0a73b2ea61d0d7ccb5b31d16de56f7103859b0c9e567`.
+
+Both PNG signatures, IHDR dimensions, returned hashes, and visible scene
+content matched. The images were clearly distinct and not cross-routed. Each
+export reported only `ACTIVE_CAMERA_UNLOCKED`, which was expected because the
+generic acceptance cameras intentionally remained editable.
+
+Stopping the connected-regions workspace returned `stopped: true`. The
+quick-start workspace remained ready on the same port and instance at
+revision 2. Restarting the stopped workspace reused its route, created a new
+bridge instance, and restored `scene_connected_regions_1` revision 6 with the
+same camera transform. A final browser reload showed both expected scene
+IDs/revisions and empty warning/error logs.

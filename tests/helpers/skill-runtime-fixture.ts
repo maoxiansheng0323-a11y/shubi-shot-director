@@ -26,6 +26,7 @@ const fixtureEntrypoint = path.join("scripts", "director.mjs");
 const defaultTimeoutMs = 10_000;
 
 export const deniedRuntimeEnvironmentNames = [
+  "CODEX_THREAD_ID",
   "OPENAI_API_KEY",
   "AZURE_OPENAI_ENDPOINT",
   "HTTP_PROXY",
@@ -72,6 +73,11 @@ export interface SyntheticRuntimeState {
 export interface SyntheticEnvironmentObservation {
   action: string;
   presentDeniedNames: string[];
+  workspaceEnvironment?: {
+    port?: string;
+    runtimeDirectory?: string;
+    url?: string;
+  };
 }
 
 export interface SkillWrapperResult {
@@ -111,6 +117,7 @@ const initialState = (): SyntheticRuntimeState => ({
 });
 
 const syntheticRuntimeSource = String.raw`#!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -175,6 +182,26 @@ if (action === undefined || !declaredActions.has(action)) {
       presentDeniedNames: deniedEnvironmentNames.filter(
         (name) => process.env[name] !== undefined,
       ),
+      ...(process.env.SHUBI_SHOT_PORT !== undefined ||
+      process.env.SHUBI_SHOT_RUNTIME_DIR !== undefined ||
+      process.env.SHUBI_SHOT_URL !== undefined
+        ? {
+            workspaceEnvironment: {
+              ...(process.env.SHUBI_SHOT_PORT === undefined
+                ? {}
+                : { port: process.env.SHUBI_SHOT_PORT }),
+              ...(process.env.SHUBI_SHOT_RUNTIME_DIR === undefined
+                ? {}
+                : {
+                    runtimeDirectory:
+                      process.env.SHUBI_SHOT_RUNTIME_DIR,
+                  }),
+              ...(process.env.SHUBI_SHOT_URL === undefined
+                ? {}
+                : { url: process.env.SHUBI_SHOT_URL }),
+            },
+          }
+        : {}),
     }) + "\n",
     "utf8",
   );
@@ -235,14 +262,26 @@ if (action === undefined || !declaredActions.has(action)) {
     }
     writeFileSync(statePath, JSON.stringify(state) + "\n", "utf8");
 
-    if (action === "health") {
+    if (action === "health" || action === "ensure") {
+      const port = process.env.SHUBI_SHOT_PORT ?? "4317";
+      const runtimeDirectory =
+        process.env.SHUBI_SHOT_RUNTIME_DIR ?? runtimeRoot;
+      const instanceId =
+        "instance_" +
+        createHash("sha256")
+          .update(port + "\0" + runtimeDirectory)
+          .digest("hex")
+          .slice(0, 32);
       output({
         ok: true,
         data: {
           ...(configuration.healthData ?? configuration.doctorData),
           status: "ready",
+          uiUrl: "http://127.0.0.1:" + port,
+          instanceId,
           sceneId: state.sceneId,
           revision: state.revision,
+          ...(action === "ensure" ? { started: true } : {}),
         },
       });
     } else {

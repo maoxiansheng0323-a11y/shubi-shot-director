@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const EXPECTED_RUNTIME_NAME = "shubi-shot-director";
 const DEFAULT_ENTRYPOINT = path.join("scripts", "director.mjs");
 const BUNDLED_BRIDGE_PROTOCOL_VERSION = 1;
+const BUNDLED_WORKSPACE_ROUTING_VERSION = 1;
 const BUNDLED_ENTITY_LOCK_MODES = Object.freeze([
   "none",
   "workflow",
@@ -49,6 +50,7 @@ const RELEASE_METADATA_KEYS = new Set([
   "entrypoint",
   "capabilitiesContractVersion",
   "bridgeProtocolVersion",
+  "workspaceRoutingVersion",
   "sceneSchemaVersion",
   "patchSchemaVersion",
   "intentReportSchemaVersion",
@@ -198,6 +200,8 @@ const readReleaseMetadata = async (skillDirectory) => {
       metadata.capabilitiesContractVersion !== 2 ||
       metadata.bridgeProtocolVersion !==
         BUNDLED_BRIDGE_PROTOCOL_VERSION ||
+      metadata.workspaceRoutingVersion !==
+        BUNDLED_WORKSPACE_ROUTING_VERSION ||
       metadata.sceneSchemaVersion !== 4 ||
       metadata.patchSchemaVersion !== 4 ||
       metadata.intentReportSchemaVersion !== 4 ||

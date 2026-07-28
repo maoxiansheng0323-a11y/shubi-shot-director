@@ -1181,6 +1181,31 @@ describe("Skill host-semantic documentation", () => {
     }
   });
 
+  it("teaches automatic per-conversation scene workspaces", async () => {
+    const [skill, cliContract, recovery] = await Promise.all([
+      readFile(path.join(skillDirectory, "SKILL.md"), "utf8"),
+      readFile(path.join(referenceDirectory, "cli-contract.md"), "utf8"),
+      readFile(
+        path.join(referenceDirectory, "recovery-and-concurrency.md"),
+        "utf8",
+      ),
+    ]);
+    const guidance = [skill, cliContract, recovery].join("\n");
+
+    expect(skill).toMatch(
+      /separate Codex conversations[\s\S]*separate workspaces/iu,
+    );
+    expect(skill).toContain("workspace current");
+    expect(guidance).toContain("workspace list");
+    expect(guidance).toContain("workspace attach --id");
+    expect(guidance).toMatch(/raw thread ID[\s\S]*never[\s\S]*runtime/iu);
+    expect(guidance).toMatch(/each workspace[\s\S]*Shot Preview/iu);
+    expect(guidance).toMatch(/stop[\s\S]*current workspace/iu);
+    expect(guidance).toMatch(
+      /workspace operations[\s\S]*never create SceneSpec revisions/iu,
+    );
+  });
+
   it("teaches the complete workflow and user lock contract", async () => {
     const [
       skill,

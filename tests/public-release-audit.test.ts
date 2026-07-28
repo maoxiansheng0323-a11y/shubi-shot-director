@@ -134,13 +134,16 @@ describe("public release audit", () => {
       ),
     ).toEqual([]);
     expect(auditRepositoryPath("README.md")).toEqual([]);
+    expect(
+      auditRepositoryPath("docs/releases/v0.5.0.md"),
+    ).toEqual([]);
   });
 
   it("requires publication-safe package metadata", async () => {
     const { auditPackageMetadata } = await loadAudit();
     const valid = {
       name: "shubi-shot-director",
-      version: "0.4.0",
+      version: "0.5.0",
       private: true,
       license: "MIT",
       engines: { node: ">=22.12" },

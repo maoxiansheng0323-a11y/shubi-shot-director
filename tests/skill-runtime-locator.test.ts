@@ -26,6 +26,7 @@ const EXPECTED_RUNTIME_NAME = "shubi-shot-director";
 const V2_RUNTIME_METADATA = {
   capabilitiesContractVersion: 2,
   bridgeProtocolVersion: 1,
+  workspaceRoutingVersion: 1,
   sceneSchemaVersion: 4,
   patchSchemaVersion: 4,
   intentReportSchemaVersion: 4,
@@ -179,6 +180,22 @@ afterAll(() => {
 });
 
 describe("skill runtime locator", () => {
+  it("declares canonical workspace routing metadata", async () => {
+    const metadata = JSON.parse(
+      await readFile(
+        path.resolve(
+          ".agents",
+          "skills",
+          "shubi-shot-director",
+          "runtime.json",
+        ),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+
+    expect(metadata.workspaceRoutingVersion).toBe(1);
+  });
+
   it("publishes fail-closed v2 boundary and schema metadata", async () => {
     const metadata = JSON.parse(
       await readFile(
@@ -300,7 +317,7 @@ describe("skill runtime locator", () => {
       ...V2_RUNTIME_METADATA,
       applicationVersion: "1.0.0",
       commands: ["doctor"],
-      features: [],
+      features: ["bridge.thread-workspaces"],
     };
     await writeFile(
       entrypoint,
@@ -470,6 +487,9 @@ describe("skill runtime locator", () => {
     ["missing bridge protocol", { bridgeProtocolVersion: undefined }],
     ["unsupported bridge protocol", { bridgeProtocolVersion: 999 }],
     ["fractional bridge protocol", { bridgeProtocolVersion: 1.5 }],
+    ["missing workspace routing", { workspaceRoutingVersion: undefined }],
+    ["unsupported workspace routing", { workspaceRoutingVersion: 999 }],
+    ["fractional workspace routing", { workspaceRoutingVersion: 1.5 }],
     ["invalid scene schema", { sceneSchemaVersion: 0 }],
     ["invalid patch schema", { patchSchemaVersion: 1.5 }],
     ["missing intent schema", { intentReportSchemaVersion: undefined }],

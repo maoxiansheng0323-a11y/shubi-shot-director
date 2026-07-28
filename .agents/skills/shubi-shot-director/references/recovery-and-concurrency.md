@@ -1,5 +1,15 @@
 # Recovery and concurrency
 
+## Conversation workspaces
+
+Separate Codex conversations receive separate workspaces by default. Each workspace has its own loopback bridge, SceneSession, revision history, runtime directory, port, and Shot Preview. The user does not choose ports or directories, and this local isolation is not remote collaborative multi-user editing.
+
+Use `workspace current` to recover the current conversation's opaque route and `workspace list` to inspect generic workspace state. Use `workspace attach --id <workspace-id>` only after the host selects an existing generic workspace ID. Attachment changes only the current thread binding: it never copies a SceneSpec, mutates a scene, or creates a revision.
+
+The wrapper hashes the raw thread ID. The raw thread ID is never passed to runtime processes, scene files, logs, screenshots, or exports. Workspace operations never create SceneSpec revisions.
+
+Revision conflicts are workspace-specific. Refresh `snapshot` from the same workspace and never rebase a Patch onto another workspace's scene ID or revision. A connected Shot Preview belongs to exactly one workspace and cannot satisfy another workspace's export.
+
 ## Patch transition
 
 Snapshot immediately before authoring a Patch. Require the exact `sceneId` and
@@ -59,5 +69,6 @@ For workflow lifecycle changes, a visual acceptance checkpoint may lock only the
 Use `doctor` for read-only diagnostics. Use `ensure` only when a running bridge
 is required. Confirm with `status`.
 
-Use `stop` for a graceful loopback shutdown. Do not kill a process by guessed
-PID or port ownership.
+Use `stop` for a graceful shutdown of only the current workspace. Do not stop
+another conversation's workspace, and do not kill a process by guessed PID or
+port ownership.

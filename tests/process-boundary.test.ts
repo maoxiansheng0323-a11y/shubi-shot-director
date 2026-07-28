@@ -410,6 +410,13 @@ describe("Director child environments", () => {
       HTTPS_PROXY: "http://127.0.0.1:8002",
       ALL_PROXY: "socks5://127.0.0.1:8003",
       NODE_OPTIONS: "--no-warnings",
+      CODEX_THREAD_ID:
+        "33333333-3333-4333-8333-333333333333",
+      SHUBI_SHOT_RUNTIME_ROOT: "host-runtime-root",
+      SHUBI_SHOT_WORKSPACE_ID:
+        "workspace_33333333333333333333333333333333",
+      SHUBI_SHOT_WORKSPACE_REGISTRY: "host-registry-state",
+      SHUBI_SHOT_WORKSPACE_BINDING: "host-binding-path",
       UNRELATED_HOST_MARKER: "must-not-cross",
     };
 
@@ -432,6 +439,11 @@ describe("Director child environments", () => {
       "HTTPS_PROXY",
       "ALL_PROXY",
       "NODE_OPTIONS",
+      "CODEX_THREAD_ID",
+      "SHUBI_SHOT_RUNTIME_ROOT",
+      "SHUBI_SHOT_WORKSPACE_ID",
+      "SHUBI_SHOT_WORKSPACE_REGISTRY",
+      "SHUBI_SHOT_WORKSPACE_BINDING",
       "UNRELATED_HOST_MARKER",
     ]) {
       expect(runtime[name]).toBeUndefined();
@@ -484,6 +496,11 @@ describe("Director child environments", () => {
           "HTTPS_PROXY",
           "ALL_PROXY",
           "NODE_OPTIONS",
+          "CODEX_THREAD_ID",
+          "SHUBI_SHOT_RUNTIME_ROOT",
+          "SHUBI_SHOT_WORKSPACE_ID",
+          "SHUBI_SHOT_WORKSPACE_REGISTRY",
+          "SHUBI_SHOT_WORKSPACE_BINDING",
           "SHUBI_SHOT_URL",
           "SHUBI_SHOT_PORT",
           "SHUBI_SHOT_RUNTIME_DIR"
@@ -509,6 +526,13 @@ describe("Director child environments", () => {
           HTTPS_PROXY: "http://127.0.0.1:8002",
           ALL_PROXY: "socks5://127.0.0.1:8003",
           NODE_OPTIONS: "--no-warnings",
+          CODEX_THREAD_ID:
+            "44444444-4444-4444-8444-444444444444",
+          SHUBI_SHOT_RUNTIME_ROOT: "host-runtime-root",
+          SHUBI_SHOT_WORKSPACE_ID:
+            "workspace_44444444444444444444444444444444",
+          SHUBI_SHOT_WORKSPACE_REGISTRY: "host-registry-state",
+          SHUBI_SHOT_WORKSPACE_BINDING: "host-binding-path",
           SHUBI_SHOT_URL: "http://127.1.2.3:4317",
           SHUBI_SHOT_PORT: "4317",
           SHUBI_SHOT_RUNTIME_DIR: "runtime-directory",
@@ -528,6 +552,11 @@ describe("Director child environments", () => {
       HTTPS_PROXY: null,
       ALL_PROXY: null,
       NODE_OPTIONS: null,
+      CODEX_THREAD_ID: null,
+      SHUBI_SHOT_RUNTIME_ROOT: null,
+      SHUBI_SHOT_WORKSPACE_ID: null,
+      SHUBI_SHOT_WORKSPACE_REGISTRY: null,
+      SHUBI_SHOT_WORKSPACE_BINDING: null,
       SHUBI_SHOT_URL: "http://127.1.2.3:4317",
       SHUBI_SHOT_PORT: "4317",
       SHUBI_SHOT_RUNTIME_DIR: "runtime-directory",
@@ -886,20 +915,26 @@ describe("direct server preflight ordering", () => {
     },
   );
 
-  it("keeps --production available to the direct server entry", async () => {
-    const result = await runProcess(
-      process.execPath,
-      [tsxCli, serverEntry, "--production"],
-      {
-        env: createLaunchEnvironment({ SHUBI_SHOT_PORT: "0" }),
-      },
-    );
+  it(
+    "keeps --production available to the direct server entry",
+    async () => {
+      const result = await runProcess(
+        process.execPath,
+        [tsxCli, serverEntry, "--production"],
+        {
+          env: createLaunchEnvironment({
+            SHUBI_SHOT_PORT: "0",
+          }),
+        },
+      );
 
-    expect(result).toEqual({
-      exitCode: 1,
-      signal: null,
-      stdout: "",
-      stderr: "The configured bridge port is invalid.\n",
-    });
-  });
+      expect(result).toEqual({
+        exitCode: 1,
+        signal: null,
+        stdout: "",
+        stderr: "The configured bridge port is invalid.\n",
+      });
+    },
+    15_000,
+  );
 });

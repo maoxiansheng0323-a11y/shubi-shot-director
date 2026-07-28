@@ -515,6 +515,12 @@ const validateBridgeHealthUnsafe = (
     );
   }
   if (
+    liveHeader.workspaceRoutingVersion !==
+    expectedHeader.workspaceRoutingVersion
+  ) {
+    return throwBridgeCompatibilityError("CAPABILITIES_INVALID");
+  }
+  if (
     liveHeader.sceneSchemaVersion !==
     expectedHeader.sceneSchemaVersion
   ) {
@@ -701,7 +707,7 @@ export const probeBridgeHealth = async (
       configuration,
       "/api/v1/health",
       {},
-      1_000,
+      5_000,
     );
   } catch (error) {
     if (
@@ -730,6 +736,10 @@ const validateBridgeControlHealth = (input: unknown): BridgeControlHealth => {
       snapshot,
       "bridgeProtocolVersion",
     );
+    const workspaceRoutingVersion = inspectOwnDataProperty(
+      snapshot,
+      "workspaceRoutingVersion",
+    );
     const status = inspectOwnDataProperty(snapshot, "status");
     const features = inspectOwnDataProperty(snapshot, "features");
     const instanceId = inspectOwnDataProperty(snapshot, "instanceId");
@@ -752,10 +762,14 @@ const validateBridgeControlHealth = (input: unknown): BridgeControlHealth => {
       return throwBridgeCompatibilityError("BRIDGE_PROTOCOL_UNSUPPORTED");
     }
     if (
+      !workspaceRoutingVersion.found ||
+      workspaceRoutingVersion.value !==
+        getRuntimeCapabilityManifest().workspaceRoutingVersion ||
       !status.found ||
       status.value !== "ready" ||
       !features.found ||
       !Array.isArray(features.value) ||
+      !features.value.includes("bridge.thread-workspaces") ||
       !features.value.includes("bridge.safe-shutdown") ||
       (instanceId.found &&
         instanceId.value !== undefined &&

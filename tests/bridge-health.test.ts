@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BridgeError,
+  probeBridgeHealth,
   requestBridge,
   resolveBridgeConfiguration,
   stopBridge,
@@ -208,6 +209,59 @@ const expectBridgeError = (
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("probeBridgeHealth", () => {
+  it("tolerates a short local scheduling stall before health responds", async () => {
+    vi.useFakeTimers();
+    const configuration = resolveBridgeConfiguration({
+      SHUBI_SHOT_URL: "http://127.0.0.1:4317",
+    });
+    const fetchMock = vi.fn(
+      async (
+        _input: string | URL | Request,
+        init?: RequestInit,
+      ): Promise<Response> =>
+        new Promise((resolve, reject) => {
+          const responseTimer = setTimeout(
+            () =>
+              resolve(
+                new Response(
+                  JSON.stringify({
+                    ok: true,
+                    data: liveHealth(),
+                  }),
+                  {
+                    status: 200,
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                  },
+                ),
+              ),
+            1_500,
+          );
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(responseTimer);
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const health = probeBridgeHealth(configuration);
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    await expect(health).resolves.toMatchObject({
+      sceneId: "scene_generic_health",
+      revision: 7,
+    });
+  });
 });
 
 describe("validateBridgeHealth", () => {
@@ -216,6 +270,7 @@ describe("validateBridgeHealth", () => {
       ...getRuntimeCapabilityManifest(),
       applicationVersion: "offline-diagnostic-version",
       bridgeProtocolVersion: 9,
+      workspaceRoutingVersion: 1,
       commands: [...getRuntimeCapabilityManifest().commands].reverse(),
       features: [...getRuntimeCapabilityManifest().features].reverse(),
       entityLockModes: [...LOCK_CAPABILITIES.entityLockModes].reverse(),
@@ -230,6 +285,7 @@ describe("validateBridgeHealth", () => {
     const input = liveHealth({
       applicationVersion: "live-diagnostic-version",
       bridgeProtocolVersion: 9,
+      workspaceRoutingVersion: 1,
       unknownCapability: { additive: true },
       unknownLiveState: "ignored",
       diagnostics: { build: "generic" },
@@ -246,6 +302,7 @@ describe("validateBridgeHealth", () => {
         expected.capabilitiesContractVersion,
       applicationVersion: "live-diagnostic-version",
       bridgeProtocolVersion: 9,
+      workspaceRoutingVersion: 1,
       sceneSchemaVersion: expected.sceneSchemaVersion,
       patchSchemaVersion: expected.patchSchemaVersion,
       intentReportSchemaVersion: expected.intentReportSchemaVersion,
@@ -268,6 +325,21 @@ describe("validateBridgeHealth", () => {
       uiUrl: "http://127.0.0.1:4317",
       instanceId: "instance_0123456789abcdef0123456789abcdef",
     });
+  });
+
+  it("rejects a workspace routing version mismatch before scene access", () => {
+    expectBridgeError(
+      () =>
+        validateBridgeHealth(
+          liveHealth({ workspaceRoutingVersion: 2 }),
+          {
+            ...getRuntimeCapabilityManifest(),
+            workspaceRoutingVersion: 1,
+          },
+        ),
+      "CAPABILITIES_INVALID",
+      "The local bridge capabilities are invalid.",
+    );
   });
 
   it("compares the live protocol with the supplied offline manifest instead of an absolute protocol value", () => {

@@ -8,7 +8,7 @@ Shubi Shot Director is a local, browser-based 3D graybox camera-previsualization
 
 **[Watch the 49-second launch demo](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/shubi-shot-director-launch-demo.mp4)** · [Exported PNG](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/final-perspective.png) · [English subtitles](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.en.srt) · [中文字幕](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.zh-CN.srt)
 
-Current release: [v0.4.0 release notes](docs/releases/v0.4.0.md).
+Current release: [v0.5.0 release notes](docs/releases/v0.5.0.md).
 
 Shubi Shot Director is open-source graybox camera previs: it turns natural-language shot intent into a structured, editable 3D scene, shows the actual final camera through the real browser Shot Preview, and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
 
@@ -46,6 +46,8 @@ region, preview mode, the editor camera, hover state, panel layout, and drag
 drafts remain UI state. Mouse edits and host-authored patches both mutate the
 same revisioned `SceneSession`.
 
+When the Codex Skill is used inside a conversation, the wrapper derives an opaque workspace ID from a one-way hash of the thread ID. Separate Codex conversations receive separate workspaces, each with an independent bridge, SceneSession, revision history, port, runtime directory, and Shot Preview. The raw thread ID never enters the runtime or any scene artifact.
+
 Region semantics are never hard-coded in the Director. Host Codex plans the
 regions from the user's description; the Skill/runtime only validates and
 projects geometry, topology, object membership, visibility, and cameras.
@@ -72,11 +74,12 @@ From a source checkout:
 ```powershell
 pnpm install --frozen-lockfile
 node scripts/director.mjs doctor
+node scripts/director.mjs workspace current
 node scripts/director.mjs ensure
 node scripts/director.mjs health
 ```
 
-`ensure` starts or reuses the compatible loopback runtime. Its response includes the editor URL, normally `http://127.0.0.1:4317/`. Open that URL in a browser.
+Inside Codex, `workspace current` reports the conversation's automatic route and `ensure` starts or reuses only that workspace's compatible loopback runtime. Outside a Codex conversation, the same commands preserve the legacy single-workspace behavior. The response includes the editor URL, normally `http://127.0.0.1:4317/` for the first available workspace. Open that exact URL in a browser.
 
 For foreground development with Vite instead of the detached launcher, run `pnpm dev`. Stop a launcher-owned runtime with:
 
@@ -133,6 +136,15 @@ The project-local Skill is stored at [`.agents/skills/shubi-shot-director/SKILL.
 Host Codex must author `IntentReport`, `SceneSpec`, and `ScenePatch` according to the Skill references. The Skill then calls the structured CLI, verifies `sceneId` and revision transitions, and inspects the browser preview. Account mode or KEY mode belongs to the host and is never forwarded into Director files, arguments, processes, logs, or artifacts.
 
 Canonical authoring uses SceneSpec, ScenePatch, and IntentReport schema version 4. Every actor stores a complete twelve-key `body.limbPresence` map, and natural-language limb edits use the minimal `actor.limb-presence.set` operation. New and unfinished graybox entities use `lockMode: "none"`. Ordinary natural-language corrections use `preserveLock: true`.
+
+Capability contract version 2 now requires workspace routing version 1 and `bridge.thread-workspaces`. The normal parallel workflow is automatic:
+
+```text
+Conversation A -> workspace_11111111111111111111111111111111 -> 127.0.0.1:4317
+Conversation B -> workspace_22222222222222222222222222222222 -> 127.0.0.1:4318
+```
+
+The IDs and ports above are illustrative. The user does not choose ports or directories. Every later command in one conversation returns to that conversation's workspace. `workspace list` inspects generic workspace state, and `workspace attach --id <workspace-id>` is an explicit recovery tool for attaching the current conversation to an existing workspace without copying its scene. `stop` stops only the current workspace.
 
 Callers that already possess valid structured data may use the direct compatibility commands:
 
@@ -209,7 +221,7 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Verified platform
 
-Verified on Windows 11 Pro, 64-bit (build 26200). The v0.4.0 schema, Skill, automated repository checks, real-browser workflow, and connected 1920 x 1080 export use Windows PowerShell 5.1, Node.js 24.16.0, and pnpm 11.9.0. This is the only operating system verified for v0.4.0. macOS and Linux have not yet been verified for v0.4.0.
+Verified on Windows 11 Pro, 64-bit (build 26200). The v0.5.0 schema, Skill, and automated repository checks use Windows PowerShell 5.1, Node.js 24.16.0, and pnpm 11.9.0. This is the only operating system verified for v0.5.0. macOS and Linux have not yet been verified for v0.5.0.
 
 ## Origin & Maintainer
 

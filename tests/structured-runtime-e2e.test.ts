@@ -87,6 +87,7 @@ const expectedCommandIds = [
   "open.system",
 ] as const;
 const expectedFeatureIds = [
+  "bridge.thread-workspaces",
   "input.intent-report.validate",
   "input.scene-submission.atomic",
   "input.patch-submission.atomic",
@@ -131,6 +132,11 @@ const forbiddenRuntimeEnvironmentKeys = [
   "HTTPS_PROXY",
   "ALL_PROXY",
   "NODE_OPTIONS",
+  "CODEX_THREAD_ID",
+  "SHUBI_SHOT_RUNTIME_ROOT",
+  "SHUBI_SHOT_WORKSPACE_ID",
+  "SHUBI_SHOT_WORKSPACE_REGISTRY",
+  "SHUBI_SHOT_WORKSPACE_BINDING",
   "SHUBI_SHOT_API_KEY",
   "SHUBI_SHOT_TOKEN",
   "SHUBI_SHOT_AUTHORIZATION",
@@ -666,8 +672,9 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
   expect(data).toEqual(expect.objectContaining({
     service: "shubi-shot-director",
     capabilitiesContractVersion: 2,
-    applicationVersion: "0.4.0",
+    applicationVersion: "0.5.0",
     bridgeProtocolVersion: 1,
+    workspaceRoutingVersion: 1,
     sceneSchemaVersion: 4,
     patchSchemaVersion: 4,
     intentReportSchemaVersion: 4,
