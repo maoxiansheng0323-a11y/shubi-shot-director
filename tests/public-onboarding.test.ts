@@ -71,7 +71,7 @@ describe("public onboarding", () => {
       "Verified on Windows 11 Pro, 64-bit (build 26200).",
     );
     expect(readme).toContain(
-      "macOS and Linux have not yet been verified for v0.5.0.",
+      "macOS and Linux have not yet been verified for v0.6.0.",
     );
     expect(readme).toMatch(/generic editable limb presence/iu);
     expect(readme).toMatch(
@@ -132,31 +132,31 @@ describe("public onboarding", () => {
     expect(releaseGuide).toContain("Visibility: `public`");
     expect(releaseGuide).toContain("Default branch: `main`");
     expect(releaseGuide).toContain(
-      "## Fixed v0.5.0 publication parameters",
+      "## Fixed v0.6.0 publication parameters",
     );
-    expect(releaseGuide).toContain("Release version: `v0.5.0`");
-    expect(releaseGuide).toContain("git tag -a v0.5.0");
+    expect(releaseGuide).toContain("Release version: `v0.6.0`");
+    expect(releaseGuide).toContain("git tag -a v0.6.0");
     expect(releaseGuide).not.toContain("git tag v0.4.0");
     expect(releaseGuide).toContain("License: `MIT`");
     expect(releaseGuide).not.toContain("git init -b main");
     expect(releaseGuide).toMatch(/do not publish to npm/iu);
   });
 
-  it("ships reusable v0.5.0 public release notes", async () => {
+  it("ships reusable v0.6.0 public release notes", async () => {
     const [readme, releaseNotes] = await Promise.all([
       readRepositoryFile("README.md"),
-      readRepositoryFile("docs/releases/v0.5.0.md"),
+      readRepositoryFile("docs/releases/v0.6.0.md"),
     ]);
 
     expect(readme).toContain(
-      "[v0.5.0 release notes](docs/releases/v0.5.0.md)",
+      "[v0.6.0 release notes](docs/releases/v0.6.0.md)",
     );
     expect(readme).not.toMatch(/release candidate/iu);
-    expect(releaseNotes).toContain("# Shubi Shot Director v0.5.0");
-    expect(releaseNotes).toMatch(/parallel scene workspaces/iu);
+    expect(releaseNotes).toContain("# Shubi Shot Director v0.6.0");
+    expect(releaseNotes).toMatch(/Actor Blueprint/iu);
     expect(releaseNotes).toContain("workspaceRoutingVersion: 1");
     expect(releaseNotes).toContain("bridge.thread-workspaces");
-    expect(releaseNotes).toMatch(/schema version 4/iu);
+    expect(releaseNotes).toMatch(/schema version 5/iu);
     expect(releaseNotes).toMatch(/capability contract[\s\S]*version 2/iu);
   });
 
@@ -172,7 +172,7 @@ describe("public onboarding", () => {
 
     expect(packageJson).toMatchObject({
       name: "shubi-shot-director",
-      version: "0.5.0",
+      version: "0.6.0",
       private: true,
       license: "MIT",
     });

@@ -82,7 +82,7 @@ if (artifactMode) {
   rules.push({
     code: "PRIVATE_PROVENANCE_FIELD",
     pattern:
-      /"(?:rawPrompt|originalPrompt|sourcePrompt|profilePath|externalProfilePath|privateAlias)"\s*:/u,
+      /"(?:rawPrompt|originalPrompt|sourcePrompt|profilePath|externalProfilePath|privateAlias|sourcePath|sourceFile|externalPath|blueprintFile)"\s*:/u,
   });
 }
 
@@ -107,10 +107,10 @@ for (const file of selectedFiles) {
   }
 
   const bytes = await readFile(file.absolutePath);
-  if (bytes.includes(0)) {
+  if (bytes.includes(0) && !artifactMode) {
     continue;
   }
-  const text = bytes.toString("utf8");
+  const text = bytes.toString(bytes.includes(0) ? "latin1" : "utf8");
   for (const rule of rules) {
     if (rule.pattern.test(text)) {
       findings.push({ code: rule.code, file: file.displayPath });

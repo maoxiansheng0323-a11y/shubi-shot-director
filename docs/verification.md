@@ -4,6 +4,64 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v0.6.0 Actor Blueprint gates
+
+Run the focused reusable-blueprint contract before the full gate:
+
+```powershell
+pnpm exec vitest run tests/actor-blueprint.test.ts tests/actor-blueprint-import.test.ts tests/actor-blueprint-scene.test.ts tests/actor-blueprint-patch.test.ts tests/actor-projection.test.ts tests/actor-blueprint-consumers.test.ts tests/actor-blueprint-controls.test.ts tests/persistence.test.ts tests/privacy-boundary.test.ts
+node .agents/skills/shubi-shot-director/scripts/director.mjs blueprint validate --file <external-actor-blueprint.json>
+```
+
+Require all of the following:
+
+- the external path stops at the Host import boundary and no source path or raw file content appears in any scene, submission, history, diagnostics, log, screenshot metadata, or PNG;
+- every embedded snapshot has `schemaVersion: 1` and a verified canonical `contentSha256`;
+- one SceneSpec stores at most one snapshot per content hash and a unique `blueprintId`; same-hash registration reuses the snapshot and same-ID/different-hash registration fails atomically;
+- two legal actor IDs with distinct actor slots can independently reference one snapshot while retaining independent transform, pose, color, lock, and selected variant;
+- damaged and repaired variants resolve from the complete base rather than each other, and module visibility uses only the selected delta over `module.visible`;
+- render, bounds, contact, composition, and software diagnostics consume one resolved actor projection;
+- v0.1-v0.4 legacy scenes migrate to v5 and preserve primitive ID, type, and visibility exactly, with size and transform differences no greater than `1e-9`;
+- save/load, source-file deletion, restart, undo, and redo preserve snapshots and actor structure; removing the last actor does not garbage-collect the snapshot;
+- the Inspector exposes only a read-only blueprint summary and selection among variants already in the snapshot.
+
+The black-box acceptance uses one generic 1.62 m slim feminine humanoid-machine blueprint. Its base anatomy is complete. In `damaged`, the right arm and both lower-leg/foot chains are absent, three right-shoulder terminals and two sealed knee interfaces are visible. In `repaired`, the right arm returns and its terminals hide, while both lower-leg/foot chains remain absent and both sealed knee interfaces remain visible.
+
+After registering once, save two scenes, move or delete the external file, restart, and reload both scenes. Export this fixed sequence through the connected browser Shot Preview:
+
+1. Scene A, damaged, front.
+2. Scene A, damaged, three-quarter.
+3. Scene A, damaged, side.
+4. Scene B, repaired, supine.
+
+For each independent PNG record the scene ID, revision, exact dimensions, byte-derived SHA-256, warning codes, and human picture check. Inspect Overview, affected Local previews, and Shot Preview before accepting each browser-rendered final camera export.
+
+The 2026-07-30 real-process acceptance registered snapshot
+`1bf75cbad12e92dc867ea7f45164ab0b4a8a63ee28e969b7b678632a652da30d`,
+saved both scenes, deleted the external source, restarted the owned workspace,
+and reloaded both saved scenes before export. The connected browser showed the
+read-only v1 blueprint summary, five modules, two available variants, and the
+selected variant. The four 1920 x 1080 software PNGs completed with no export
+warnings:
+
+- `front.png`: `scene_blueprint_acceptance_a`, revision 14,
+  `ac4e708902c677f38d4bda1d84497f0d3fe03d5ed7f9f45d5b7b293ef67c088f`;
+- `three-quarter.png`: `scene_blueprint_acceptance_a`, revision 15,
+  `93a2a592f1167ab2099f5d4c3fe40f712a826ee09b153f7b260b8df9d1386c24`;
+- `side.png`: `scene_blueprint_acceptance_a`, revision 16,
+  `f2435a8bed5cdfed8436beaeaa65f216ed0e07930f06c50a349f336b376ea18f`;
+- `supine.png`: `scene_blueprint_acceptance_b`, revision 17,
+  `18261301ff8db6c4fbaca8df5aba3b760e2b8bbf87de8ee3d4f585ed90e9f3e9`.
+
+Visual inspection confirmed the damaged anatomy, three exposed shoulder
+terminals, and two sealed knee interfaces in Scene A. Scene B restored the
+complete right arm, hid the terminals, retained both lower-leg/foot absences
+and knee interfaces, and rendered the supine pose. Required composition
+checks passed; overall remains `check` because framing and caption targets were
+not configured and occlusion is explicitly approximate. The retained
+acceptance report, saved scenes, and PNGs passed the generic-output audit with
+zero findings; PNGs contain no text metadata chunks.
+
 ## Automated gates
 
 Run from the repository root:

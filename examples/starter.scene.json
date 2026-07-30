@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "sceneId": "scene_example_starter",
   "revision": 0,
   "title": "Starter Graybox Example",
@@ -21,6 +21,7 @@
     }
   },
   "spatialLayout": null,
+  "actorBlueprints": [],
   "entities": [
     {
       "id": "environment_room_1",

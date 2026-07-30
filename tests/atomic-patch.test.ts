@@ -3,6 +3,7 @@ import { SceneSession } from "../server/scene-session";
 import { actorVisibleRigBounds } from "../src/domain/actor-visible-bounds";
 import { createDefaultScene } from "../src/domain/default-scene";
 import type { ScenePatch } from "../src/domain/scene-patch";
+import { isLegacyActorEntity } from "../src/domain/scene-schema";
 import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 
 describe("atomic ScenePatch application", () => {
@@ -84,7 +85,7 @@ describe("atomic ScenePatch application", () => {
     const actor = after.entities.find(
       (entity) => entity.id === "actor_generic_1",
     );
-    if (!actor || actor.kind !== "actor") {
+    if (!isLegacyActorEntity(actor)) {
       throw new Error("Default shot actor is missing.");
     }
     expect(actor.transform.positionM[0]).toBeCloseTo(-0.25, 9);

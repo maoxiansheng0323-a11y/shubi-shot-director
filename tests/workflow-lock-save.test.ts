@@ -92,7 +92,7 @@ describe("workflow lock save checkpoint", () => {
     );
 
     expect(patch).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       patchId: "system_save_12",
       sceneId: scene.sceneId,
       baseRevision: 12,

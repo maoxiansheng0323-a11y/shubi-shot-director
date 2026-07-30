@@ -30,6 +30,7 @@ const commandIds = [
   "stop",
   "health",
   "snapshot",
+  "blueprint.validate",
   "scene.create",
   "scene.submit",
   "scene.save",
@@ -44,6 +45,7 @@ const commandIds = [
 ];
 
 const featureIds = [
+  "bridge.thread-workspaces",
   "input.intent-report.validate",
   "input.scene-submission.atomic",
   "input.patch-submission.atomic",
@@ -52,6 +54,10 @@ const featureIds = [
   "composition.segmented-report",
   "bridge.safe-shutdown",
   "actor.limb-presence",
+  "actor.blueprint-snapshots",
+  "actor.modular-primitives",
+  "actor.variants",
+  "actor.resolved-projection",
 ];
 
 const entityLockModes = ["none", "workflow", "user"] as const;
@@ -77,6 +83,33 @@ const actorLimbPartIds = [
 ] as const;
 const actorLimbPresenceModes = ["present", "absent"] as const;
 const actorLimbErrorCodes = ["LIMB_HIERARCHY_CONFLICT"] as const;
+const actorBlueprint = {
+  schemaVersion: 1,
+  mounts: [
+    "shoulder_l",
+    "shoulder_r",
+    "elbow_l",
+    "elbow_r",
+    "wrist_l",
+    "wrist_r",
+    "hip_l",
+    "hip_r",
+    "knee_l",
+    "knee_r",
+  ],
+  primitives: ["box", "sphere", "cylinder"],
+  variantDeltaFields: ["limbPresence", "moduleVisibility"],
+  errorCodes: [
+    "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+    "ACTOR_BLUEPRINT_FILE_INVALID",
+    "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+    "ACTOR_BLUEPRINT_VARIANT_INVALID",
+    "ACTOR_BLUEPRINT_HASH_MISMATCH",
+    "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+    "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+    "ACTOR_BLUEPRINT_ID_CONFLICT",
+  ],
+} as const;
 
 const modernManifest = (
   overrides: Record<string, unknown> = {},
@@ -85,9 +118,9 @@ const modernManifest = (
   capabilitiesContractVersion: 2,
   applicationVersion: "1.0.0",
   bridgeProtocolVersion: 1,
-  sceneSchemaVersion: 4,
-  patchSchemaVersion: 4,
-  intentReportSchemaVersion: 4,
+  sceneSchemaVersion: 5,
+  patchSchemaVersion: 5,
+  intentReportSchemaVersion: 5,
   semanticAuthority: "host",
   inputContract: "structured-only",
   modelIntegration: "none",
@@ -101,6 +134,7 @@ const modernManifest = (
   actorLimbPartIds: [...actorLimbPartIds],
   actorLimbPresenceModes: [...actorLimbPresenceModes],
   actorLimbErrorCodes: [...actorLimbErrorCodes],
+  actorBlueprint: structuredClone(actorBlueprint),
   ...overrides,
 });
 
@@ -134,9 +168,9 @@ const optionsForCase = (
       return {
         doctorData: modernManifest({
           applicationVersion: "999.0.0",
-          sceneSchemaVersion: 5,
-          patchSchemaVersion: 5,
-          intentReportSchemaVersion: 5,
+          sceneSchemaVersion: 6,
+          patchSchemaVersion: 6,
+          intentReportSchemaVersion: 6,
         }),
       };
     case "requires-key":

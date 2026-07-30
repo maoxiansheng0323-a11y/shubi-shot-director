@@ -46,7 +46,7 @@ describe("SceneSpec files", () => {
     });
   });
 
-  it("migrates a legacy v1 single-room file to canonical v4", async () => {
+  it("migrates a legacy v1 single-room file to canonical v5", async () => {
     const current = createDefaultScene();
     const legacy: Record<string, unknown> = {
       ...current,
@@ -76,7 +76,7 @@ describe("SceneSpec files", () => {
       }),
     );
 
-    expect(parsed.schemaVersion).toBe(4);
+    expect(parsed.schemaVersion).toBe(5);
     expect(parsed.spatialLayout).toBeNull();
     expect(parsed.sceneId).toBe(current.sceneId);
     expect(parsed.entities).toEqual(current.entities);

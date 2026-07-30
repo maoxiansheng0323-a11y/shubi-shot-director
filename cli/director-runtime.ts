@@ -4,6 +4,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z, ZodError } from "zod";
 import { createBrowserChildEnvironment } from "../scripts/process-boundary.mjs";
+import {
+  ACTOR_BLUEPRINT_ERROR_CODES,
+  ACTOR_BLUEPRINT_MAX_INPUT_BYTES,
+  ACTOR_BLUEPRINT_SCHEMA_VERSION,
+  actorBlueprintDocumentSchema,
+  createActorBlueprintSnapshot,
+} from "../src/domain/actor-blueprint";
 import { analyzeComposition } from "../src/domain/composition-safety";
 import {
   parseScenePatchInput,
@@ -212,6 +219,79 @@ const sceneMutationSummary = (
   constraintCount: scene.constraints.length,
 });
 
+const readBoundedStdin = async (): Promise<string> => {
+  const chunks: Buffer[] = [];
+  let byteCount = 0;
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.isBuffer(chunk)
+      ? chunk
+      : Buffer.from(String(chunk), "utf8");
+    byteCount += buffer.length;
+    if (byteCount > ACTOR_BLUEPRINT_MAX_INPUT_BYTES) {
+      throw new CliCommandError(
+        "ACTOR_BLUEPRINT_FILE_INVALID",
+        "The Actor Blueprint document is invalid.",
+      );
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+};
+
+const readValidatedBlueprintFromStdin = async () => {
+  let input: unknown;
+  try {
+    input = JSON.parse(await readBoundedStdin()) as unknown;
+  } catch (error) {
+    if (error instanceof CliCommandError) {
+      throw error;
+    }
+    throw new CliCommandError(
+      "ACTOR_BLUEPRINT_FILE_INVALID",
+      "The Actor Blueprint document is invalid.",
+    );
+  }
+
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    Array.isArray(input)
+  ) {
+    throw new CliCommandError(
+      "ACTOR_BLUEPRINT_FILE_INVALID",
+      "The Actor Blueprint document is invalid.",
+    );
+  }
+  const schemaVersion = (input as Record<string, unknown>).schemaVersion;
+  if (
+    typeof schemaVersion === "number" &&
+    Number.isInteger(schemaVersion) &&
+    schemaVersion !== ACTOR_BLUEPRINT_SCHEMA_VERSION
+  ) {
+    throw new CliCommandError(
+      "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+      "The Actor Blueprint schema version is unsupported.",
+    );
+  }
+
+  const parsed = actorBlueprintDocumentSchema.safeParse(input);
+  if (!parsed.success) {
+    const variantInvalid = parsed.error.issues.some(
+      ({ message }) =>
+        message === ACTOR_BLUEPRINT_ERROR_CODES.variantInvalid,
+    );
+    throw new CliCommandError(
+      variantInvalid
+        ? "ACTOR_BLUEPRINT_VARIANT_INVALID"
+        : "ACTOR_BLUEPRINT_FILE_INVALID",
+      variantInvalid
+        ? "The Actor Blueprint variant is invalid."
+        : "The Actor Blueprint document is invalid.",
+    );
+  }
+  return parsed.data;
+};
+
 const runDirectorCommand = async (
   args: readonly string[],
 ): Promise<void> => {
@@ -238,6 +318,29 @@ const runDirectorCommand = async (
         nodeSupported: nodeVersionSupported(),
         bridgeConfiguration:
           bridgeConfigurationIsLoopback() ? "loopback" : "invalid",
+      },
+    });
+    return;
+  }
+
+  if (command === "blueprint" && args[1] === "validate") {
+    if (args.length !== 3 || args[2] !== "--stdin") {
+      throw new CliCommandError(
+        "CLI_ARGUMENT_REQUIRED",
+        "blueprint validate requires --stdin.",
+      );
+    }
+    const document = await readValidatedBlueprintFromStdin();
+    const snapshot = createActorBlueprintSnapshot(document);
+    output({
+      ok: true,
+      data: {
+        blueprintId: snapshot.blueprintId,
+        blueprintVersion: snapshot.blueprintVersion,
+        contentSha256: snapshot.contentSha256,
+        moduleCount: snapshot.modules.length,
+        variantCount: snapshot.variants.length,
+        valid: true,
       },
     });
     return;

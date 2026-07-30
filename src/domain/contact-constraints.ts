@@ -124,6 +124,7 @@ export const isSupportedContactSurface = (
 };
 
 const actorContactOffsetM = (
+  scene: SceneSpec,
   entity: SceneEntity,
   transform: TransformSpec,
 ): number => {
@@ -134,7 +135,7 @@ const actorContactOffsetM = (
     );
   }
 
-  return actorVisibleRigBounds(entity, transform).supportOffsetM;
+  return actorVisibleRigBounds(scene, entity, transform).supportOffsetM;
 };
 
 type GroundContactConstraint = Extract<
@@ -185,7 +186,7 @@ export const snapTransformToContact = (
     constraint.surfaceEntityId === null
       ? 0
       : surfaceTopY(scene, constraint.surfaceEntityId);
-  const supportOffsetM = actorContactOffsetM(entity, candidate);
+  const supportOffsetM = actorContactOffsetM(scene, entity, candidate);
 
   return {
     ...candidate,

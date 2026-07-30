@@ -5,9 +5,9 @@
   "capabilitiesContractVersion": 2,
   "bridgeProtocolVersion": 1,
   "workspaceRoutingVersion": 1,
-  "sceneSchemaVersion": 4,
-  "patchSchemaVersion": 4,
-  "intentReportSchemaVersion": 4,
+  "sceneSchemaVersion": 5,
+  "patchSchemaVersion": 5,
+  "intentReportSchemaVersion": 5,
   "semanticAuthority": "host",
   "inputContract": "structured-only",
   "modelIntegration": "none",
@@ -35,5 +35,32 @@
     "foot_r"
   ],
   "actorLimbPresenceModes": ["present", "absent"],
-  "actorLimbErrorCodes": ["LIMB_HIERARCHY_CONFLICT"]
+  "actorLimbErrorCodes": ["LIMB_HIERARCHY_CONFLICT"],
+  "actorBlueprint": {
+    "schemaVersion": 1,
+    "mounts": [
+      "shoulder_l",
+      "shoulder_r",
+      "elbow_l",
+      "elbow_r",
+      "wrist_l",
+      "wrist_r",
+      "hip_l",
+      "hip_r",
+      "knee_l",
+      "knee_r"
+    ],
+    "primitives": ["box", "sphere", "cylinder"],
+    "variantDeltaFields": ["limbPresence", "moduleVisibility"],
+    "errorCodes": [
+      "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+      "ACTOR_BLUEPRINT_FILE_INVALID",
+      "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+      "ACTOR_BLUEPRINT_VARIANT_INVALID",
+      "ACTOR_BLUEPRINT_HASH_MISMATCH",
+      "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+      "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+      "ACTOR_BLUEPRINT_ID_CONFLICT"
+    ]
+  }
 }

@@ -126,3 +126,16 @@ export const createActorLimbPresencePatch = (
       updates,
     },
   ]);
+
+export const createActorVariantPatch = (
+  scene: SceneSpec,
+  actorId: string,
+  variantId: string,
+): ScenePatch =>
+  createOperationsPatch(scene, "actor_variant", [
+    {
+      op: "actor.variant.set",
+      actorId,
+      variantId,
+    },
+  ]);

@@ -1,6 +1,6 @@
 {
   "intentReport": {
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "operation": "create",
     "allowPartial": false,
     "recognizedConstraints": [
@@ -216,7 +216,7 @@
     "canApplySafely": true
   },
   "scene": {
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "sceneId": "scene_connected_regions_1",
     "revision": 0,
     "title": "Connected regions graybox",
@@ -237,6 +237,7 @@
         "height": 1080
       }
     },
+    "actorBlueprints": [],
     "entities": [
       {
         "id": "actor_generic_1",

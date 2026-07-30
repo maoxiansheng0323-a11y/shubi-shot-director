@@ -36,6 +36,8 @@ wall openings, entity placement, and the active camera are authoritative.
 
 For limb-presence edits, confirm the requested complete chains are absent or present without hidden geometry, zero-scale geometry, detached fallback parts, phantom joints, or stale bounds. Confirm contact correction does not move unrelated entities or alter framing unexpectedly.
 
+For blueprint actors, verify effective variant state and the resolved module geometry from the same projection used by render, bounds, contact, composition, and diagnostics. Confirm exposed terminals or sealed interfaces follow their mount bones through pose changes, hidden modules leave no stale bounds, and a saved/reloaded scene remains identical without the external source file.
+
 Region labels are Host-authored display text, not runtime room types. Do not
 claim a semantic room classification from floor colors, label wording, or
 region order.

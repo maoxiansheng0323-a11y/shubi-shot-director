@@ -6,6 +6,7 @@ import { ACTOR_LIMB_PART_IDS } from "../src/domain/actor-anatomy";
 import { INTENT_REPORT_SCHEMA_VERSION } from "../src/domain/intent-report";
 import { parseSceneSubmission } from "../src/domain/scene-submission";
 import { analyzeComposition } from "../src/domain/composition-safety";
+import { isLegacyActorEntity } from "../src/domain/scene-schema";
 
 const exampleUrl = new URL(
   "../examples/quickstart.scene-submission.json",
@@ -141,7 +142,7 @@ describe("public quick-start scene submission", () => {
     ]);
 
     expect(submission.scene.sceneId).toBe("scene_quickstart_1");
-    expect(submission.scene.schemaVersion).toBe(4);
+    expect(submission.scene.schemaVersion).toBe(5);
     expect(submission.scene.spatialLayout).toBeNull();
     expect(submission.scene.revision).toBe(0);
     expect(submission.scene.output).toEqual({
@@ -220,14 +221,14 @@ describe("public quick-start scene submission", () => {
     );
   });
 
-  it("keeps every canonical public scene on v4 lockMode and limb-presence fields", async () => {
+  it("keeps every canonical public scene on v5 lockMode and limb-presence fields", async () => {
     const starterSource = await readFile(
       new URL("../examples/starter.scene.json", import.meta.url),
       "utf8",
     );
     const starter: unknown = JSON.parse(starterSource);
 
-    expect(starter).toMatchObject({ schemaVersion: 4 });
+    expect(starter).toMatchObject({ schemaVersion: 5 });
     expect(collectExactKeys(starter, "locked")).toEqual([]);
     expect(starter).toMatchObject({
       entities: expect.arrayContaining([
@@ -273,11 +274,14 @@ describe("public quick-start scene submission", () => {
         await readFile(new URL(fileName, examplesDirectoryUrl), "utf8"),
       );
       const submission = parseSceneSubmission(raw);
-      expect(submission.scene.schemaVersion, fileName).toBe(4);
-      expect(submission.intentReport.schemaVersion, fileName).toBe(4);
+      expect(submission.scene.schemaVersion, fileName).toBe(5);
+      expect(submission.intentReport.schemaVersion, fileName).toBe(5);
       for (const actor of submission.scene.entities.filter(
         (entity) => entity.kind === "actor",
       )) {
+        if (!isLegacyActorEntity(actor)) {
+          throw new Error(`${fileName}:${actor.id} must be a legacy actor.`);
+        }
         expect(actor.body.limbPresence, `${fileName}:${actor.id}`).toEqual(
           allPresentLimbPresence,
         );

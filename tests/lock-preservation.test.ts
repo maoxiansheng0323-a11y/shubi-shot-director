@@ -15,6 +15,7 @@ import type {
   SceneEntity,
   SceneSpec,
 } from "../src/domain/scene-schema";
+import { isLegacyActorEntity } from "../src/domain/scene-schema";
 import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 
 const requireEntity = (
@@ -84,7 +85,7 @@ const expectGroundedActorState = (
   expectedXZ: readonly [number, number],
 ): void => {
   const entity = requireEntity(scene, entityId);
-  if (entity.kind !== "actor") {
+  if (!isLegacyActorEntity(entity)) {
     throw new Error(`Expected an actor fixture: ${entityId}`);
   }
   expect(entity.lockMode).toBe(lockMode);
@@ -172,7 +173,7 @@ describe("workflow-lock preservation", () => {
     const actor = requireEntity(scene, "actor_generic_1");
     const prop = requireEntity(scene, "prop_block_1");
     const camera = requireEntity(scene, "camera_shot_1");
-    if (actor.kind !== "actor" || camera.kind !== "camera") {
+    if (!isLegacyActorEntity(actor) || camera.kind !== "camera") {
       throw new Error("Default actor or camera fixture is invalid.");
     }
     actor.lockMode = "workflow";

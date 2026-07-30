@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeComposition } from "../src/domain/composition-safety";
 import { createDefaultScene } from "../src/domain/default-scene";
-import { actorAnchorWorldPoint } from "../src/domain/humanoid-rig";
+import { actorAnchorWorldPoint } from "../src/domain/actor-projection";
 import { lookAtQuaternion } from "../src/domain/scene-math";
 import {
   sceneSpecSchema,

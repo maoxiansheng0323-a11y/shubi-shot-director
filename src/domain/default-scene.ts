@@ -3,11 +3,11 @@ import { createAllPresentLimbPresence } from "./actor-anatomy";
 import {
   identityQuaternion,
   sceneSpecSchema,
-  type SceneSpec,
+  type LegacySceneSpec,
 } from "./scene-schema";
 import { SCENE_SCHEMA_VERSION } from "./schema-versions";
 
-export const createDefaultScene = (): SceneSpec =>
+export const createDefaultScene = (): LegacySceneSpec =>
   sceneSpecSchema.parse({
     schemaVersion: SCENE_SCHEMA_VERSION,
     sceneId: "scene_starter",
@@ -30,6 +30,7 @@ export const createDefaultScene = (): SceneSpec =>
         height: 1080,
       },
     },
+    actorBlueprints: [],
     entities: [
       {
         id: "environment_room_1",
@@ -148,4 +149,4 @@ export const createDefaultScene = (): SceneSpec =>
         enabled: true,
       },
     ],
-  });
+  }) as LegacySceneSpec;

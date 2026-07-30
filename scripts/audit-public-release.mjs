@@ -40,6 +40,12 @@ const finding = (code, file, extra = {}) => ({
   ...extra,
 });
 
+const isRuntimeArtifactPath = (displayPath) =>
+  /\.(?:json|log|txt|png)$/iu.test(displayPath) ||
+  /(?:^|\/)(?:artifacts?|exports?|reports?|screenshots?)(?:\/|$)/iu.test(
+    displayPath,
+  );
+
 export const auditText = (
   displayPath,
   text,
@@ -51,7 +57,7 @@ export const auditText = (
     {
       code: "MACHINE_ABSOLUTE_PATH",
       pattern:
-        /(?:^|[\s"'`(])(?:[a-z]:[\\/](?:users|documents and settings)[\\/][^\\/\s"'`]+[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+[\\/]|\/(?:users|home)\/[^/\s"'`]+\/)/imu,
+        /(?:^|[\s"'`(])(?:[a-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+[\\/]|\/(?:users|home)\/[^/\s"'`]+\/)/imu,
     },
     {
       code: "FILE_URI",
@@ -73,6 +79,15 @@ export const auditText = (
     if (rule.pattern.test(text)) {
       findings.push(finding(rule.code, file));
     }
+  }
+
+  if (
+    isRuntimeArtifactPath(file) &&
+    /"(?:sourcePath|sourceFile|externalPath|blueprintFile)"\s*:/u.test(
+      text,
+    )
+  ) {
+    findings.push(finding("BLUEPRINT_PROVENANCE_FIELD", file));
   }
 
   const folded = text.normalize("NFKC").toLocaleLowerCase();
@@ -333,13 +348,15 @@ export const runRepositoryAudit = async (options) => {
       continue;
     }
     const bytes = await readFile(absolutePath);
-    if (bytes.includes(0)) {
-      continue;
-    }
+    const binaryText =
+      bytes.includes(0) && displayPath.toLocaleLowerCase().endsWith(".png")
+        ? bytes.toString("latin1")
+        : null;
+    if (bytes.includes(0) && binaryText === null) continue;
     findings.push(
       ...auditText(
         displayPath,
-        bytes.toString("utf8"),
+        binaryText ?? bytes.toString("utf8"),
         options.denyTokens,
       ),
     );

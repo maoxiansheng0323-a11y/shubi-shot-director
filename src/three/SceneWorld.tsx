@@ -20,9 +20,9 @@ import type {
 } from "three";
 import { DoubleSide, Shape } from "three";
 import {
-  deriveActorRigProjection,
+  resolveActorProjection,
   type ActorRigPrimitive,
-} from "../domain/humanoid-rig";
+} from "../domain/actor-projection";
 import { deriveBoundaryWallBoxes } from "../domain/spatial-layout";
 import type {
   SpatialBoundary,
@@ -38,13 +38,13 @@ import {
   deriveHiddenShotWallBoxKey,
   shotWallBoxKey,
 } from "../editor/shot-wall-visibility";
-import type {
-  ActorEntity,
-  CameraEntity,
-  JsonValue,
-  SceneEntity,
-  SceneSpec,
-  TransformSpec,
+import {
+  type AnyActorEntity,
+  type CameraEntity,
+  type JsonValue,
+  type SceneEntity,
+  type SceneSpec,
+  type TransformSpec,
 } from "../domain/scene-schema";
 
 export interface SceneWorldProps {
@@ -492,6 +492,18 @@ const ActorRigPrimitiveMesh = ({
     case "box":
       geometry = <boxGeometry args={[...primitive.size]} />;
       break;
+    case "cylinder":
+      geometry = (
+        <cylinderGeometry
+          args={[
+            primitive.radius,
+            primitive.radius,
+            primitive.length,
+            primitive.radialSegments,
+          ]}
+        />
+      );
+      break;
   }
 
   return (
@@ -511,13 +523,15 @@ const ActorRigPrimitiveMesh = ({
 };
 
 const MannequinActor = ({
+  scene,
   actor,
   selected,
 }: {
-  actor: ActorEntity;
+  scene: SceneSpec;
+  actor: AnyActorEntity;
   selected: boolean;
 }) => {
-  const projection = deriveActorRigProjection(actor);
+  const projection = resolveActorProjection(scene, actor);
   return (
     <>
       {projection.primitives.map((primitive) => (
@@ -553,6 +567,7 @@ const CameraProxy = ({
 );
 
 const EntityProjection = ({
+  scene,
   entity,
   view,
   selected,
@@ -566,6 +581,7 @@ const EntityProjection = ({
   onTransformCommit,
   transformDomElement,
 }: {
+  scene: SceneSpec;
   entity: SceneEntity;
   view: SceneWorldProps["view"];
   selected: boolean;
@@ -658,6 +674,7 @@ const EntityProjection = ({
     case "actor":
       content = (
         <MannequinActor
+          scene={scene}
           actor={entity}
           selected={selectedInEditor}
         />
@@ -814,6 +831,7 @@ export const SceneWorld = ({
         return (
           <EntityProjection
             key={entity.id}
+            scene={scene}
             entity={entity}
             view={view}
             selected={entity.id === selectedEntityId}

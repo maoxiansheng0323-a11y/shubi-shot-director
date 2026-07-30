@@ -11,7 +11,7 @@ const createConnectedSceneInput = () => {
   const base = createDefaultScene();
   return {
     ...base,
-    schemaVersion: 4,
+    schemaVersion: 5,
     entities: base.entities.filter((entity) => entity.kind !== "environment"),
     constraints: [],
     spatialLayout: {
@@ -99,7 +99,7 @@ describe("generic connected spatial layouts", () => {
   it("accepts abstract regions, a shared boundary, an opening, and memberships", () => {
     const parsed = sceneSpecSchema.parse(createConnectedSceneInput());
 
-    expect(parsed.schemaVersion).toBe(4);
+    expect(parsed.schemaVersion).toBe(5);
     expect(parsed.spatialLayout?.regions.map(({ id }) => id)).toEqual([
       "region_alpha",
       "region_beta",

@@ -8,7 +8,7 @@ import {
   actorVisibleRigBounds,
 } from "../src/domain/actor-visible-bounds";
 import { createDefaultScene } from "../src/domain/default-scene";
-import { actorAnchorWorldPoint } from "../src/domain/humanoid-rig";
+import { actorAnchorWorldPoint } from "../src/domain/actor-projection";
 import {
   quaternionFromEulerDegrees,
   transformPoint,

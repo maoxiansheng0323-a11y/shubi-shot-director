@@ -51,6 +51,7 @@ const commandIds = [
   "stop",
   "health",
   "snapshot",
+  "blueprint.validate",
   "scene.create",
   "scene.submit",
   "scene.save",
@@ -74,7 +75,38 @@ const featureIds = [
   "composition.segmented-report",
   "bridge.safe-shutdown",
   "actor.limb-presence",
+  "actor.blueprint-snapshots",
+  "actor.modular-primitives",
+  "actor.variants",
+  "actor.resolved-projection",
 ] as const;
+const actorBlueprint = {
+  schemaVersion: 1,
+  mounts: [
+    "shoulder_l",
+    "shoulder_r",
+    "elbow_l",
+    "elbow_r",
+    "wrist_l",
+    "wrist_r",
+    "hip_l",
+    "hip_r",
+    "knee_l",
+    "knee_r",
+  ],
+  primitives: ["box", "sphere", "cylinder"],
+  variantDeltaFields: ["limbPresence", "moduleVisibility"],
+  errorCodes: [
+    "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+    "ACTOR_BLUEPRINT_FILE_INVALID",
+    "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+    "ACTOR_BLUEPRINT_VARIANT_INVALID",
+    "ACTOR_BLUEPRINT_HASH_MISMATCH",
+    "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+    "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+    "ACTOR_BLUEPRINT_ID_CONFLICT",
+  ],
+} as const;
 
 const entityLockModes = ["none", "workflow", "user"] as const;
 const patchPolicyFields = ["preserveLock"] as const;
@@ -173,9 +205,9 @@ const v2Manifest = (
   applicationVersion: "1.0.0",
   bridgeProtocolVersion: 1,
   workspaceRoutingVersion: 1,
-  sceneSchemaVersion: 4,
-  patchSchemaVersion: 4,
-  intentReportSchemaVersion: 4,
+  sceneSchemaVersion: 5,
+  patchSchemaVersion: 5,
+  intentReportSchemaVersion: 5,
   semanticAuthority: "host",
   inputContract: "structured-only",
   modelIntegration: "none",
@@ -189,6 +221,7 @@ const v2Manifest = (
   actorLimbPartIds: [...actorLimbPartIds],
   actorLimbPresenceModes: [...actorLimbPresenceModes],
   actorLimbErrorCodes: [...actorLimbErrorCodes],
+  actorBlueprint: structuredClone(actorBlueprint),
   ...overrides,
 });
 
@@ -378,15 +411,16 @@ const buildPlan = (
     doctorData,
     skillBridgeProtocolVersion: 1,
     skillWorkspaceRoutingVersion: 1,
-    skillSceneSchemaVersion: 4,
-    skillPatchSchemaVersion: 4,
-    skillIntentReportSchemaVersion: 4,
+    skillSceneSchemaVersion: 5,
+    skillPatchSchemaVersion: 5,
+    skillIntentReportSchemaVersion: 5,
     skillEntityLockModes: [...entityLockModes],
     skillPatchPolicyFields: [...patchPolicyFields],
     skillLockErrorCodes: [...lockErrorCodes],
     skillActorLimbPartIds: [...actorLimbPartIds],
     skillActorLimbPresenceModes: [...actorLimbPresenceModes],
     skillActorLimbErrorCodes: [...actorLimbErrorCodes],
+    skillActorBlueprint: structuredClone(actorBlueprint),
     ...overrides,
   });
 
@@ -440,7 +474,7 @@ afterEach(async () => {
 });
 
 describe("v2 compatibility planner", () => {
-  it("exports exactly the 17 structured actions and the v2 plan shape", () => {
+  it("exports exactly the 18 structured actions and the v2 plan shape", () => {
     const plan = buildPlan("scene.submit", v2Manifest());
 
     expect(planner.PLAN_CONTRACT_VERSION).toBe(2);
@@ -827,7 +861,7 @@ describe("v2 compatibility planner", () => {
       {
         semanticAuthority: "model",
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 5,
+        sceneSchemaVersion: 6,
         entityLockModes: ["none", "workflow", "system"],
       },
       "SEMANTIC_BOUNDARY_VIOLATION",
@@ -836,7 +870,7 @@ describe("v2 compatibility planner", () => {
       "protocol before altered lock capabilities",
       {
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 5,
+        sceneSchemaVersion: 6,
         entityLockModes: ["none", "workflow", "system"],
       },
       "BRIDGE_PROTOCOL_UNSUPPORTED",
@@ -845,7 +879,7 @@ describe("v2 compatibility planner", () => {
       "protocol before missing lock capabilities",
       {
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 5,
+        sceneSchemaVersion: 6,
         entityLockModes: undefined,
       },
       "BRIDGE_PROTOCOL_UNSUPPORTED",
@@ -853,7 +887,7 @@ describe("v2 compatibility planner", () => {
     [
       "schema before lock capabilities",
       {
-        sceneSchemaVersion: 5,
+        sceneSchemaVersion: 6,
         entityLockModes: ["none", "workflow", "system"],
       },
       "SCENE_SCHEMA_UNSUPPORTED",
@@ -878,7 +912,7 @@ describe("v2 compatibility planner", () => {
       {
         semanticAuthority: "model",
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 5,
+        sceneSchemaVersion: 6,
         entityLockModes: ["none", "workflow", "system"],
       },
       "SEMANTIC_BOUNDARY_VIOLATION",
@@ -887,7 +921,7 @@ describe("v2 compatibility planner", () => {
       "protocol before altered lock capabilities",
       {
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 5,
+        sceneSchemaVersion: 6,
         entityLockModes: ["none", "workflow", "system"],
       },
       "BRIDGE_PROTOCOL_UNSUPPORTED",
@@ -896,7 +930,7 @@ describe("v2 compatibility planner", () => {
       "protocol before missing lock capabilities",
       {
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 5,
+        sceneSchemaVersion: 6,
         entityLockModes: undefined,
       },
       "BRIDGE_PROTOCOL_UNSUPPORTED",
@@ -904,7 +938,7 @@ describe("v2 compatibility planner", () => {
     [
       "schema before lock capabilities",
       {
-        sceneSchemaVersion: 5,
+        sceneSchemaVersion: 6,
         entityLockModes: ["none", "workflow", "system"],
       },
       "SCENE_SCHEMA_UNSUPPORTED",
@@ -939,7 +973,7 @@ describe("v2 compatibility planner", () => {
         requestedAction,
         v2Manifest({
           ...lockOverride,
-          [schemaField]: 5,
+          [schemaField]: 6,
         }),
       );
 
@@ -953,7 +987,7 @@ describe("v2 compatibility planner", () => {
       const plan = buildPlan(
         "doctor",
         v2Manifest({
-          [schemaField]: 5,
+          [schemaField]: 6,
           lockErrorCodes: "malformed",
         }),
       );
@@ -975,7 +1009,7 @@ describe("v2 compatibility planner", () => {
         liveRequested: true,
         healthData: v2Manifest({
           ...lockOverride,
-          [schemaField]: 5,
+          [schemaField]: 6,
         }),
       });
 
@@ -1132,19 +1166,19 @@ describe("v2 compatibility planner", () => {
   it.each([
     [
       "scene",
-      { sceneSchemaVersion: 5 },
+      { sceneSchemaVersion: 6 },
       ["scene.create", "scene.submit"],
       "SCENE_SCHEMA_UNSUPPORTED",
     ],
     [
       "patch",
-      { patchSchemaVersion: 5 },
+      { patchSchemaVersion: 6 },
       ["patch.apply", "patch.submit"],
       "PATCH_SCHEMA_UNSUPPORTED",
     ],
     [
       "intent",
-      { intentReportSchemaVersion: 5 },
+      { intentReportSchemaVersion: 6 },
       ["scene.submit", "patch.submit"],
       "INTENT_REPORT_SCHEMA_UNSUPPORTED",
     ],
@@ -2006,7 +2040,7 @@ describe("portable v2 Skill wrapper", () => {
 
   it("forwards an unrelated action when one schema is degraded", async () => {
     const runtime = await createFixture(
-      v2Manifest({ sceneSchemaVersion: 5 }),
+      v2Manifest({ sceneSchemaVersion: 6 }),
     );
 
     const result = await runtime.run(["snapshot"]);
@@ -2324,15 +2358,16 @@ describe("forward compatibility fixture generator", () => {
       ) as { doctorData: Record<string, unknown> };
       expect(fixture.doctorData).toMatchObject({
         capabilitiesContractVersion: 2,
-        sceneSchemaVersion: 4,
-        patchSchemaVersion: 4,
-        intentReportSchemaVersion: 4,
+        sceneSchemaVersion: 5,
+        patchSchemaVersion: 5,
+        intentReportSchemaVersion: 5,
         entityLockModes: [...entityLockModes],
         patchPolicyFields: [...patchPolicyFields],
         lockErrorCodes: [...lockErrorCodes],
         actorLimbPartIds: [...actorLimbPartIds],
         actorLimbPresenceModes: [...actorLimbPresenceModes],
         actorLimbErrorCodes: [...actorLimbErrorCodes],
+        actorBlueprint: structuredClone(actorBlueprint),
       });
     }
   });

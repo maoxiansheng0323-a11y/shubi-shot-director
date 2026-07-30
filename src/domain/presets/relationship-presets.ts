@@ -1,17 +1,18 @@
 import { rotateVector } from "../scene-math";
 import { mutationBlockedByLock } from "../entity-lock";
 import { actorVisibleRigBounds } from "../actor-visible-bounds";
+import { resolveActorProjection } from "../actor-projection";
 import {
   ContactConstraintError,
   surfaceTopY,
 } from "../contact-constraints";
 import type { SceneOperation } from "../scene-patch";
-import type {
-  ActorEntity,
-  QuaternionTuple,
-  SceneEntity,
-  SceneSpec,
-  TransformSpec,
+import {
+  type AnyActorEntity,
+  type QuaternionTuple,
+  type SceneEntity,
+  type SceneSpec,
+  type TransformSpec,
 } from "../scene-schema";
 import { materializePose } from "./pose-presets";
 
@@ -76,10 +77,9 @@ const relationshipById = new Map<
 const requireActor = (
   scene: SceneSpec,
   entityId: string,
-): ActorEntity => {
+): AnyActorEntity => {
   const entity = scene.entities.find(
-    (candidate) =>
-      candidate.id === entityId && candidate.kind === "actor",
+    (candidate) => candidate.id === entityId,
   );
   if (!entity || entity.kind !== "actor") {
     throw new RelationshipPresetError(
@@ -154,7 +154,7 @@ const horizontalForward = (
 };
 
 const transformAt = (
-  actor: ActorEntity,
+  actor: AnyActorEntity,
   positionM: [number, number, number],
   rotation: QuaternionTuple,
 ): TransformSpec => ({
@@ -164,7 +164,8 @@ const transformAt = (
 });
 
 const supportedTransformAt = (
-  actor: ActorEntity,
+  scene: SceneSpec,
+  actor: AnyActorEntity,
   pose: ReturnType<typeof materializePose>,
   positionXZ: readonly [number, number],
   rotation: QuaternionTuple,
@@ -176,6 +177,7 @@ const supportedTransformAt = (
     rotation,
   );
   const supportOffsetM = actorVisibleRigBounds(
+    scene,
     { ...actor, pose, transform: candidate },
     candidate,
   ).supportOffsetM;
@@ -269,18 +271,25 @@ const keepFaceVisibleOperation = (
 
 const buildFaceToFaceOperations = (
   scene: SceneSpec,
-  primary: ActorEntity,
-  secondary: ActorEntity,
+  primary: AnyActorEntity,
+  secondary: AnyActorEntity,
   supportY: number,
   surfaceId: string | null,
 ): SceneOperation[] => {
+  const primaryDimensions = resolveActorProjection(scene, primary).dimensions;
+  const secondaryDimensions = resolveActorProjection(
+    scene,
+    secondary,
+  ).dimensions;
   const primaryPose = materializePose(
     primary,
     "pose.standing-neutral-v1",
+    primaryDimensions.heightM,
   );
   const secondaryPose = materializePose(
     secondary,
     "pose.standing-neutral-v1",
+    secondaryDimensions.heightM,
   );
   const direction = normalizeHorizontal(
     secondary.transform.positionM[0] -
@@ -298,8 +307,8 @@ const buildFaceToFaceOperations = (
     2;
   const separationM = Math.max(
     0.75,
-    (primary.body.shoulderWidthM +
-      secondary.body.shoulderWidthM) *
+    (primaryDimensions.shoulderWidthM +
+      secondaryDimensions.shoulderWidthM) *
       0.9,
   );
   const halfSeparation = separationM / 2;
@@ -309,6 +318,7 @@ const buildFaceToFaceOperations = (
     z: -direction.z,
   });
   const primaryTransform = supportedTransformAt(
+    scene,
     primary,
     primaryPose,
     [
@@ -319,6 +329,7 @@ const buildFaceToFaceOperations = (
     supportY,
   );
   const secondaryTransform = supportedTransformAt(
+    scene,
     secondary,
     secondaryPose,
     [
@@ -357,18 +368,25 @@ const buildFaceToFaceOperations = (
 
 const buildOverUnderOperations = (
   scene: SceneSpec,
-  primary: ActorEntity,
-  secondary: ActorEntity,
+  primary: AnyActorEntity,
+  secondary: AnyActorEntity,
   supportY: number,
   surfaceId: string | null,
 ): SceneOperation[] => {
+  const primaryDimensions = resolveActorProjection(scene, primary).dimensions;
+  const secondaryDimensions = resolveActorProjection(
+    scene,
+    secondary,
+  ).dimensions;
   const primaryPose = materializePose(
     primary,
     "pose.kneeling-lean-v1",
+    primaryDimensions.heightM,
   );
   const secondaryPose = materializePose(
     secondary,
     "pose.lying-supine-v1",
+    secondaryDimensions.heightM,
   );
   const lowerForward = horizontalForward(
     secondary.transform.rotation,
@@ -382,13 +400,14 @@ const buildOverUnderOperations = (
       secondary.transform.positionM[2]) /
     2;
   const primaryLongitudinalOffset =
-    secondary.body.heightM * 0.1;
+    secondaryDimensions.heightM * 0.1;
   const primaryRotation = yawFacing(lowerForward);
   const secondaryRotation = yawFacing({
     x: -lowerForward.x,
     z: -lowerForward.z,
   });
   const secondaryTransform = supportedTransformAt(
+    scene,
     secondary,
     secondaryPose,
     [midpointX, midpointZ],
@@ -396,6 +415,7 @@ const buildOverUnderOperations = (
     supportY,
   );
   const primaryTransform = supportedTransformAt(
+    scene,
     primary,
     primaryPose,
     [

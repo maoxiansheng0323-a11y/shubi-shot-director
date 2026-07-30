@@ -3,14 +3,55 @@ import { createDefaultScene } from "../src/domain/default-scene";
 import { scenePatchSchema } from "../src/domain/scene-patch";
 import {
   createActorLimbPresencePatch,
+  createActorVariantPatch,
   createCameraLensPatch,
   createLockModePatch,
   nextManualLockMode,
   createTransformPatch,
   transformsEqual,
 } from "../src/editor/manual-patches";
+import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
+import { sceneSpecSchema, type SceneSpec } from "../src/domain/scene-schema";
+import {
+  createBlueprintActor,
+  createGenericActorBlueprintDocument,
+} from "./helpers/actor-blueprint-fixtures";
 
 describe("manual editor patches", () => {
+  it("creates one authoritative actor variant operation", () => {
+    const scene: SceneSpec = sceneSpecSchema.parse(createDefaultScene());
+    scene.entities = scene.entities.filter(
+      (entity) => entity.kind !== "actor",
+    );
+    scene.constraints = [];
+    scene.actorBlueprints = [
+      createActorBlueprintSnapshot(
+        createGenericActorBlueprintDocument(),
+      ),
+    ];
+    const actor = createBlueprintActor();
+    scene.entities.push(actor);
+
+    const patch = scenePatchSchema.parse(
+      createActorVariantPatch(scene, actor.id, "repaired"),
+    );
+
+    expect(patch).toMatchObject({
+      schemaVersion: 5,
+      sceneId: scene.sceneId,
+      baseRevision: scene.revision,
+      source: "manual",
+      preserveLock: false,
+      operations: [
+        {
+          op: "actor.variant.set",
+          actorId: actor.id,
+          variantId: "repaired",
+        },
+      ],
+    });
+  });
+
   it("creates one authoritative actor limb presence operation", () => {
     const scene = createDefaultScene();
     const patch = scenePatchSchema.parse(
@@ -19,7 +60,7 @@ describe("manual editor patches", () => {
       }),
     );
 
-    expect(patch.schemaVersion).toBe(4);
+    expect(patch.schemaVersion).toBe(5);
     expect(patch.baseRevision).toBe(scene.revision);
     expect(patch.source).toBe("manual");
     expect(patch.preserveLock).toBe(false);

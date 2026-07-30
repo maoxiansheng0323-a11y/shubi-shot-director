@@ -21,6 +21,7 @@ import {
 } from "../src/domain/scene-math";
 import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 import {
+  isLegacyActorEntity,
   sceneSpecSchema,
   type SceneSpec,
   type TransformSpec,
@@ -29,7 +30,7 @@ import {
 const actor = (scene: SceneSpec) => {
   const found = scene.entities.find((entity) => entity.kind === "actor");
   expect(found?.kind).toBe("actor");
-  if (!found || found.kind !== "actor") {
+  if (!isLegacyActorEntity(found)) {
     throw new Error("Actor fixture is missing.");
   }
   return found;

@@ -35,6 +35,7 @@ export const ACTION_POLICY = Object.freeze({
   stop: policy("stop", { features: ["bridge.safe-shutdown"] }),
   health: policy("health", { requiresBridge: true }),
   snapshot: policy("snapshot", { requiresBridge: true }),
+  "blueprint.validate": policy("blueprint.validate"),
   "scene.create": policy("scene.create", {
     schemas: ["scene"],
     requiresBridge: true,
@@ -257,8 +258,40 @@ const isNonEmptyUniqueStringArray = (value) =>
   value.length > 0 &&
   value.every((item) => item.trim().length > 0);
 const stringSetsEqual = (left, right) =>
+  Array.isArray(left) &&
+  Array.isArray(right) &&
   left.length === right.length &&
   left.every((value) => right.includes(value));
+const actorBlueprintSnapshot = (value) => {
+  const record = plainOwnRecord(value);
+  if (
+    record === undefined ||
+    Object.keys(record).length !== 5 ||
+    !isPositiveInteger(record.schemaVersion) ||
+    !isNonEmptyUniqueStringArray(record.mounts) ||
+    !isNonEmptyUniqueStringArray(record.primitives) ||
+    !isNonEmptyUniqueStringArray(record.variantDeltaFields) ||
+    !isNonEmptyUniqueStringArray(record.errorCodes)
+  ) {
+    return undefined;
+  }
+  return {
+    schemaVersion: record.schemaVersion,
+    mounts: [...record.mounts],
+    primitives: [...record.primitives],
+    variantDeltaFields: [...record.variantDeltaFields],
+    errorCodes: [...record.errorCodes],
+  };
+};
+const actorBlueprintsEqual = (left, right) =>
+  left?.schemaVersion === right?.schemaVersion &&
+  stringSetsEqual(left?.mounts, right?.mounts) &&
+  stringSetsEqual(left?.primitives, right?.primitives) &&
+  stringSetsEqual(
+    left?.variantDeltaFields,
+    right?.variantDeltaFields,
+  ) &&
+  stringSetsEqual(left?.errorCodes, right?.errorCodes);
 
 const MANIFEST_ROOT_KEYS = new Set([
   "service",
@@ -282,6 +315,7 @@ const MANIFEST_ROOT_KEYS = new Set([
   "actorLimbPartIds",
   "actorLimbPresenceModes",
   "actorLimbErrorCodes",
+  "actorBlueprint",
 ]);
 const MANIFEST_REQUIRED_FIELDS = Object.freeze([
   ...MANIFEST_ROOT_KEYS,
@@ -510,6 +544,9 @@ const validateCapabilitiesSnapshot = (input) => {
   }
   const record = inspected.record;
   try {
+    const actorBlueprint = actorBlueprintSnapshot(
+      record.actorBlueprint,
+    );
     if (
       !MANIFEST_REQUIRED_FIELDS.every((field) =>
         hasOwnDataProperty(record, field),
@@ -524,7 +561,8 @@ const validateCapabilitiesSnapshot = (input) => {
       !isNonEmptyUniqueStringArray(record.lockErrorCodes) ||
       !isNonEmptyUniqueStringArray(record.actorLimbPartIds) ||
       !isNonEmptyUniqueStringArray(record.actorLimbPresenceModes) ||
-      !isNonEmptyUniqueStringArray(record.actorLimbErrorCodes)
+      !isNonEmptyUniqueStringArray(record.actorLimbErrorCodes) ||
+      actorBlueprint === undefined
     ) {
       return invalid("CAPABILITIES_INVALID");
     }
@@ -547,6 +585,7 @@ const validateCapabilitiesSnapshot = (input) => {
         actorLimbPartIds: [...record.actorLimbPartIds],
         actorLimbPresenceModes: [...record.actorLimbPresenceModes],
         actorLimbErrorCodes: [...record.actorLimbErrorCodes],
+        actorBlueprint,
       },
     };
   } catch {
@@ -619,7 +658,11 @@ const compareLiveManifest = (
       live.actorLimbPresenceModes,
       offline.actorLimbPresenceModes,
     ) ||
-    !stringSetsEqual(live.actorLimbErrorCodes, offline.actorLimbErrorCodes)
+    !stringSetsEqual(live.actorLimbErrorCodes, offline.actorLimbErrorCodes) ||
+    !actorBlueprintsEqual(
+      live.actorBlueprint,
+      offline.actorBlueprint,
+    )
   ) {
     return invalid("CAPABILITIES_INVALID");
   }
@@ -831,6 +874,10 @@ export const buildCompatibilityPlan = (input) => {
       !stringSetsEqual(
         manifest.actorLimbErrorCodes,
         input.skillActorLimbErrorCodes,
+      ) ||
+      !actorBlueprintsEqual(
+        manifest.actorBlueprint,
+        input.skillActorBlueprint,
       )
   ) {
     return incompatiblePlan(

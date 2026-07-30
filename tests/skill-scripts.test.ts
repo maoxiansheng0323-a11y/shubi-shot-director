@@ -24,6 +24,7 @@ import {
   type ScenePatch,
 } from "../src/domain/scene-patch";
 import {
+  isLegacyActorEntity,
   sceneSpecSchema,
   type SceneSpec,
 } from "../src/domain/scene-schema";
@@ -339,6 +340,25 @@ describe("Skill deterministic scripts", () => {
     ).rejects.toMatchObject({
       stdout: expect.not.stringContaining(deniedValue),
     });
+
+    const pathMarker = ["D:", "workspace", "actor.json"].join("\\");
+    const pathUnsafeFile = path.join(directory, "path-unsafe.json");
+    await writeFile(
+      pathUnsafeFile,
+      JSON.stringify({
+        blueprintFile: pathMarker,
+        sourcePath: pathMarker,
+      }),
+    );
+    await expect(
+      execFileAsync(
+        process.execPath,
+        [auditScript, "--artifact", "--file", pathUnsafeFile],
+        { encoding: "utf8" },
+      ),
+    ).rejects.toMatchObject({
+      stdout: expect.not.stringContaining(pathMarker),
+    });
   });
 
   it("verifies one-revision minimal Patch transitions", async () => {
@@ -507,7 +527,7 @@ describe("Skill deterministic scripts", () => {
     const otherEntity = tampered.entities.find(
       (entity) => entity.id !== actor.id,
     );
-    if (!tamperedActor || tamperedActor.kind !== "actor" || !otherEntity) {
+    if (!isLegacyActorEntity(tamperedActor) || !otherEntity) {
       throw new Error("Missing transition tamper fixtures.");
     }
     tamperedActor.label = "Tampered actor label";
@@ -570,7 +590,7 @@ describe("Skill deterministic scripts", () => {
     };
     const after = applyScenePatch(before, patch).next;
     const afterActor = after.entities.find((entity) => entity.id === actor.id);
-    if (!afterActor || afterActor.kind !== "actor") {
+    if (!isLegacyActorEntity(afterActor)) {
       throw new Error("Missing hierarchy closure result actor.");
     }
     afterActor.body.limbPresence.foot_l = "absent";
@@ -591,7 +611,7 @@ describe("Skill deterministic scripts", () => {
       constraints: [],
     });
     const actor = before.entities.find((entity) => entity.kind === "actor");
-    if (!actor || actor.kind !== "actor") {
+    if (!isLegacyActorEntity(actor)) {
       throw new Error("Missing no-contact actor fixture.");
     }
     const patch: ScenePatch = {
@@ -629,7 +649,7 @@ describe("Skill deterministic scripts", () => {
     const directory = await temporaryDirectory();
     const before = createDefaultScene();
     const actor = before.entities.find((entity) => entity.kind === "actor");
-    if (!actor || actor.kind !== "actor") {
+    if (!isLegacyActorEntity(actor)) {
       throw new Error("Missing contact actor fixture.");
     }
     const patch: ScenePatch = {
@@ -861,6 +881,50 @@ describe("Skill deterministic scripts", () => {
 });
 
 describe("Skill host-semantic documentation", () => {
+  it("teaches the complete host-only Actor Blueprint workflow without persisting a file path", async () => {
+    const [skill, blueprintReference, sceneAuthoring, patchAuthoring, visualQa] =
+      await Promise.all([
+        readFile(path.join(skillDirectory, "SKILL.md"), "utf8"),
+        readFile(
+          path.join(referenceDirectory, "actor-blueprints.md"),
+          "utf8",
+        ),
+        readFile(path.join(referenceDirectory, "scene-authoring.md"), "utf8"),
+        readFile(path.join(referenceDirectory, "patch-authoring.md"), "utf8"),
+        readFile(path.join(referenceDirectory, "visual-qa.md"), "utf8"),
+      ]);
+    const guidance = [
+      skill,
+      blueprintReference,
+      sceneAuthoring,
+      patchAuthoring,
+      visualQa,
+    ].join("\n");
+
+    expect(skill).toContain(
+      "SceneSpec, ScenePatch, and IntentReport schema version 5",
+    );
+    expect(guidance).toContain("blueprint validate --file");
+    expect(guidance).toMatch(
+      /Host-only[\s\S]*source path[\s\S]*never[\s\S]*(?:SceneSpec|ScenePatch|IntentReport|history|diagnostics|logs|screenshots)/iu,
+    );
+    expect(guidance).toMatch(
+      /same SHA-256[\s\S]*reuse[\s\S]*same blueprintId[\s\S]*different SHA-256[\s\S]*ACTOR_BLUEPRINT_ID_CONFLICT/iu,
+    );
+    expect(guidance).toContain("actor.blueprint.register");
+    expect(guidance).toContain("blueprintInstance");
+    expect(guidance).toContain("actor.variant.set");
+    expect(guidance).toMatch(
+      /one resolved actor projection[\s\S]*render[\s\S]*bounds[\s\S]*contact[\s\S]*composition[\s\S]*diagnostics/iu,
+    );
+    expect(guidance).toMatch(
+      /Overview[\s\S]*Local[\s\S]*Shot Preview[\s\S]*browser-rendered final camera/iu,
+    );
+    expect(guidance).toMatch(
+      /no automatic garbage collection|no blueprint removal operation/iu,
+    );
+  });
+
   it("routes natural-language creation and modification through host-authored submissions", async () => {
     const referenceFiles = (await readdir(referenceDirectory))
       .filter((fileName) => fileName.endsWith(".md"))
@@ -989,7 +1053,7 @@ describe("Skill host-semantic documentation", () => {
       )?.[1];
 
     expect(expectedDigest).toBe(
-      "786a67f6e7e6d7ab73da4826b3e8cf972b8199d3fe8a991b0f58a1484d5c86ad",
+      "be40666d595a8d675b28a0b55d039ce27eed977f46c3f64f64b37684b1e887a7",
     );
     expect(generatedDigest.stdout.trim()).toBe(expectedDigest);
     expect(reformattedDigest.stdout.trim()).toBe(expectedDigest);
@@ -1071,7 +1135,7 @@ describe("Skill host-semantic documentation", () => {
     );
   });
 
-  it("publishes the canonical v4 lock and actor limb schema contract", async () => {
+  it("publishes the canonical v5 SceneSpec lock and actor limb schema contract", async () => {
     const [sceneSource, patchSource, intentSource] = await Promise.all([
       readFile(
         path.join(generatedSchemaDirectory, "scene-spec.schema.json"),
@@ -1090,7 +1154,7 @@ describe("Skill host-semantic documentation", () => {
     const patchSchema = JSON.parse(patchSource) as JsonSchemaNode;
     const intentSchema = JSON.parse(intentSource) as JsonSchemaNode;
 
-    expect(nestedConst(sceneSchema, "schemaVersion")).toBe(4);
+    expect(nestedConst(sceneSchema, "schemaVersion")).toBe(5);
     expect(sceneSource).not.toMatch(/"locked"/u);
     const sceneLockModes = propertySchemas(sceneSchema, "lockMode");
     expect(sceneLockModes.length).toBeGreaterThan(0);
@@ -1107,7 +1171,7 @@ describe("Skill host-semantic documentation", () => {
       expect(entitySchema.required).toContain("lockMode");
     }
 
-    expect(nestedConst(patchSchema, "schemaVersion")).toBe(4);
+    expect(nestedConst(patchSchema, "schemaVersion")).toBe(5);
     expect(patchSchema.required).toContain("preserveLock");
     expect(patchSchema.properties?.operations?.maxItems).toBe(256);
     expect(patchSource).not.toMatch(/"locked"/u);
@@ -1117,7 +1181,7 @@ describe("Skill host-semantic documentation", () => {
       expect(lockMode.enum).toEqual(["none", "workflow", "user"]);
     }
 
-    expect(nestedConst(intentSchema, "schemaVersion")).toBe(4);
+    expect(nestedConst(intentSchema, "schemaVersion")).toBe(5);
     expect(intentSource).toContain('"entity.lockMode"');
     expect(intentSource).not.toContain('"entity.locked"');
     expect(
@@ -1176,7 +1240,7 @@ describe("Skill host-semantic documentation", () => {
 
     for (const source of [sceneSource, patchSource, intentSource]) {
       expect(source).not.toMatch(
-        /"(?:prosthesis|replacement|mechanical|socket|customMesh|replacementMesh|sourceWording|profilePath|alias|skeleton|attachment)[^"]*"\s*:/iu,
+        /"(?:prosthesis|replacement|mechanical|socket|customMesh|replacementMesh|sourceWording|profilePath|alias)[^"]*"\s*:/iu,
       );
     }
   });
@@ -1263,7 +1327,7 @@ describe("Skill host-semantic documentation", () => {
       /explicit user-facing save[\s\S]*workflow locks[\s\S]*before serialization/iu,
     );
 
-    expect(intentReport).toMatch(/schemaVersion[\s\S]*literal `4`/iu);
+    expect(intentReport).toMatch(/schemaVersion[\s\S]*literal `5`/iu);
     expect(intentReport).toContain("entity.lockMode");
     expect(intentReport).not.toContain("entity.locked");
   });
@@ -1312,7 +1376,7 @@ describe("Skill host-semantic documentation", () => {
     ].join("\n");
 
     expect(skill).toContain(
-      "SceneSpec, ScenePatch, and IntentReport schema version 4",
+      "SceneSpec, ScenePatch, and IntentReport schema version 5",
     );
     expect(guidance).toContain("actor.limb-presence.set");
     expect(guidance).toContain("actor-limb-presence");
@@ -1357,7 +1421,7 @@ describe("Skill host-semantic documentation", () => {
     );
   });
 
-  it("publishes generic v4 limb-presence create and modify examples", async () => {
+  it("publishes generic v5 SceneSpec limb-presence create and v4 modify examples", async () => {
     const intentReport = await readFile(
       path.join(referenceDirectory, "intent-report.md"),
       "utf8",
@@ -1378,7 +1442,7 @@ describe("Skill host-semantic documentation", () => {
       (entity) => entity.kind === "actor",
     );
     expect(actor?.kind).toBe("actor");
-    if (!actor || actor.kind !== "actor") {
+    if (!isLegacyActorEntity(actor)) {
       throw new Error("Missing generic create actor.");
     }
     expect(Object.keys(actor.body.limbPresence)).toEqual(
@@ -1396,7 +1460,7 @@ describe("Skill host-semantic documentation", () => {
       })),
     );
     expect(modifySubmission.patch).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       preserveLock: true,
       operations: [
         {

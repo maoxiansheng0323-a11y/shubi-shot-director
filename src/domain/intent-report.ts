@@ -5,7 +5,7 @@ import {
 } from "./actor-anatomy";
 import { entityIdSchema } from "./shared-schemas";
 
-export const INTENT_REPORT_SCHEMA_VERSION = 4 as const;
+export const INTENT_REPORT_SCHEMA_VERSION = 5 as const;
 
 export const INTENT_CONSTRAINT_KINDS_V1 = [
   "environment",
@@ -48,6 +48,13 @@ export const INTENT_CONSTRAINT_KINDS_V4 = [
   "actor-limb-presence",
 ] as const;
 
+export const INTENT_CONSTRAINT_KINDS_V5 = [
+  ...INTENT_CONSTRAINT_KINDS_V4,
+  "actor-blueprint-registration",
+  "actor-blueprint-instance",
+  "actor-blueprint-variant",
+] as const;
+
 export const INTENT_ISSUE_CODES_V1 = [
   "UNSUPPORTED_CONSTRAINT",
   "UNRESOLVED_RELATION",
@@ -57,6 +64,7 @@ export const INTENT_ISSUE_CODES_V1 = [
 export const INTENT_ISSUE_CODES_V2 = INTENT_ISSUE_CODES_V1;
 export const INTENT_ISSUE_CODES_V3 = INTENT_ISSUE_CODES_V2;
 export const INTENT_ISSUE_CODES_V4 = INTENT_ISSUE_CODES_V3;
+export const INTENT_ISSUE_CODES_V5 = INTENT_ISSUE_CODES_V4;
 
 export const INTENT_WARNING_CODES_V1 = [
   "PARTIAL_APPLICATION",
@@ -66,6 +74,7 @@ export const INTENT_WARNING_CODES_V1 = [
 export const INTENT_WARNING_CODES_V2 = INTENT_WARNING_CODES_V1;
 export const INTENT_WARNING_CODES_V3 = INTENT_WARNING_CODES_V2;
 export const INTENT_WARNING_CODES_V4 = INTENT_WARNING_CODES_V3;
+export const INTENT_WARNING_CODES_V5 = INTENT_WARNING_CODES_V4;
 
 export const ENTITY_EVIDENCE_PATHS_V1 = [
   "entity.kind",
@@ -126,6 +135,11 @@ export const ENTITY_EVIDENCE_PATHS_V4 = [
   ...ACTOR_LIMB_EVIDENCE_PATHS,
 ] as const;
 
+export const ENTITY_EVIDENCE_PATHS_V5 = [
+  ...ENTITY_EVIDENCE_PATHS_V4,
+  "actor.blueprintInstance",
+] as const;
+
 export const SCENE_EVIDENCE_PATHS_V1 = [
   "scene.activeCameraId",
   "scene.output",
@@ -147,6 +161,10 @@ export const SCENE_EVIDENCE_PATHS_V2 = [
 
 export const SCENE_EVIDENCE_PATHS_V3 = SCENE_EVIDENCE_PATHS_V2;
 export const SCENE_EVIDENCE_PATHS_V4 = SCENE_EVIDENCE_PATHS_V3;
+export const SCENE_EVIDENCE_PATHS_V5 = [
+  ...SCENE_EVIDENCE_PATHS_V4,
+  "scene.actorBlueprints",
+] as const;
 
 const uniqueIds = (values: string[]): boolean =>
   new Set(values).size === values.length;
@@ -167,13 +185,13 @@ const intentEvidenceSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("entity-property"),
       entityId: entityIdSchema,
-      path: z.enum(ENTITY_EVIDENCE_PATHS_V4),
+      path: z.enum(ENTITY_EVIDENCE_PATHS_V5),
     })
     .strict(),
   z
     .object({
       type: z.literal("scene-property"),
-      path: z.enum(SCENE_EVIDENCE_PATHS_V4),
+      path: z.enum(SCENE_EVIDENCE_PATHS_V5),
     })
     .strict(),
   z
@@ -193,7 +211,7 @@ const intentEvidenceSchema = z.discriminatedUnion("type", [
 const intentConstraintSchema = z
   .object({
     id: entityIdSchema,
-    kind: z.enum(INTENT_CONSTRAINT_KINDS_V4),
+    kind: z.enum(INTENT_CONSTRAINT_KINDS_V5),
     required: z.boolean(),
     targets: genericIdArraySchema,
     evidence: z.array(intentEvidenceSchema).max(64),
@@ -202,14 +220,14 @@ const intentConstraintSchema = z
 
 const intentIssueSchema = z
   .object({
-    code: z.enum(INTENT_ISSUE_CODES_V4),
+    code: z.enum(INTENT_ISSUE_CODES_V5),
     targetIds: genericIdArraySchema.optional(),
   })
   .strict();
 
 const intentWarningSchema = z
   .object({
-    code: z.enum(INTENT_WARNING_CODES_V4),
+    code: z.enum(INTENT_WARNING_CODES_V5),
     targetIds: genericIdArraySchema.optional(),
   })
   .strict();

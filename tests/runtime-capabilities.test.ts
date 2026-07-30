@@ -34,6 +34,7 @@ const EXPECTED_COMMAND_IDS = [
   "stop",
   "health",
   "snapshot",
+  "blueprint.validate",
   "scene.create",
   "scene.submit",
   "scene.save",
@@ -57,7 +58,38 @@ const EXPECTED_FEATURE_IDS = [
   "composition.segmented-report",
   "bridge.safe-shutdown",
   "actor.limb-presence",
+  "actor.blueprint-snapshots",
+  "actor.modular-primitives",
+  "actor.variants",
+  "actor.resolved-projection",
 ] as const;
+const EXPECTED_ACTOR_BLUEPRINT_CAPABILITY = {
+  schemaVersion: 1,
+  mounts: [
+    "shoulder_l",
+    "shoulder_r",
+    "elbow_l",
+    "elbow_r",
+    "wrist_l",
+    "wrist_r",
+    "hip_l",
+    "hip_r",
+    "knee_l",
+    "knee_r",
+  ],
+  primitives: ["box", "sphere", "cylinder"],
+  variantDeltaFields: ["limbPresence", "moduleVisibility"],
+  errorCodes: [
+    "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+    "ACTOR_BLUEPRINT_FILE_INVALID",
+    "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+    "ACTOR_BLUEPRINT_VARIANT_INVALID",
+    "ACTOR_BLUEPRINT_HASH_MISMATCH",
+    "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+    "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+    "ACTOR_BLUEPRINT_ID_CONFLICT",
+  ],
+} as const;
 
 const EXPECTED_ENTITY_LOCK_MODES = ["none", "workflow", "user"] as const;
 const EXPECTED_PATCH_POLICY_FIELDS = ["preserveLock"] as const;
@@ -182,12 +214,12 @@ describe("runtime capability manifest", () => {
     ) as { version: string };
     const manifest = getRuntimeCapabilityManifest();
 
-    expect(packageMetadata.version).toBe("0.5.0");
+    expect(packageMetadata.version).toBe("0.6.0");
     expect(APPLICATION_VERSION).toBe(packageMetadata.version);
     expect(runtimeCapabilities).toMatchObject({
       CAPABILITIES_CONTRACT_VERSION: 2,
       WORKSPACE_ROUTING_VERSION: 1,
-      INTENT_REPORT_SCHEMA_VERSION: 4,
+      INTENT_REPORT_SCHEMA_VERSION: 5,
       PATCH_POLICY_FIELDS: EXPECTED_PATCH_POLICY_FIELDS,
       LOCK_ERROR_CODES: EXPECTED_LOCK_ERROR_CODES,
       ACTOR_LIMB_ERROR_CODES: EXPECTED_ACTOR_LIMB_ERROR_CODES,
@@ -206,7 +238,7 @@ describe("runtime capability manifest", () => {
       workspaceRoutingVersion: 1,
       sceneSchemaVersion: SCENE_SCHEMA_VERSION,
       patchSchemaVersion: PATCH_SCHEMA_VERSION,
-      intentReportSchemaVersion: 4,
+      intentReportSchemaVersion: 5,
       semanticAuthority: "host",
       inputContract: "structured-only",
       modelIntegration: "none",
@@ -220,6 +252,15 @@ describe("runtime capability manifest", () => {
       actorLimbPartIds: [...EXPECTED_ACTOR_LIMB_PART_IDS],
       actorLimbPresenceModes: [...EXPECTED_ACTOR_LIMB_PRESENCE_MODES],
       actorLimbErrorCodes: [...EXPECTED_ACTOR_LIMB_ERROR_CODES],
+      actorBlueprint: {
+        schemaVersion: 1,
+        mounts: [...EXPECTED_ACTOR_BLUEPRINT_CAPABILITY.mounts],
+        primitives: [...EXPECTED_ACTOR_BLUEPRINT_CAPABILITY.primitives],
+        variantDeltaFields: [
+          ...EXPECTED_ACTOR_BLUEPRINT_CAPABILITY.variantDeltaFields,
+        ],
+        errorCodes: [...EXPECTED_ACTOR_BLUEPRINT_CAPABILITY.errorCodes],
+      },
     });
     expect(CAPABILITIES_CONTRACT_VERSION).toBe(2);
     expect(ENTITY_LOCK_MODES).toEqual(EXPECTED_ENTITY_LOCK_MODES);
@@ -228,6 +269,10 @@ describe("runtime capability manifest", () => {
       EXPECTED_ACTOR_LIMB_PRESENCE_MODES,
     );
     expect(manifest).not.toHaveProperty("requiresApiKey");
+    expect(manifest.actorBlueprint).toMatchObject({
+      schemaVersion: 1,
+      primitives: ["box", "sphere", "cylinder"],
+    });
   });
 
   it("publishes unique stable command, feature, lock, and anatomy capability ids", () => {

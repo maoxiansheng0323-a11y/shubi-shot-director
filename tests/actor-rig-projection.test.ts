@@ -5,9 +5,9 @@ import {
 } from "../src/domain/actor-anatomy";
 import { createDefaultScene } from "../src/domain/default-scene";
 import {
-  deriveActorRigProjection,
+  resolveLegacyActorProjection as deriveActorRigProjection,
   type ActorRigPrimitive,
-} from "../src/domain/humanoid-rig";
+} from "../src/domain/actor-projection";
 import {
   multiplyQuaternions,
   quaternionFromEulerDegrees,

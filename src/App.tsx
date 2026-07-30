@@ -4,7 +4,12 @@ import {
   useRef,
   useState,
 } from "react";
-import type { SceneSpec, TransformSpec } from "./domain/scene-schema";
+import {
+  isBlueprintActorEntity,
+  isLegacyActorEntity,
+  type SceneSpec,
+  type TransformSpec,
+} from "./domain/scene-schema";
 import type {
   ActorLimbPartId,
   ActorLimbPresenceMode,
@@ -19,6 +24,7 @@ import { Outliner } from "./editor/Outliner";
 import { useEditorStore } from "./editor/editor-store";
 import {
   createCameraLensPatch,
+  createActorVariantPatch,
   createLockModePatch,
   createOperationsPatch,
   createTransformPatch,
@@ -155,7 +161,8 @@ export const App = () => {
       );
       if (
         !currentScene ||
-        actor?.kind !== "actor" ||
+        !actor ||
+        !isLegacyActorEntity(actor) ||
         actor.lockMode !== "none"
       ) {
         return;
@@ -328,6 +335,33 @@ export const App = () => {
         setLocalError(null);
       } catch (error) {
         setLocalError(userFacingError(error));
+      }
+    },
+    [],
+  );
+
+  const setActorVariant = useCallback(
+    async (actorId: string, variantId: string): Promise<void> => {
+      const state = useEditorStore.getState();
+      const currentScene = state.scene;
+      const actor = currentScene?.entities.find(
+        (entity) => entity.id === actorId,
+      );
+      if (
+        !currentScene ||
+        !isBlueprintActorEntity(actor) ||
+        actor.lockMode !== "none" ||
+        actor.blueprintInstance.variantId === variantId
+      ) {
+        return;
+      }
+      try {
+        await state.applyPatch(
+          createActorVariantPatch(currentScene, actor.id, variantId),
+        );
+        setLocalError(null);
+      } catch {
+        // The store already exposes the server's readable error in the UI.
       }
     },
     [],
@@ -837,6 +871,9 @@ export const App = () => {
           selectedRegionId={focusedRegionId}
           disabled={interactionDisabled}
           onSetLimbPresence={setLimbPresence}
+          onSetVariant={(actorId, variantId) => {
+            void setActorVariant(actorId, variantId);
+          }}
           onCommitTransform={(entityId, transform) => {
             void commitTransform(entityId, transform);
           }}

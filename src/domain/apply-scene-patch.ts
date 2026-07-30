@@ -11,7 +11,7 @@ import {
 import {
   actorAnchorWorldPoint,
   type ActorAnchor,
-} from "./humanoid-rig";
+} from "./actor-projection";
 import {
   ContactConstraintError,
   enforceGroundContacts,
@@ -22,12 +22,16 @@ import {
   type EntityLockMode,
 } from "./entity-lock";
 import {
+  scenePatchStructureSchema,
   type SceneOperation,
   type ScenePatch,
 } from "./scene-patch";
 import { parseScenePatchInput } from "./scene-migrations";
 import {
+  isBlueprintActorEntity,
+  isLegacyActorEntity,
   sceneSpecSchema,
+  type BlueprintActorEntity,
   type SceneEntity,
   type SceneSpec,
   type Vec3,
@@ -200,6 +204,131 @@ const assertPreservedLocks = (
   }
 };
 
+const blueprintReferenceError = (message: string): SceneDomainError =>
+  new SceneDomainError("ACTOR_BLUEPRINT_REFERENCE_INVALID", message);
+
+const requireBlueprintVariant = (
+  scene: Pick<SceneSpec, "actorBlueprints">,
+  actor: BlueprintActorEntity,
+  variantId = actor.blueprintInstance.variantId,
+): void => {
+  const snapshot = scene.actorBlueprints.find(
+    (candidate) =>
+      candidate.blueprintId === actor.blueprintInstance.blueprintId,
+  );
+  if (
+    snapshot === undefined ||
+    !snapshot.variants.some(
+      (variant) => variant.variantId === variantId,
+    )
+  ) {
+    throw blueprintReferenceError(
+      `Blueprint actor reference is invalid: ${actor.id}`,
+    );
+  }
+};
+
+const preflightBlueprintOperations = (
+  current: SceneSpec,
+  patch: ScenePatch,
+): void => {
+  const patchIds = new Map<string, string>();
+  const patchHashes = new Map<string, string>();
+
+  for (const operation of patch.operations) {
+    if (operation.op !== "actor.blueprint.register") continue;
+    const { blueprintId, contentSha256 } = operation.snapshot;
+    const priorIdHash = patchIds.get(blueprintId);
+    if (
+      priorIdHash !== undefined &&
+      priorIdHash !== contentSha256
+    ) {
+      throw new SceneDomainError(
+        "ACTOR_BLUEPRINT_ID_CONFLICT",
+        `Blueprint ID conflicts inside the Patch: ${blueprintId}`,
+      );
+    }
+    if (
+      priorIdHash !== undefined ||
+      patchHashes.has(contentSha256)
+    ) {
+      throw new SceneDomainError(
+        "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+        "Blueprint content hash is duplicated inside the Patch.",
+      );
+    }
+    patchIds.set(blueprintId, contentSha256);
+    patchHashes.set(contentSha256, blueprintId);
+  }
+
+  for (const operation of patch.operations) {
+    if (operation.op !== "actor.blueprint.register") continue;
+    const existing = current.actorBlueprints.find(
+      (snapshot) =>
+        snapshot.blueprintId === operation.snapshot.blueprintId,
+    );
+    if (
+      existing !== undefined &&
+      existing.contentSha256 !== operation.snapshot.contentSha256
+    ) {
+      throw new SceneDomainError(
+        "ACTOR_BLUEPRINT_ID_CONFLICT",
+        `Blueprint ID is already registered: ${operation.snapshot.blueprintId}`,
+      );
+    }
+  }
+
+  const plannedBlueprints = structuredClone(current.actorBlueprints);
+  for (const operation of patch.operations) {
+    if (operation.op !== "actor.blueprint.register") continue;
+    const { snapshot } = operation;
+    if (
+      plannedBlueprints.some(
+        (candidate) =>
+          candidate.blueprintId === snapshot.blueprintId ||
+          candidate.contentSha256 === snapshot.contentSha256,
+      )
+    ) {
+      continue;
+    }
+    plannedBlueprints.push(snapshot);
+  }
+
+  const plannedScene = { actorBlueprints: plannedBlueprints };
+  const actors = new Map(
+    current.entities
+      .filter((entity) => entity.kind === "actor")
+      .map((entity) => [entity.id, structuredClone(entity)] as const),
+  );
+  for (const operation of patch.operations) {
+    if (operation.op === "entity.add") {
+      if (isBlueprintActorEntity(operation.value)) {
+        requireBlueprintVariant(plannedScene, operation.value);
+      }
+      if (
+        !actors.has(operation.value.id) &&
+        operation.value.kind === "actor"
+      ) {
+        actors.set(operation.value.id, structuredClone(operation.value));
+      }
+      continue;
+    }
+    if (operation.op === "entity.remove") {
+      actors.delete(operation.entityId);
+      continue;
+    }
+    if (operation.op !== "actor.variant.set") continue;
+    const actor = actors.get(operation.actorId);
+    if (!isBlueprintActorEntity(actor)) {
+      throw blueprintReferenceError(
+        `Variant target is not a blueprint actor: ${operation.actorId}`,
+      );
+    }
+    requireBlueprintVariant(plannedScene, actor, operation.variantId);
+    actor.blueprintInstance.variantId = operation.variantId;
+  }
+};
+
 const constraintReferencesEntity = (
   constraint: SceneSpec["constraints"][number],
   entityId: string,
@@ -227,7 +356,7 @@ const resolveAnchor = (
   if (entity.kind !== "actor") {
     return entity.transform.positionM;
   }
-  return actorAnchorWorldPoint(entity, anchor);
+  return actorAnchorWorldPoint(scene, entity, anchor);
 };
 
 const updatePresetParameters = (
@@ -256,6 +385,7 @@ const contactAffectedEntityIds = (
     case "actor.pose.set":
       return new Set([operation.entityId]);
     case "actor.limb-presence.set":
+    case "actor.variant.set":
       return new Set([operation.actorId]);
     case "constraint.set":
       return operation.value.type === "ground-contact"
@@ -298,6 +428,33 @@ const applyOperation = (
   preserveLock: boolean,
 ): void => {
   switch (operation.op) {
+    case "actor.blueprint.register": {
+      const existingId = scene.actorBlueprints.find(
+        (snapshot) =>
+          snapshot.blueprintId === operation.snapshot.blueprintId,
+      );
+      if (existingId !== undefined) {
+        if (
+          existingId.contentSha256 !== operation.snapshot.contentSha256
+        ) {
+          throw new SceneDomainError(
+            "ACTOR_BLUEPRINT_ID_CONFLICT",
+            `Blueprint ID is already registered: ${operation.snapshot.blueprintId}`,
+          );
+        }
+        return;
+      }
+      if (
+        scene.actorBlueprints.some(
+          (snapshot) =>
+            snapshot.contentSha256 === operation.snapshot.contentSha256,
+        )
+      ) {
+        return;
+      }
+      scene.actorBlueprints.push(operation.snapshot);
+      return;
+    }
     case "entity.add": {
       if (scene.entities.some((entity) => entity.id === operation.value.id)) {
         throw new SceneDomainError(
@@ -421,7 +578,7 @@ const applyOperation = (
       const entity = scene.entities.find(
         (candidate) => candidate.id === operation.actorId,
       );
-      if (!entity || entity.kind !== "actor") {
+      if (!entity || !isLegacyActorEntity(entity)) {
         throw new SceneDomainError(
           "ACTOR_LIMB_TARGET_INVALID",
           `Actor limb target is not editable: ${operation.actorId}`,
@@ -439,6 +596,20 @@ const applyOperation = (
         }
         throw error;
       }
+      return;
+    }
+    case "actor.variant.set": {
+      const entity = scene.entities.find(
+        (candidate) => candidate.id === operation.actorId,
+      );
+      if (!isBlueprintActorEntity(entity)) {
+        throw blueprintReferenceError(
+          `Variant target is not a blueprint actor: ${operation.actorId}`,
+        );
+      }
+      requireMutable(entity, preserveLock);
+      requireBlueprintVariant(scene, entity, operation.variantId);
+      entity.blueprintInstance.variantId = operation.variantId;
       return;
     }
     case "camera.lens.set": {
@@ -647,7 +818,10 @@ export const applyScenePatch = (
   patchInput: unknown,
 ): AppliedScenePatch => {
   const current = sceneSpecSchema.parse(currentInput);
-  const patch = parseScenePatchInput(patchInput);
+  const currentStructure = scenePatchStructureSchema.safeParse(patchInput);
+  const patch = currentStructure.success
+    ? currentStructure.data
+    : parseScenePatchInput(patchInput);
 
   if (patch.sceneId !== current.sceneId) {
     throw new SceneDomainError(
@@ -661,25 +835,85 @@ export const applyScenePatch = (
       `Patch revision ${patch.baseRevision} does not match current revision ${current.revision}.`,
     );
   }
+  const canonicalPatch = currentStructure.success
+    ? parseScenePatchInput(patchInput)
+    : patch;
 
-  const originalLocks = preflightPreservedLocks(current, patch);
+  preflightBlueprintOperations(current, canonicalPatch);
+  const originalLocks = preflightPreservedLocks(current, canonicalPatch);
   let next = structuredClone(current);
-  for (const operation of patch.operations) {
-    applyOperation(next, operation, patch.preserveLock);
+  for (const operation of canonicalPatch.operations) {
+    const variantBefore =
+      operation.op === "actor.variant.set"
+        ? structuredClone(
+            next.entities.find(
+              (entity) => entity.id === operation.actorId,
+            ),
+          )
+        : undefined;
+    applyOperation(next, operation, canonicalPatch.preserveLock);
     next = enforceContactsForOperation(
       next,
       operation,
-      patch.preserveLock,
+      canonicalPatch.preserveLock,
     );
+    if (
+      operation.op === "actor.variant.set" &&
+      isBlueprintActorEntity(variantBefore)
+    ) {
+      const variantAfter = next.entities.find(
+        (entity) => entity.id === operation.actorId,
+      );
+      if (!isBlueprintActorEntity(variantAfter)) {
+        throw blueprintReferenceError(
+          `Variant target disappeared: ${operation.actorId}`,
+        );
+      }
+      const contactEnabled = next.constraints.some(
+        (constraint) =>
+          constraint.type === "ground-contact" &&
+          constraint.enabled &&
+          constraint.entityId === operation.actorId,
+      );
+      const expected = {
+        ...variantBefore,
+        blueprintInstance: {
+          ...variantBefore.blueprintInstance,
+          variantId: operation.variantId,
+        },
+        transform: contactEnabled
+          ? {
+              ...variantBefore.transform,
+              positionM: [
+                variantBefore.transform.positionM[0],
+                variantAfter.transform.positionM[1],
+                variantBefore.transform.positionM[2],
+              ],
+            }
+          : variantBefore.transform,
+      };
+      if (JSON.stringify(expected) !== JSON.stringify(variantAfter)) {
+        throw new SceneDomainError(
+          "ACTOR_VARIANT_TRANSFORM_CONFLICT",
+          "Variant selection changed state outside its contact-owned transform component.",
+        );
+      }
+    }
   }
-  if (patch.preserveLock) {
+  if (canonicalPatch.preserveLock) {
     assertPreservedLocks(next, originalLocks);
   }
-  next.revision = current.revision + 1;
+  const deduplicationOnly =
+    canonicalPatch.operations.every(
+      (operation) => operation.op === "actor.blueprint.register",
+    ) && JSON.stringify(next) === JSON.stringify(current);
+  next.revision = deduplicationOnly
+    ? current.revision
+    : current.revision + 1;
 
   return {
     previous: current,
     next: sceneSpecSchema.parse(next),
-    patch,
+    patch: canonicalPatch,
   };
 };

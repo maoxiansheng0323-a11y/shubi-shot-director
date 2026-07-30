@@ -74,6 +74,7 @@ const expectedCommandIds = [
   "stop",
   "health",
   "snapshot",
+  "blueprint.validate",
   "scene.create",
   "scene.submit",
   "scene.save",
@@ -96,6 +97,10 @@ const expectedFeatureIds = [
   "composition.segmented-report",
   "bridge.safe-shutdown",
   "actor.limb-presence",
+  "actor.blueprint-snapshots",
+  "actor.modular-primitives",
+  "actor.variants",
+  "actor.resolved-projection",
 ] as const;
 const temporaryDirectories: string[] = [];
 
@@ -672,12 +677,12 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
   expect(data).toEqual(expect.objectContaining({
     service: "shubi-shot-director",
     capabilitiesContractVersion: 2,
-    applicationVersion: "0.5.0",
+    applicationVersion: "0.6.0",
     bridgeProtocolVersion: 1,
     workspaceRoutingVersion: 1,
-    sceneSchemaVersion: 4,
-    patchSchemaVersion: 4,
-    intentReportSchemaVersion: 4,
+    sceneSchemaVersion: 5,
+    patchSchemaVersion: 5,
+    intentReportSchemaVersion: 5,
     semanticAuthority: "host",
     inputContract: "structured-only",
     modelIntegration: "none",
@@ -708,6 +713,33 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
     ],
     actorLimbPresenceModes: ["present", "absent"],
     actorLimbErrorCodes: ["LIMB_HIERARCHY_CONFLICT"],
+    actorBlueprint: {
+      schemaVersion: 1,
+      mounts: [
+        "shoulder_l",
+        "shoulder_r",
+        "elbow_l",
+        "elbow_r",
+        "wrist_l",
+        "wrist_r",
+        "hip_l",
+        "hip_r",
+        "knee_l",
+        "knee_r",
+      ],
+      primitives: ["box", "sphere", "cylinder"],
+      variantDeltaFields: ["limbPresence", "moduleVisibility"],
+      errorCodes: [
+        "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+        "ACTOR_BLUEPRINT_FILE_INVALID",
+        "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+        "ACTOR_BLUEPRINT_VARIANT_INVALID",
+        "ACTOR_BLUEPRINT_HASH_MISMATCH",
+        "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+        "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+        "ACTOR_BLUEPRINT_ID_CONFLICT",
+      ],
+    },
   }));
   expect(data).not.toHaveProperty("requiresApiKey");
 };

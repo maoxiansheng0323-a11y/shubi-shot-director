@@ -4,7 +4,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 4
+      "const": 5
     },
     "operation": {
       "type": "string",
@@ -56,7 +56,10 @@
               "entity-region-membership",
               "region-visibility",
               "lock-protection",
-              "actor-limb-presence"
+              "actor-limb-presence",
+              "actor-blueprint-registration",
+              "actor-blueprint-instance",
+              "actor-blueprint-variant"
             ]
           },
           "required": {
@@ -136,7 +139,8 @@
                         "entity.body.limbPresence.foot_l",
                         "entity.body.limbPresence.upper_leg_r",
                         "entity.body.limbPresence.lower_leg_r",
-                        "entity.body.limbPresence.foot_r"
+                        "entity.body.limbPresence.foot_r",
+                        "actor.blueprintInstance"
                       ]
                     }
                   },
@@ -168,7 +172,8 @@
                         "scene.spatialLayout.boundaries",
                         "scene.spatialLayout.openings",
                         "scene.spatialLayout.connections",
-                        "scene.spatialLayout.memberships"
+                        "scene.spatialLayout.memberships",
+                        "scene.actorBlueprints"
                       ]
                     }
                   },

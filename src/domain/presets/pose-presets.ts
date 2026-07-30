@@ -1,7 +1,8 @@
 import { quaternionFromEulerDegrees } from "../scene-math";
 import {
+  isLegacyActorEntity,
   poseSchema,
-  type ActorEntity,
+  type AnyActorEntity,
   type PoseSpec,
   type QuaternionTuple,
   type Vec3,
@@ -180,13 +181,17 @@ export const listPosePresets = (): readonly PosePresetDefinition[] =>
   posePresets;
 
 export const materializePose = (
-  actor: ActorEntity,
+  actor: AnyActorEntity,
   presetId: string,
+  blueprintHeightM?: number,
 ): PoseSpec => {
+  const heightM = isLegacyActorEntity(actor)
+    ? actor.body.heightM
+    : blueprintHeightM;
   if (
     actor?.kind !== "actor" ||
-    !Number.isFinite(actor.body?.heightM) ||
-    actor.body.heightM <= 0 ||
+    !Number.isFinite(heightM) ||
+    (heightM ?? 0) <= 0 ||
     !Number.isFinite(actor.transform?.scale?.[1]) ||
     actor.transform.scale[1] <= 0
   ) {
@@ -218,7 +223,7 @@ export const materializePose = (
       version: preset.version,
       parameters: {
         contactOffsetM: roundMeters(
-          actor.body.heightM *
+          (heightM as number) *
             preset.contactOffsetHeightRatio,
         ),
       },

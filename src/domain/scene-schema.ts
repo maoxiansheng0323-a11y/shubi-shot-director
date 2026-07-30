@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  ACTOR_BLUEPRINT_MAX_SCENE_SNAPSHOTS,
+  actorBlueprintIdSchema,
+  actorBlueprintSlugSchema,
+  actorBlueprintSnapshotSchema,
+} from "./actor-blueprint";
 import { actorLimbPresenceSchema } from "./actor-anatomy";
 import { entityLockModeSchema } from "./entity-lock";
 import { SCENE_SCHEMA_VERSION } from "./schema-versions";
@@ -128,24 +134,47 @@ export const propEntitySchema = z
   })
   .strict();
 
-export const actorEntitySchema = z
+const actorBodySchema = z
+  .object({
+    heightM: positiveFiniteNumber.min(1).max(2.4),
+    shoulderWidthM: positiveFiniteNumber.min(0.25).max(0.8),
+    build: z.enum(["slim", "average", "broad"]),
+    limbPresence: actorLimbPresenceSchema,
+  })
+  .strict();
+
+export const legacyActorEntitySchema = z
   .object({
     ...baseEntityShape,
     kind: z.literal("actor"),
     slot: actorSlotSchema,
     rig: presetRefSchema,
-    body: z
+    body: actorBodySchema,
+    pose: poseSchema,
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  })
+  .strict();
+
+export const blueprintActorEntitySchema = z
+  .object({
+    ...baseEntityShape,
+    kind: z.literal("actor"),
+    slot: actorSlotSchema,
+    blueprintInstance: z
       .object({
-        heightM: positiveFiniteNumber.min(1).max(2.4),
-        shoulderWidthM: positiveFiniteNumber.min(0.25).max(0.8),
-        build: z.enum(["slim", "average", "broad"]),
-        limbPresence: actorLimbPresenceSchema,
+        blueprintId: actorBlueprintIdSchema,
+        variantId: actorBlueprintSlugSchema,
       })
       .strict(),
     pose: poseSchema,
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   })
   .strict();
+
+export const actorEntitySchema = z.union([
+  legacyActorEntitySchema,
+  blueprintActorEntitySchema,
+]);
 
 export const cameraLensSchema = z
   .object({
@@ -168,10 +197,11 @@ export const cameraEntitySchema = z
   })
   .strict();
 
-export const sceneEntitySchema = z.discriminatedUnion("kind", [
+export const sceneEntitySchema = z.union([
   environmentEntitySchema,
   propEntitySchema,
-  actorEntitySchema,
+  legacyActorEntitySchema,
+  blueprintActorEntitySchema,
   cameraEntitySchema,
 ]);
 
@@ -290,6 +320,9 @@ export const sceneSpecSchema = z
     output: outputSpecSchema,
     compositionGoals: compositionGoalsSchema.optional(),
     spatialLayout: spatialLayoutSchema.nullable().default(null),
+    actorBlueprints: z
+      .array(actorBlueprintSnapshotSchema)
+      .max(ACTOR_BLUEPRINT_MAX_SCENE_SNAPSHOTS),
     entities: z.array(sceneEntitySchema).min(2).max(256),
     constraints: z.array(sceneConstraintSchema).max(256),
   })
@@ -297,6 +330,35 @@ export const sceneSpecSchema = z
   .superRefine((scene, context) => {
     const ids = new Set<string>();
     const slots = new Set<string>();
+    const blueprintIds = new Map<string, string>();
+    const blueprintHashes = new Map<string, string>();
+
+    for (const [
+      blueprintIndex,
+      snapshot,
+    ] of scene.actorBlueprints.entries()) {
+      const existingHash = blueprintIds.get(snapshot.blueprintId);
+      if (existingHash !== undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "ACTOR_BLUEPRINT_ID_CONFLICT",
+          path: ["actorBlueprints", blueprintIndex, "blueprintId"],
+        });
+        continue;
+      }
+      blueprintIds.set(snapshot.blueprintId, snapshot.contentSha256);
+
+      const existingId = blueprintHashes.get(snapshot.contentSha256);
+      if (existingId !== undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+          path: ["actorBlueprints", blueprintIndex, "contentSha256"],
+        });
+        continue;
+      }
+      blueprintHashes.set(snapshot.contentSha256, snapshot.blueprintId);
+    }
 
     for (const entity of scene.entities) {
       if (ids.has(entity.id)) {
@@ -317,6 +379,31 @@ export const sceneSpecSchema = z
           });
         }
         slots.add(entity.slot);
+
+        if (isBlueprintActorEntity(entity)) {
+          const snapshot = scene.actorBlueprints.find(
+            (candidate) =>
+              candidate.blueprintId ===
+              entity.blueprintInstance.blueprintId,
+          );
+          if (
+            snapshot === undefined ||
+            !snapshot.variants.some(
+              ({ variantId }) =>
+                variantId === entity.blueprintInstance.variantId,
+            )
+          ) {
+            context.addIssue({
+              code: "custom",
+              message: "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+              path: [
+                "entities",
+                scene.entities.indexOf(entity),
+                "blueprintInstance",
+              ],
+            });
+          }
+        }
       }
     }
 
@@ -573,7 +660,12 @@ export type PresetRef = z.infer<typeof presetRefSchema>;
 export type PoseSpec = z.infer<typeof poseSchema>;
 export type ActorSlot = z.infer<typeof actorSlotSchema>;
 export type SceneEntity = z.infer<typeof sceneEntitySchema>;
-export type ActorEntity = z.infer<typeof actorEntitySchema>;
+export type LegacyActorEntity = z.infer<typeof legacyActorEntitySchema>;
+export type BlueprintActorEntity = z.infer<
+  typeof blueprintActorEntitySchema
+>;
+export type AnyActorEntity = z.infer<typeof actorEntitySchema>;
+export type ActorEntity = LegacyActorEntity;
 export type CameraEntity = z.infer<typeof cameraEntitySchema>;
 export type CameraLens = z.infer<typeof cameraLensSchema>;
 export type OutputSpec = z.infer<typeof outputSpecSchema>;
@@ -583,7 +675,21 @@ export type CompositionFramingMode = z.infer<
 export type CompositionGoals = z.infer<typeof compositionGoalsSchema>;
 export type SceneConstraint = z.infer<typeof sceneConstraintSchema>;
 export type SceneSpec = z.infer<typeof sceneSpecSchema>;
+export type LegacySceneEntity = Exclude<SceneEntity, BlueprintActorEntity>;
+export type LegacySceneSpec = Omit<SceneSpec, "entities"> & {
+  entities: LegacySceneEntity[];
+};
 export type { SpatialLayout };
+
+export const isLegacyActorEntity = (
+  entity: SceneEntity | AnyActorEntity | null | undefined,
+): entity is LegacyActorEntity =>
+  entity?.kind === "actor" && "rig" in entity && "body" in entity;
+
+export const isBlueprintActorEntity = (
+  entity: SceneEntity | AnyActorEntity | null | undefined,
+): entity is BlueprintActorEntity =>
+  entity?.kind === "actor" && "blueprintInstance" in entity;
 
 export const identityQuaternion = (): QuaternionTuple => [0, 0, 0, 1];
 

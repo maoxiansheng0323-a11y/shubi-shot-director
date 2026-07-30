@@ -1,6 +1,6 @@
 {
   "intentReport": {
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "operation": "create",
     "allowPartial": false,
     "recognizedConstraints": [
@@ -135,7 +135,7 @@
     "canApplySafely": true
   },
   "scene": {
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "sceneId": "scene_quickstart_1",
     "revision": 0,
     "title": "Quick-start graybox scene",
@@ -157,6 +157,7 @@
       }
     },
     "spatialLayout": null,
+    "actorBlueprints": [],
     "entities": [
       {
         "id": "environment_room_1",

@@ -6,15 +6,18 @@ import {
   type KeyboardEvent,
 } from "react";
 import { Euler, MathUtils, Quaternion } from "three";
-import type {
-  SceneEntity,
-  SceneSpec,
-  TransformSpec,
-  Vec3,
+import {
+  isBlueprintActorEntity,
+  isLegacyActorEntity,
+  type SceneEntity,
+  type SceneSpec,
+  type TransformSpec,
+  type Vec3,
 } from "../domain/scene-schema";
 import { quaternionFromEulerDegrees } from "../domain/scene-math";
 import { ActorPresetControls } from "./ActorPresetControls";
 import { ActorLimbControls } from "./ActorLimbControls";
+import { ActorBlueprintControls } from "./ActorBlueprintControls";
 import { CompositionChecks } from "./CompositionChecks";
 import type {
   ActorLimbPartId,
@@ -45,6 +48,7 @@ export interface InspectorProps {
     partId: ActorLimbPartId,
     mode: ActorLimbPresenceMode,
   ) => void;
+  onSetVariant?: (actorId: string, variantId: string) => void;
 }
 
 interface NumberFieldProps {
@@ -516,6 +520,7 @@ export const Inspector = ({
   onApplyRelationship,
   onSetGroundContact,
   onSetLimbPresence,
+  onSetVariant,
 }: InspectorProps) => {
   const selected = scene.entities.find((entity) => entity.id === selectedId);
   const selectedRegion = scene.spatialLayout?.regions.find(
@@ -573,7 +578,7 @@ export const Inspector = ({
             entity={selected}
             onCommit={onCommitTransform}
           />
-          {selected.kind === "actor" ? (
+          {isLegacyActorEntity(selected) ? (
             <>
               <section className="inspector-section">
                 <div className="section-title-row">
@@ -609,6 +614,14 @@ export const Inspector = ({
                 onSetGroundContact={onSetGroundContact}
               />
             </>
+          ) : null}
+          {isBlueprintActorEntity(selected) ? (
+            <ActorBlueprintControls
+              scene={scene}
+              actor={selected}
+              disabled={disabled}
+              onSetVariant={onSetVariant}
+            />
           ) : null}
           {selected.kind === "prop" ? (
             <section className="inspector-section">

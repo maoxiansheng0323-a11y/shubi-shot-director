@@ -5,7 +5,7 @@ import {
   Vector3,
 } from "three";
 import {
-  type ActorEntity,
+  type AnyActorEntity,
   type CameraEntity,
   type QuaternionTuple,
   type SceneEntity,
@@ -13,6 +13,10 @@ import {
   type TransformSpec,
   type Vec3,
 } from "../src/domain/scene-schema";
+import {
+  resolveActorProjection,
+  type ActorProjectionPrimitive,
+} from "../src/domain/actor-projection";
 import { parseSceneSpecInput } from "../src/domain/scene-migrations";
 import { deriveBoundaryWallBoxes } from "../src/domain/spatial-layout";
 
@@ -29,6 +33,9 @@ export class SoftwarePngError extends Error {
 export interface SoftwarePngResult {
   png: Buffer;
   warnings: string[];
+  diagnostics: {
+    actorPrimitiveIds: Record<string, string[]>;
+  };
 }
 
 interface ProjectedPoint {
@@ -333,14 +340,9 @@ const numericParameter = (
     : fallback;
 };
 
-const jointRotation = (
-  actor: ActorEntity,
-  jointId: string,
-): QuaternionTuple =>
-  actor.pose.joints[jointId] ?? identityQuaternion;
-
 const addActorGeometry = (
-  actor: ActorEntity,
+  scene: SceneSpec,
+  actor: AnyActorEntity,
   actorWorld: Matrix4,
   addStroke: (
     start: Vector3,
@@ -353,150 +355,89 @@ const addActorGeometry = (
     radiusM: number,
     color: readonly [number, number, number, number],
   ) => void,
-): void => {
-  const height = actor.body.heightM;
-  const shoulderWidth = actor.body.shoulderWidthM;
-  const pelvisWidth = shoulderWidth * 0.72;
-  const torsoLength = height * 0.31;
-  const upperArmLength = height * 0.19;
-  const forearmLength = height * 0.17;
-  const upperLegLength = height * 0.245;
-  const lowerLegLength = height * 0.235;
+): string[] => {
   const actorColor = hexColor(actor.color, 245);
-  const skeletonColor = hexColor("#e7edf5", 230);
-
-  const pelvisMatrix = actorWorld
-    .clone()
-    .multiply(localMatrix([0, 0, 0], jointRotation(actor, "pelvis")));
-  const pelvis = pointFromMatrix(pelvisMatrix);
-  const spineMatrix = pelvisMatrix
-    .clone()
-    .multiply(
-      localMatrix(
-        [0, height * 0.035, 0],
-        jointRotation(actor, "spine"),
-      ),
-    );
-  const chest = pointFromMatrix(spineMatrix, [
-    0,
-    torsoLength * 0.72,
-    0,
-  ]);
-  const neck = pointFromMatrix(spineMatrix, [
-    0,
-    torsoLength + height * 0.055,
-    0,
-  ]);
-  const headMatrix = spineMatrix
-    .clone()
-    .multiply(
-      localMatrix(
-        [0, torsoLength + height * 0.055, 0],
-        jointRotation(actor, "neck"),
-      ),
-    );
-  const head = pointFromMatrix(headMatrix);
-
-  addStroke(pelvis, chest, actorColor, 7);
-  addStroke(chest, neck, actorColor, 8);
-  addDisc(pelvis, height * 0.07, actorColor);
-  addDisc(chest, height * 0.055, actorColor);
-  addDisc(head, height * 0.075, actorColor);
-  addStroke(
-    pointFromMatrix(headMatrix, [0, 0, height * 0.045]),
-    pointFromMatrix(headMatrix, [0, 0, height * 0.085]),
-    skeletonColor,
-    2,
+  const actorScale = new Vector3();
+  actorWorld.decompose(
+    new Vector3(),
+    new Quaternion(),
+    actorScale,
   );
+  const radialScale = Math.max(
+    Math.abs(actorScale.x),
+    Math.abs(actorScale.y),
+    Math.abs(actorScale.z),
+  );
+  const projection = resolveActorProjection(scene, actor);
 
-  for (const side of ["l", "r"] as const) {
-    const direction = side === "l" ? -1 : 1;
-    const shoulderMatrix = spineMatrix
-      .clone()
-      .multiply(
-        localMatrix([
-          direction * shoulderWidth * 0.52,
-          torsoLength * 0.78,
-          0,
-        ]),
-      );
-    const shoulder = pointFromMatrix(shoulderMatrix);
-    const upperArmMatrix = shoulderMatrix
+  const primitiveMatrix = (
+    primitive: ActorProjectionPrimitive,
+  ): Matrix4 =>
+    actorWorld
       .clone()
       .multiply(
         localMatrix(
-          [0, 0, 0],
-          jointRotation(actor, `upper_arm_${side}`),
+          primitive.frame.position,
+          primitive.frame.rotation,
         ),
       );
-    const elbow = pointFromMatrix(upperArmMatrix, [
-      0,
-      -upperArmLength,
-      0,
-    ]);
-    const forearmMatrix = upperArmMatrix
-      .clone()
-      .multiply(
-        localMatrix(
-          [0, -upperArmLength, 0],
-          jointRotation(actor, `forearm_${side}`),
-        ),
-      );
-    const hand = pointFromMatrix(forearmMatrix, [
-      0,
-      -forearmLength,
-      0,
-    ]);
-    addStroke(chest, shoulder, actorColor, 5);
-    addStroke(shoulder, elbow, actorColor, 5);
-    addStroke(elbow, hand, actorColor, 4);
-    addDisc(shoulder, height * 0.035, actorColor);
-    addDisc(elbow, height * 0.03, actorColor);
-    addDisc(hand, height * 0.03, actorColor);
 
-    const hipMatrix = pelvisMatrix
-      .clone()
-      .multiply(
-        localMatrix([
-          direction * pelvisWidth * 0.31,
-          -height * 0.035,
-          0,
-        ]),
+  for (const primitive of projection.primitives) {
+    const frame = primitiveMatrix(primitive);
+    if (primitive.kind === "sphere") {
+      addDisc(
+        pointFromMatrix(frame, primitive.center),
+        primitive.radius * radialScale,
+        actorColor,
       );
-    const hip = pointFromMatrix(hipMatrix);
-    const upperLegMatrix = hipMatrix
-      .clone()
-      .multiply(
-        localMatrix(
-          [0, 0, 0],
-          jointRotation(actor, `upper_leg_${side}`),
-        ),
+      continue;
+    }
+    if (
+      primitive.kind === "capsule" ||
+      primitive.kind === "cylinder"
+    ) {
+      const length =
+        primitive.kind === "capsule"
+          ? primitive.cylinderLength
+          : primitive.length;
+      const first: Vec3 = [
+        primitive.center[0],
+        primitive.center[1] - length / 2,
+        primitive.center[2],
+      ];
+      const second: Vec3 = [
+        primitive.center[0],
+        primitive.center[1] + length / 2,
+        primitive.center[2],
+      ];
+      const firstWorld = pointFromMatrix(frame, first);
+      const secondWorld = pointFromMatrix(frame, second);
+      addStroke(firstWorld, secondWorld, actorColor, 5);
+      addDisc(
+        firstWorld,
+        primitive.radius * radialScale,
+        actorColor,
       );
-    const knee = pointFromMatrix(upperLegMatrix, [
-      0,
-      -upperLegLength,
-      0,
-    ]);
-    const lowerLegMatrix = upperLegMatrix
-      .clone()
-      .multiply(
-        localMatrix(
-          [0, -upperLegLength, 0],
-          jointRotation(actor, `lower_leg_${side}`),
-        ),
+      addDisc(
+        secondWorld,
+        primitive.radius * radialScale,
+        actorColor,
       );
-    const foot = pointFromMatrix(lowerLegMatrix, [
-      0,
-      -lowerLegLength,
-      height * 0.055,
-    ]);
-    addStroke(pelvis, hip, actorColor, 6);
-    addStroke(hip, knee, actorColor, 6);
-    addStroke(knee, foot, actorColor, 5);
-    addDisc(hip, height * 0.04, actorColor);
-    addDisc(knee, height * 0.035, actorColor);
-    addDisc(foot, height * 0.035, actorColor);
+      continue;
+    }
+
+    const centerMatrix = frame
+      .clone()
+      .multiply(localMatrix(primitive.center));
+    const corners = boxCorners([...primitive.size]).map((corner) =>
+      corner.applyMatrix4(centerMatrix),
+    );
+    for (const [start, end] of boxEdges) {
+      addStroke(corners[start], corners[end], actorColor, 3);
+    }
   }
+
+  return projection.primitives.map(({ id }) => id);
 };
 
 const crcTable = (() => {
@@ -619,6 +560,7 @@ export const renderSceneToPng = (
   fillBackground(pixels, width, height);
   const strokes: Stroke[] = [];
   const discs: Disc[] = [];
+  const actorPrimitiveIds: Record<string, string[]> = {};
   let clippedPrimitiveCount = 0;
 
   const addStroke = (
@@ -797,7 +739,15 @@ export const renderSceneToPng = (
       }
       continue;
     }
-    addActorGeometry(entity, world, addStroke, addDisc);
+    if (entity.kind === "actor") {
+      actorPrimitiveIds[entity.id] = addActorGeometry(
+        scene,
+        entity,
+        world,
+        addStroke,
+        addDisc,
+      );
+    }
   }
 
   strokes.sort(
@@ -824,5 +774,6 @@ export const renderSceneToPng = (
   return {
     png: encodePng(pixels, width, height),
     warnings,
+    diagnostics: { actorPrimitiveIds },
   };
 };

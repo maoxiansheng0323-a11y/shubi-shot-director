@@ -1,16 +1,19 @@
 import {
   actorAnchorLocalPoint,
-  deriveActorRigProjection,
+  resolveLegacyActorProjection,
+  resolveActorProjection,
   type ActorRigFrame,
   type ActorRigPrimitiveId,
-} from "./humanoid-rig";
+} from "./actor-projection";
 import {
   addVectors,
   rotateVector,
   transformPoint,
 } from "./scene-math";
 import type {
-  ActorEntity,
+  AnyActorEntity,
+  LegacyActorEntity,
+  SceneSpec,
   TransformSpec,
   Vec3,
 } from "./scene-schema";
@@ -124,10 +127,24 @@ const pointBounds = (points: readonly Vec3[]): { min: Vec3; max: Vec3 } => ({
 });
 
 export const actorVisibleRigBounds = (
-  actor: ActorEntity,
-  transform: TransformSpec = actor.transform,
+  sceneOrActor: SceneSpec | LegacyActorEntity,
+  actorOrTransform?: AnyActorEntity | TransformSpec,
+  transformOverride?: TransformSpec,
 ): ActorVisibleRigBounds => {
-  const { primitives } = deriveActorRigProjection(actor);
+  const scene =
+    "sceneId" in sceneOrActor ? sceneOrActor : null;
+  const actor = (
+    scene === null ? sceneOrActor : actorOrTransform
+  ) as AnyActorEntity;
+  const transform =
+    transformOverride ??
+    (scene === null && actorOrTransform && "positionM" in actorOrTransform
+      ? actorOrTransform
+      : actor.transform);
+  const { primitives } =
+    scene === null
+      ? resolveLegacyActorProjection(actor as LegacyActorEntity)
+      : resolveActorProjection(scene, actor);
   const primitiveIds = primitives.map(({ id }) => id);
   const localPoints: Vec3[] = [];
   for (const primitive of primitives) {
@@ -154,6 +171,27 @@ export const actorVisibleRigBounds = (
             [
               primitive.center[0],
               primitive.center[1] - halfCylinder,
+              primitive.center[2],
+            ],
+            primitive.radius,
+            transform,
+          ),
+        );
+        break;
+      }
+      case "cylinder": {
+        const halfLength = primitive.length / 2;
+        localPoints.push(
+          ...capsulePoints(
+            primitive.frame,
+            [
+              primitive.center[0],
+              primitive.center[1] + halfLength,
+              primitive.center[2],
+            ],
+            [
+              primitive.center[0],
+              primitive.center[1] - halfLength,
               primitive.center[2],
             ],
             primitive.radius,
@@ -190,17 +228,35 @@ export const actorVisibleRigBounds = (
 };
 
 export const actorVisibleFramingPoints = (
-  actor: ActorEntity,
-  lowerFraction: number,
+  sceneOrActor: SceneSpec | LegacyActorEntity,
+  actorOrLowerFraction: AnyActorEntity | number,
+  lowerFractionOverride?: number,
 ): Vec3[] => {
-  const bounds = actorVisibleRigBounds(actor);
+  const scene =
+    "sceneId" in sceneOrActor ? sceneOrActor : null;
+  const actor = (
+    scene === null ? sceneOrActor : actorOrLowerFraction
+  ) as AnyActorEntity;
+  const lowerFraction =
+    lowerFractionOverride ??
+    (typeof actorOrLowerFraction === "number"
+      ? actorOrLowerFraction
+      : 0);
+  const bounds =
+    scene === null
+      ? actorVisibleRigBounds(actor as LegacyActorEntity)
+      : actorVisibleRigBounds(scene, actor);
   const sliceY =
     bounds.minLocal[1] +
     (bounds.maxLocal[1] - bounds.minLocal[1]) * lowerFraction;
   const localPoints = bounds.localPoints.filter((point) => point[1] >= sliceY);
   localPoints.push(
-    actorAnchorLocalPoint(actor, "face"),
-    actorAnchorLocalPoint(actor, "head"),
+    scene === null
+      ? [...resolveLegacyActorProjection(actor as LegacyActorEntity).anchors.face]
+      : actorAnchorLocalPoint(scene, actor, "face"),
+    scene === null
+      ? [...resolveLegacyActorProjection(actor as LegacyActorEntity).anchors.head]
+      : actorAnchorLocalPoint(scene, actor, "head"),
   );
   return localPoints.map((point) => transformPoint(actor.transform, point));
 };

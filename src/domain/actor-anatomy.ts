@@ -157,6 +157,36 @@ type ActorBodyDimensionsInput = {
 
 type Vec3Dimensions = readonly [number, number, number];
 
+export interface ActorBlueprintAnatomyInput {
+  body: ActorBodyDimensionsInput;
+  proportions: {
+    torsoLengthHeightRatio: number;
+    torsoDepthHeightRatio: number;
+    pelvisWidthShoulderRatio: number;
+    pelvisHeightHeightRatio: number;
+    headRadiusHeightRatio: number;
+    upperArmLengthHeightRatio: number;
+    forearmLengthHeightRatio: number;
+    upperLegLengthHeightRatio: number;
+    lowerLegLengthHeightRatio: number;
+    handSizeHeightRatios: Vec3Dimensions;
+    handOffsetHeightRatios: Vec3Dimensions;
+    footSizeHeightRatios: Vec3Dimensions;
+    footOffsetHeightRatios: Vec3Dimensions;
+    torsoRadiusShoulderRatio: number;
+    armRadiusHeightRatio: number;
+    legRadiusHeightRatio: number;
+  };
+  skeleton: {
+    spineOriginHeightRatio: number;
+    headOriginAboveTorsoHeightRatio: number;
+    shoulderOffsetShoulderRatio: number;
+    shoulderOriginTorsoRatio: number;
+    hipOffsetPelvisRatio: number;
+    hipOriginHeightRatio: number;
+  };
+}
+
 export interface ActorAnatomyDimensions {
   heightM: number;
   shoulderWidthM: number;
@@ -194,11 +224,24 @@ export interface ActorAnatomyDimensions {
   footOffset: Vec3Dimensions;
 }
 
+const buildScaleFor = (
+  build: ActorBodyDimensionsInput["build"],
+): number => build === "broad" ? 1.12 : build === "slim" ? 0.9 : 1;
+
+const scaleVec3 = (
+  ratios: Vec3Dimensions,
+  scalar: number,
+): Vec3Dimensions => [
+  ratios[0] * scalar,
+  ratios[1] * scalar,
+  ratios[2] * scalar,
+];
+
 export const deriveActorAnatomyDimensions = (
   body: ActorBodyDimensionsInput,
 ): ActorAnatomyDimensions => {
   const { heightM, shoulderWidthM } = body;
-  const buildScale = body.build === "broad" ? 1.12 : body.build === "slim" ? 0.9 : 1;
+  const buildScale = buildScaleFor(body.build);
   const torsoLength = heightM * 0.31;
   const pelvisWidth = shoulderWidthM * 0.72;
   const torsoDepth = heightM * 0.115 * buildScale;
@@ -241,5 +284,91 @@ export const deriveActorAnatomyDimensions = (
     handOffset: [0, -heightM * 0.035, 0.012],
     footSize: [heightM * 0.075, heightM * 0.055, heightM * 0.16],
     footOffset: [0, -heightM * 0.025, heightM * 0.055],
+  };
+};
+
+export const deriveBlueprintActorAnatomyDimensions = ({
+  body,
+  proportions,
+  skeleton,
+}: ActorBlueprintAnatomyInput): ActorAnatomyDimensions => {
+  const { heightM, shoulderWidthM } = body;
+  const buildScale = buildScaleFor(body.build);
+  const torsoLength =
+    heightM * proportions.torsoLengthHeightRatio;
+  const pelvisWidth =
+    shoulderWidthM * proportions.pelvisWidthShoulderRatio;
+  const torsoDepth =
+    heightM * proportions.torsoDepthHeightRatio * buildScale;
+  const headRadius =
+    heightM * proportions.headRadiusHeightRatio;
+  const armRadius =
+    heightM * proportions.armRadiusHeightRatio * buildScale;
+  const legRadius =
+    heightM * proportions.legRadiusHeightRatio * buildScale;
+
+  return {
+    heightM,
+    shoulderWidthM,
+    spineOriginY:
+      heightM * skeleton.spineOriginHeightRatio,
+    torsoLength,
+    torsoRadius:
+      shoulderWidthM * proportions.torsoRadiusShoulderRatio,
+    torsoCapsuleLength: Math.max(
+      0.02,
+      torsoLength - shoulderWidthM * 0.48,
+    ),
+    pelvisWidth,
+    pelvisHeight:
+      heightM * proportions.pelvisHeightHeightRatio,
+    pelvisDepth: torsoDepth * 0.86,
+    torsoDepth,
+    headOriginY:
+      torsoLength +
+      heightM * skeleton.headOriginAboveTorsoHeightRatio,
+    upperArmLength:
+      heightM * proportions.upperArmLengthHeightRatio,
+    forearmLength:
+      heightM * proportions.forearmLengthHeightRatio,
+    upperLegLength:
+      heightM * proportions.upperLegLengthHeightRatio,
+    lowerLegLength:
+      heightM * proportions.lowerLegLengthHeightRatio,
+    headRadius,
+    faceRadius: headRadius * 0.34,
+    faceOffset: [0, -headRadius * 0.05, headRadius * 0.84],
+    armRadius,
+    forearmRadius: armRadius * 0.82,
+    shoulderRadius: armRadius * 1.28,
+    elbowRadius: armRadius * 1.08,
+    legRadius,
+    lowerLegRadius: legRadius * 0.82,
+    hipRadius: legRadius * 1.3,
+    kneeRadius: legRadius * 1.08,
+    shoulderOffsetX:
+      shoulderWidthM * skeleton.shoulderOffsetShoulderRatio,
+    shoulderOriginY:
+      torsoLength * skeleton.shoulderOriginTorsoRatio,
+    hipOffsetX:
+      pelvisWidth * skeleton.hipOffsetPelvisRatio,
+    hipOriginY:
+      heightM * skeleton.hipOriginHeightRatio,
+    handSize: scaleVec3(
+      proportions.handSizeHeightRatios,
+      heightM,
+    ),
+    handOffset: scaleVec3(
+      proportions.handOffsetHeightRatios,
+      heightM,
+    ),
+    footSize: scaleVec3(
+      proportions.footSizeHeightRatios,
+      heightM,
+    ),
+    footOffset: scaleVec3(
+      proportions.footOffsetHeightRatios,
+      heightM,
+    ),
   };
 };

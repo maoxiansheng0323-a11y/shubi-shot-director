@@ -13,13 +13,16 @@ import {
   ENTITY_EVIDENCE_PATHS_V1,
   ENTITY_EVIDENCE_PATHS_V2,
   ENTITY_EVIDENCE_PATHS_V3,
+  ENTITY_EVIDENCE_PATHS_V4,
   INTENT_CONSTRAINT_KINDS_V1,
   INTENT_CONSTRAINT_KINDS_V2,
   INTENT_CONSTRAINT_KINDS_V3,
+  INTENT_CONSTRAINT_KINDS_V4,
   INTENT_REPORT_SCHEMA_VERSION,
   SCENE_EVIDENCE_PATHS_V1,
   SCENE_EVIDENCE_PATHS_V2,
   SCENE_EVIDENCE_PATHS_V3,
+  SCENE_EVIDENCE_PATHS_V4,
   intentReportSchema,
   type IntentReport,
 } from "./intent-report";
@@ -133,6 +136,36 @@ const legacySceneSpecV3EnvelopeSchema = z
   .object({
     schemaVersion: z.literal(3),
     entities: z.array(legacySceneEntityV3EnvelopeSchema),
+  })
+  .passthrough();
+
+const legacySceneEntityV4EnvelopeSchema = z
+  .object({
+    lockMode: entityLockModeSchema,
+  })
+  .passthrough()
+  .superRefine((entity, context) => {
+    if ("locked" in entity) {
+      context.addIssue({
+        code: "custom",
+        message: "SceneSpec v4 entities cannot contain locked.",
+        path: ["locked"],
+      });
+    }
+    if (entity.kind === "actor" && "blueprintInstance" in entity) {
+      context.addIssue({
+        code: "custom",
+        message: "SceneSpec v4 cannot contain blueprint actors.",
+        path: ["blueprintInstance"],
+      });
+    }
+  });
+
+const legacySceneSpecV4EnvelopeSchema = z
+  .object({
+    schemaVersion: z.literal(4),
+    actorBlueprints: z.never().optional(),
+    entities: z.array(legacySceneEntityV4EnvelopeSchema),
   })
   .passthrough();
 
@@ -267,6 +300,38 @@ const legacyScenePatchV3EnvelopeSchema = z
     }
   });
 
+const legacyScenePatchV4EnvelopeSchema = z
+  .object({
+    schemaVersion: z.literal(4),
+    preserveLock: z.boolean(),
+    ...legacyScenePatchV3EnvelopeShape,
+  })
+  .passthrough()
+  .superRefine((patch, context) => {
+    for (const [operationIndex, operation] of patch.operations.entries()) {
+      if (
+        operation.op === "actor.blueprint.register" ||
+        operation.op === "actor.variant.set"
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "ScenePatch v4 cannot contain Actor Blueprint operations.",
+          path: ["operations", operationIndex, "op"],
+        });
+      }
+      if (
+        operation.op === "entity.add" &&
+        plainRecord(operation.value)?.blueprintInstance !== undefined
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "ScenePatch v4 cannot add blueprint actors.",
+          path: ["operations", operationIndex, "value", "blueprintInstance"],
+        });
+      }
+    }
+  });
+
 const legacyIntentEvidenceV1Schema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("entity") }).passthrough(),
   z
@@ -336,6 +401,29 @@ const legacyIntentEvidenceV3Schema = z.discriminatedUnion("type", [
     .passthrough(),
 ]);
 
+const legacyIntentEvidenceV4Schema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("entity") }).passthrough(),
+  z
+    .object({
+      type: z.literal("entity-property"),
+      path: z.enum(ENTITY_EVIDENCE_PATHS_V4),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("scene-property"),
+      path: z.enum(SCENE_EVIDENCE_PATHS_V4),
+    })
+    .passthrough(),
+  z.object({ type: z.literal("scene-constraint") }).passthrough(),
+  z
+    .object({
+      type: z.literal("patch-operation"),
+      operationIndex: z.number().int().nonnegative().max(255),
+    })
+    .passthrough(),
+]);
+
 const legacyIntentReportV1EnvelopeSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -378,6 +466,20 @@ const legacyIntentReportV3EnvelopeSchema = z
   })
   .passthrough();
 
+const legacyIntentReportV4EnvelopeSchema = z
+  .object({
+    schemaVersion: z.literal(4),
+    recognizedConstraints: z.array(
+      z
+        .object({
+          kind: z.enum(INTENT_CONSTRAINT_KINDS_V4),
+          evidence: z.array(legacyIntentEvidenceV4Schema),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
 const migrateLegacyIntentEvidence = (
   evidence:
     | z.infer<typeof legacyIntentEvidenceV1Schema>
@@ -393,12 +495,22 @@ export const parseSceneSpecInput = (input: unknown): SceneSpec => {
     return current.data;
   }
 
+  const v4 = legacySceneSpecV4EnvelopeSchema.safeParse(input);
+  if (v4.success) {
+    return sceneSpecSchema.parse({
+      ...v4.data,
+      schemaVersion: SCENE_SCHEMA_VERSION,
+      actorBlueprints: [],
+    });
+  }
+
   const v1 = legacySceneSpecV1EnvelopeSchema.safeParse(input);
   if (v1.success) {
     return sceneSpecSchema.parse({
       ...v1.data,
       schemaVersion: SCENE_SCHEMA_VERSION,
       spatialLayout: null,
+      actorBlueprints: [],
       entities: v1.data.entities.map(migrateLegacyEntity),
     });
   }
@@ -408,6 +520,7 @@ export const parseSceneSpecInput = (input: unknown): SceneSpec => {
     return sceneSpecSchema.parse({
       ...v2.data,
       schemaVersion: SCENE_SCHEMA_VERSION,
+      actorBlueprints: [],
       entities: v2.data.entities.map(migrateLegacyEntity),
     });
   }
@@ -416,6 +529,7 @@ export const parseSceneSpecInput = (input: unknown): SceneSpec => {
   return sceneSpecSchema.parse({
     ...v3,
     schemaVersion: SCENE_SCHEMA_VERSION,
+    actorBlueprints: [],
     entities: v3.entities.map((entity) =>
       addAllPresentActorAnatomy(entity),
     ),
@@ -466,20 +580,28 @@ export const parseScenePatchInput = (input: unknown): ScenePatch => {
   const v2 = legacyScenePatchV2EnvelopeSchema.safeParse(input);
   if (v2.success) return migrateV1OrV2(v2.data);
 
-  const v3 = legacyScenePatchV3EnvelopeSchema.parse(input);
+  const v3 = legacyScenePatchV3EnvelopeSchema.safeParse(input);
+  if (v3.success) {
+    return scenePatchSchema.parse({
+      ...v3.data,
+      schemaVersion: PATCH_SCHEMA_VERSION,
+      operations: v3.data.operations.map((operation) =>
+        operation.op === "entity.add"
+          ? {
+              ...operation,
+              value: addAllPresentActorAnatomy(
+                legacySceneEntityV3EnvelopeSchema.parse(operation.value),
+              ),
+            }
+          : operation,
+      ),
+    });
+  }
+
+  const v4 = legacyScenePatchV4EnvelopeSchema.parse(input);
   return scenePatchSchema.parse({
-    ...v3,
+    ...v4,
     schemaVersion: PATCH_SCHEMA_VERSION,
-    operations: v3.operations.map((operation) =>
-      operation.op === "entity.add"
-        ? {
-            ...operation,
-            value: addAllPresentActorAnatomy(
-              legacySceneEntityV3EnvelopeSchema.parse(operation.value),
-            ),
-          }
-        : operation,
-    ),
   });
 };
 
@@ -510,9 +632,17 @@ export const parseIntentReportInput = (input: unknown): IntentReport => {
   const v2 = legacyIntentReportV2EnvelopeSchema.safeParse(input);
   if (v2.success) return migrateV1OrV2(v2.data);
 
-  const v3 = legacyIntentReportV3EnvelopeSchema.parse(input);
+  const v3 = legacyIntentReportV3EnvelopeSchema.safeParse(input);
+  if (v3.success) {
+    return intentReportSchema.parse({
+      ...v3.data,
+      schemaVersion: INTENT_REPORT_SCHEMA_VERSION,
+    });
+  }
+
+  const v4 = legacyIntentReportV4EnvelopeSchema.parse(input);
   return intentReportSchema.parse({
-    ...v3,
+    ...v4,
     schemaVersion: INTENT_REPORT_SCHEMA_VERSION,
   });
 };

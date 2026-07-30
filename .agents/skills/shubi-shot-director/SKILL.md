@@ -13,7 +13,7 @@ Before changing to this Skill directory, resolve any explicitly supplied relativ
 
 1. Change to this Skill directory.
 2. Run `node scripts/director.mjs doctor`.
-3. Require capability contract v2 with workspace routing version 1, `bridge.thread-workspaces`, canonical SceneSpec, ScenePatch, and IntentReport schema version 4, plus `semanticAuthority: "host"`, `inputContract: "structured-only"`, `modelIntegration: "none"`, `credentialPolicy: "forbidden"`, and `networkPolicy: "loopback-only"`.
+3. Require capability contract v2 with workspace routing version 1, `bridge.thread-workspaces`, canonical SceneSpec, ScenePatch, and IntentReport schema version 5, plus `semanticAuthority: "host"`, `inputContract: "structured-only"`, `modelIntegration: "none"`, `credentialPolicy: "forbidden"`, and `networkPolicy: "loopback-only"`.
 4. Run `node scripts/director.mjs workspace current`. Retain the returned opaque workspace ID in host context.
 5. Run `node scripts/director.mjs ensure` only after `doctor` is compatible. Retain its loopback `uiUrl` with the workspace ID and open it in the integrated browser; use `open --system` only when necessary or requested.
 6. Route every later command in this Codex conversation automatically to that same workspace. Separate Codex conversations receive separate workspaces by default, so independent scenes can progress in parallel.
@@ -34,8 +34,8 @@ Portable or native relative `--file` paths are resolved against the directory wh
 
 1. Treat only an explicit new-shot request, or the absence of a usable scene, as permission to author a complete `SceneSpec`.
 2. Resolve any explicitly supplied external profile only by following [external-profiles.md](references/external-profiles.md).
-3. Read [intent-routing.md](references/intent-routing.md), [intent-report.md](references/intent-report.md), [scene-authoring.md](references/scene-authoring.md), and the generated SceneSpec and scene-submission schemas. For multiple continuous regions, boundaries, or openings, also read [connected-environments.md](references/connected-environments.md).
-4. In Host Codex, author a generic v4 create `IntentReport` with `allowPartial: false` and a complete generic v4 `SceneSpec` covering every required constraint. For every actor, author the complete twelve-key `body.limbPresence` map before submission. New and unfinished graybox entities use `lockMode: "none"`.
+3. Read [intent-routing.md](references/intent-routing.md), [intent-report.md](references/intent-report.md), [scene-authoring.md](references/scene-authoring.md), and the generated SceneSpec and scene-submission schemas. Read [actor-blueprints.md](references/actor-blueprints.md) when an explicitly supplied external Actor Blueprint or an existing blueprint actor is involved. For multiple continuous regions, boundaries, or openings, also read [connected-environments.md](references/connected-environments.md).
+4. In Host Codex, author a generic v5 create `IntentReport` with `allowPartial: false` and a complete generic v5 `SceneSpec` covering every required constraint. A legacy actor carries its complete twelve-key `body.limbPresence` map; a blueprint actor carries only `blueprintInstance` and references one embedded canonical snapshot. New and unfinished graybox entities use `lockMode: "none"`.
 5. Write `{ "intentReport": ..., "scene": ... }` to an ignored generic transient file under `.shubi-shot/submissions/`. Do not include source wording or profile data.
 6. Submit it:
 
@@ -50,7 +50,7 @@ Portable or native relative `--file` paths are resolved against the directory wh
 1. Run `snapshot` immediately before interpreting every follow-up. Treat its `sceneId` and revision as authoritative.
 2. Resolve any explicitly supplied aliases in host memory only.
 3. Read [intent-report.md](references/intent-report.md), [patch-authoring.md](references/patch-authoring.md), and the generated ScenePatch and patch-submission schemas.
-4. In Host Codex, author the smallest v4 `ScenePatch` that implements only the requested changes. Use the same `sceneId`, set `baseRevision` to the exact snapshot revision, and set `preserveLock: true` for ordinary natural-language corrections. For limb-presence changes, use one minimal `actor.limb-presence.set` operation.
+4. In Host Codex, author the smallest v5 `ScenePatch` that implements only the requested changes. Use the same `sceneId`, set `baseRevision` to the exact snapshot revision, and set `preserveLock: true` for ordinary natural-language corrections. For legacy actor limb-presence changes, use one minimal `actor.limb-presence.set` operation. For blueprint actors, use only the blueprint operations described in [actor-blueprints.md](references/actor-blueprints.md).
 5. Keep `allowPartial: false` unless the user explicitly accepts a partial modification. Even then, declare every unapplied item with a structured issue code and provide valid evidence for every applied required constraint.
 6. Write `{ "intentReport": ..., "patch": ... }` to an ignored generic transient file and submit it:
 
@@ -67,8 +67,17 @@ Portable or native relative `--file` paths are resolved against the directory wh
 - On create, author the complete map in Host Codex. On modify, author one minimal `actor.limb-presence.set` operation and map it to `actor-limb-presence` intent evidence.
 - Close an absent parent over all descendants as absent. Restore all required ancestors when an explicit child becomes present.
 - If one operation explicitly sets a parent absent and its descendant present, treat it as `LIMB_HIERARCHY_CONFLICT`; rewrite the single operation instead of splitting or retrying it.
-- Treat replacement parts, prostheses, mechanical limbs, sockets, and custom meshes as unsupported. Do not translate them into presence states, props, hidden geometry, zero scale, detached geometry, pose changes, or preset parameters.
+- Legacy actors do not gain replacement parts, prostheses, mechanical limbs, or sockets through limb-presence edits. Do not translate those requests into presence states, props, hidden geometry, zero scale, detached geometry, pose changes, or preset parameters. Blueprint actors may use only their already embedded box, sphere, and cylinder modules; arbitrary custom meshes remain unsupported.
 - On `ACTOR_LIMB_TARGET_INVALID`, refresh the snapshot and correct the target to a canonical actor ID. Never fallback to a generic entity operation.
+
+## Use reusable Actor Blueprints
+
+- Read [actor-blueprints.md](references/actor-blueprints.md) before validating, registering, instancing, or switching a blueprint actor.
+- Keep the external `--file` source path at the Host-only import boundary. Only the canonical, path-free snapshot may enter SceneSpec, Patch submissions, history, diagnostics, logs, screenshots, or exports.
+- Reuse an existing scene snapshot for the same SHA-256. Reject the same `blueprintId` with a different SHA-256 as `ACTOR_BLUEPRINT_ID_CONFLICT`; never overwrite it.
+- Register a new snapshot with `actor.blueprint.register`, add each actor as a strict `blueprintInstance`, and switch only to an existing snapshot variant with `actor.variant.set`.
+- Use the existing Inspector only to read the blueprint summary and select an existing variant. Do not import, author, edit, duplicate, rename, or delete blueprints, modules, proportions, or variants in the UI.
+- Rendering, bounds, contact, composition, and diagnostics must consume the one resolved actor projection. Do not reinterpret blueprint data in any consumer.
 
 ## Respect lock provenance
 
@@ -118,6 +127,7 @@ The intermediate none state exists only on the Patch working clone; it is never 
 - On `UNSUPPORTED_DESCRIPTION`, stop unless the user explicitly authorizes a partial modification that the public schemas can represent.
 - On `INTENT_COVERAGE_INCOMPLETE`, correct targets or evidence; do not weaken a required constraint.
 - On `LIMB_HIERARCHY_CONFLICT`, rewrite one consistent `actor.limb-presence.set` operation. On `ACTOR_LIMB_TARGET_INVALID`, refresh and retarget the actor; never fallback to another entity type.
+- On `ACTOR_BLUEPRINT_HASH_MISMATCH`, `ACTOR_BLUEPRINT_HASH_DUPLICATE`, or `ACTOR_BLUEPRINT_REFERENCE_INVALID`, correct the canonical SceneSpec or Patch before retrying. On `ACTOR_BLUEPRINT_ID_CONFLICT`, either reuse the existing identical snapshot or explicitly author a new generic ID; never overwrite.
 - On `USER_LOCKED`, stop and ask for explicit confirmation. On `WORKFLOW_LOCKED`, re-author the ordinary correction with `preserveLock: true` without asking the user. For other entity, lock, or contact errors, refresh the snapshot and follow [recovery-and-concurrency.md](references/recovery-and-concurrency.md).
 - On bridge failure, confirm `workspace current`, run `ensure`, then `health`, and retry the unchanged structured submission only after compatibility is restored.
 
@@ -131,5 +141,6 @@ The intermediate none state exists only on the Patch working clone; it is never 
 ## Load details only when needed
 
 - Read [cli-contract.md](references/cli-contract.md) for command, envelope, persistence, history, and export details.
+- Read [actor-blueprints.md](references/actor-blueprints.md) for external blueprint validation, canonical snapshots, variants, modules, and blueprint-instance rules.
 - Read [visual-qa.md](references/visual-qa.md) before a visual or export claim.
 - Read [connected-environments.md](references/connected-environments.md) when a request involves multiple rooms, openings, portals, or guaranteed clearance.

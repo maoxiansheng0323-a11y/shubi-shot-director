@@ -3,7 +3,7 @@ import { applyScenePatch } from "../src/domain/apply-scene-patch";
 import { createDefaultScene } from "../src/domain/default-scene";
 import {
   actorAnchorWorldPoint,
-} from "../src/domain/humanoid-rig";
+} from "../src/domain/actor-projection";
 import { lookAtQuaternion } from "../src/domain/scene-math";
 import { materializePose } from "../src/domain/presets/pose-presets";
 

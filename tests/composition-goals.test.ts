@@ -16,7 +16,7 @@ describe("optional SceneSpec composition goals", () => {
     const scene = createDefaultScene();
     const parsed = sceneSpecSchema.parse(scene);
 
-    expect(parsed.schemaVersion).toBe(4);
+    expect(parsed.schemaVersion).toBe(5);
     expect(parsed.spatialLayout).toBeNull();
     expect("compositionGoals" in parsed).toBe(false);
   });

@@ -81,6 +81,9 @@ export class SceneSession {
   }
 
   private commitAppliedPatch(applied: AppliedScenePatch): SceneSpec {
+    if (applied.next.revision === applied.previous.revision) {
+      return this.snapshot();
+    }
     this.recordHistory({
       before: applied.previous,
       after: applied.next,

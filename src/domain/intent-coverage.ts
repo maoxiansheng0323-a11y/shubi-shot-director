@@ -16,6 +16,7 @@ import type {
   SceneEntity,
   SceneSpec,
 } from "./scene-schema";
+import { isBlueprintActorEntity } from "./scene-schema";
 
 export interface IntentCoverageContext {
   before?: SceneSpec;
@@ -91,6 +92,10 @@ const ENTITY_PROPERTY_KINDS: Record<
   "entity.lockMode": ["lock-protection"],
   "actor.slot": ["actor-slot"],
   "actor.pose": ["pose", "relationship"],
+  "actor.blueprintInstance": [
+    "actor-blueprint-instance",
+    "actor-blueprint-variant",
+  ],
   ...actorLimbPropertyKinds,
   "camera.heightM": ["camera-height"],
   "camera.lens.focalLengthMm": ["focal-length"],
@@ -169,6 +174,8 @@ const entityPropertyExists = (
     case "actor.slot":
     case "actor.pose":
       return entity.kind === "actor";
+    case "actor.blueprintInstance":
+      return isBlueprintActorEntity(entity);
     case "camera.heightM":
       return (
         entity.kind === "camera" &&
@@ -212,6 +219,8 @@ const scenePropertyKinds = (
       return ["spatial-connection"];
     case "scene.spatialLayout.memberships":
       return ["entity-region-membership"];
+    case "scene.actorBlueprints":
+      return ["actor-blueprint-registration"];
   }
 };
 
@@ -318,6 +327,13 @@ const scenePropertyAssessment = (
           };
         }
         break;
+      case "scene.actorBlueprints":
+        return {
+          primary: true,
+          targetIds: new Set(
+            scene.actorBlueprints.map(({ blueprintId }) => blueprintId),
+          ),
+        };
     }
   }
   return undefined;
@@ -349,7 +365,11 @@ const entityKindsForAddedEntity = (
   if (entity.kind === "actor") {
     kinds.add("actor-slot");
     kinds.add("pose");
-    kinds.add("actor-limb-presence");
+    if (isBlueprintActorEntity(entity)) {
+      kinds.add("actor-blueprint-instance");
+    } else {
+      kinds.add("actor-limb-presence");
+    }
   }
   if (entity.kind === "camera") {
     kinds.add("camera-height");
@@ -381,6 +401,13 @@ const operationAssessment = (
   context: IntentCoverageContext,
 ): EvidenceAssessment | undefined => {
   switch (operation.op) {
+    case "actor.blueprint.register":
+      return kind === "actor-blueprint-registration"
+        ? {
+            primary: true,
+            targetIds: new Set([operation.snapshot.blueprintId]),
+          }
+        : undefined;
     case "entity.add":
       if (kind === "camera-target") {
         return {
@@ -451,6 +478,13 @@ const operationAssessment = (
     case "actor.limb-presence.set":
       return kind === "actor-limb-presence" &&
         operationEntity(operation.actorId, report, context)?.kind === "actor"
+        ? { primary: true, targetIds: new Set([operation.actorId]) }
+        : undefined;
+    case "actor.variant.set":
+      return kind === "actor-blueprint-variant" &&
+        isBlueprintActorEntity(
+          operationEntity(operation.actorId, report, context),
+        )
         ? { primary: true, targetIds: new Set([operation.actorId]) }
         : undefined;
     case "camera.lens.set":
@@ -620,6 +654,17 @@ const targetKindsAreValid = (
   report: IntentReport,
   context: IntentCoverageContext,
 ): boolean => {
+  if (constraint.kind === "actor-blueprint-registration") {
+    const blueprintIds = new Set(
+      visibleScenes(report, context).flatMap((scene) =>
+        scene.actorBlueprints.map(({ blueprintId }) => blueprintId),
+      ),
+    );
+    return (
+      constraint.targets.length > 0 &&
+      constraint.targets.every((targetId) => blueprintIds.has(targetId))
+    );
+  }
   if (SPATIAL_INTENT_KINDS.has(constraint.kind)) {
     const availableTargets = new Set(
       visibleScenes(report, context).flatMap((scene) => [
@@ -650,6 +695,12 @@ const targetKindsAreValid = (
       return (
         targetEntities.length > 0 &&
         targetEntities.every((entity) => entity?.kind === "actor")
+      );
+    case "actor-blueprint-instance":
+    case "actor-blueprint-variant":
+      return (
+        targetEntities.length > 0 &&
+        targetEntities.every(isBlueprintActorEntity)
       );
     case "camera-height":
     case "camera-angle":
@@ -726,7 +777,9 @@ const evidenceAssessment = (
     }
     case "entity-property": {
       if (
-        constraint.kind === "actor-limb-presence" &&
+        (constraint.kind === "actor-limb-presence" ||
+          constraint.kind === "actor-blueprint-instance" ||
+          constraint.kind === "actor-blueprint-variant") &&
         report.operation === "modify"
       ) {
         return undefined;
@@ -751,6 +804,12 @@ const evidenceAssessment = (
         : undefined;
     }
     case "scene-property": {
+      if (
+        constraint.kind === "actor-blueprint-registration" &&
+        report.operation === "modify"
+      ) {
+        return undefined;
+      }
       if (!scenePropertyKinds(evidence.path).includes(constraint.kind)) {
         return undefined;
       }

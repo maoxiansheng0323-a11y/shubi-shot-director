@@ -44,6 +44,28 @@ const BUNDLED_ACTOR_LIMB_PRESENCE_MODES = Object.freeze([
 const BUNDLED_ACTOR_LIMB_ERROR_CODES = Object.freeze([
   "LIMB_HIERARCHY_CONFLICT",
 ]);
+const BUNDLED_ACTOR_BLUEPRINT = Object.freeze({
+  schemaVersion: 1,
+  mounts: Object.freeze([
+    "shoulder_l", "shoulder_r", "elbow_l", "elbow_r", "wrist_l",
+    "wrist_r", "hip_l", "hip_r", "knee_l", "knee_r",
+  ]),
+  primitives: Object.freeze(["box", "sphere", "cylinder"]),
+  variantDeltaFields: Object.freeze([
+    "limbPresence",
+    "moduleVisibility",
+  ]),
+  errorCodes: Object.freeze([
+    "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+    "ACTOR_BLUEPRINT_FILE_INVALID",
+    "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+    "ACTOR_BLUEPRINT_VARIANT_INVALID",
+    "ACTOR_BLUEPRINT_HASH_MISMATCH",
+    "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+    "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+    "ACTOR_BLUEPRINT_ID_CONFLICT",
+  ]),
+});
 const RELEASE_METADATA_KEYS = new Set([
   "locatorContractVersion",
   "relativeRoot",
@@ -65,6 +87,7 @@ const RELEASE_METADATA_KEYS = new Set([
   "actorLimbPartIds",
   "actorLimbPresenceModes",
   "actorLimbErrorCodes",
+  "actorBlueprint",
 ]);
 const RUNTIME_NOT_FOUND_MESSAGE =
   "A compatible Shubi Shot Director runtime was not found.";
@@ -93,6 +116,25 @@ const stringSetsEqual = (left, right) =>
   isUniqueStringArray(left) &&
   left.length === right.length &&
   left.every((value) => right.includes(value));
+const actorBlueprintEqual = (value) =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === 5 &&
+  value.schemaVersion === BUNDLED_ACTOR_BLUEPRINT.schemaVersion &&
+  stringSetsEqual(value.mounts, BUNDLED_ACTOR_BLUEPRINT.mounts) &&
+  stringSetsEqual(
+    value.primitives,
+    BUNDLED_ACTOR_BLUEPRINT.primitives,
+  ) &&
+  stringSetsEqual(
+    value.variantDeltaFields,
+    BUNDLED_ACTOR_BLUEPRINT.variantDeltaFields,
+  ) &&
+  stringSetsEqual(
+    value.errorCodes,
+    BUNDLED_ACTOR_BLUEPRINT.errorCodes,
+  );
 
 const isContainedPath = (root, candidate) => {
   const relative = path.relative(root, candidate);
@@ -202,9 +244,9 @@ const readReleaseMetadata = async (skillDirectory) => {
         BUNDLED_BRIDGE_PROTOCOL_VERSION ||
       metadata.workspaceRoutingVersion !==
         BUNDLED_WORKSPACE_ROUTING_VERSION ||
-      metadata.sceneSchemaVersion !== 4 ||
-      metadata.patchSchemaVersion !== 4 ||
-      metadata.intentReportSchemaVersion !== 4 ||
+      metadata.sceneSchemaVersion !== 5 ||
+      metadata.patchSchemaVersion !== 5 ||
+      metadata.intentReportSchemaVersion !== 5 ||
       metadata.semanticAuthority !== "host" ||
       metadata.inputContract !== "structured-only" ||
       metadata.modelIntegration !== "none" ||
@@ -233,7 +275,8 @@ const readReleaseMetadata = async (skillDirectory) => {
       !stringSetsEqual(
         metadata.actorLimbErrorCodes,
         BUNDLED_ACTOR_LIMB_ERROR_CODES,
-      )
+      ) ||
+      !actorBlueprintEqual(metadata.actorBlueprint)
     ) {
       throw runtimeNotFound();
     }

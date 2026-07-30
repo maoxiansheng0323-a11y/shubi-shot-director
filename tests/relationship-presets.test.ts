@@ -12,6 +12,7 @@ import {
   type ScenePatch,
 } from "../src/domain/scene-patch";
 import {
+  isLegacyActorEntity,
   sceneSpecSchema,
   type ActorEntity,
   type SceneSpec,
@@ -23,7 +24,7 @@ const createTwoActorScene = (): SceneSpec => {
   const first = base.entities.find(
     (entity) => entity.kind === "actor",
   );
-  if (!first || first.kind !== "actor") {
+  if (!isLegacyActorEntity(first)) {
     throw new Error("Test scene requires an actor.");
   }
   const primary: ActorEntity = {
@@ -183,7 +184,7 @@ describe("relationship presets", () => {
     );
     expect(primary?.kind).toBe("actor");
     expect(secondary?.kind).toBe("actor");
-    if (primary?.kind !== "actor" || secondary?.kind !== "actor") {
+    if (!isLegacyActorEntity(primary) || !isLegacyActorEntity(secondary)) {
       return;
     }
     expect(primary.pose.preset.id).toBe("pose.standing-neutral-v1");
@@ -248,7 +249,7 @@ describe("relationship presets", () => {
     );
     expect(primary?.kind).toBe("actor");
     expect(lower?.kind).toBe("actor");
-    if (primary?.kind !== "actor" || lower?.kind !== "actor") {
+    if (!isLegacyActorEntity(primary) || !isLegacyActorEntity(lower)) {
       return;
     }
     expect(primary.pose.preset.id).toBe("pose.kneeling-lean-v1");

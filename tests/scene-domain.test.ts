@@ -6,7 +6,10 @@ import {
 import { actorVisibleRigBounds } from "../src/domain/actor-visible-bounds";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { quaternionFromEulerDegrees } from "../src/domain/scene-math";
-import { sceneSpecSchema } from "../src/domain/scene-schema";
+import {
+  isLegacyActorEntity,
+  sceneSpecSchema,
+} from "../src/domain/scene-schema";
 
 describe("SceneSpec", () => {
   it("accepts the generic starter scene", () => {
@@ -17,7 +20,7 @@ describe("SceneSpec", () => {
   it("rejects duplicate actor slots", () => {
     const scene = createDefaultScene();
     const actor = scene.entities.find((entity) => entity.kind === "actor");
-    if (!actor || actor.kind !== "actor") {
+    if (!isLegacyActorEntity(actor)) {
       throw new Error("Starter actor is missing.");
     }
     scene.entities.push({
@@ -69,7 +72,7 @@ describe("ScenePatch", () => {
     const actor = applied.next.entities.find(
       (entity) => entity.id === "actor_generic_1",
     );
-    if (!actor || actor.kind !== "actor") {
+    if (!isLegacyActorEntity(actor)) {
       throw new Error("Starter actor is missing.");
     }
     expect(actor.transform.positionM[0]).toBeCloseTo(1, 9);

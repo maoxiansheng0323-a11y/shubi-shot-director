@@ -283,7 +283,7 @@ describe("Director CLI structured submissions", () => {
         },
       });
       expect(session.snapshot()).toMatchObject({
-        schemaVersion: 4,
+        schemaVersion: 5,
         sceneId: "scene_quickstart_1",
         spatialLayout: null,
       });
@@ -448,7 +448,7 @@ describe("Director CLI structured submissions", () => {
           },
         });
         expect(session.snapshot()).toMatchObject({
-          schemaVersion: 4,
+          schemaVersion: 5,
           entities: expect.arrayContaining([
             expect.objectContaining({
               id: "actor_generic_1",

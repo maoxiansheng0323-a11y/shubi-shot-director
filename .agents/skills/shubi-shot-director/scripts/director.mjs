@@ -3,7 +3,7 @@
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
@@ -52,10 +52,33 @@ const bundledActorLimbPresenceModes = Object.freeze([
 const bundledActorLimbErrorCodes = Object.freeze([
   "LIMB_HIERARCHY_CONFLICT",
 ]);
+const bundledActorBlueprint = Object.freeze({
+  schemaVersion: 1,
+  mounts: Object.freeze([
+    "shoulder_l", "shoulder_r", "elbow_l", "elbow_r", "wrist_l",
+    "wrist_r", "hip_l", "hip_r", "knee_l", "knee_r",
+  ]),
+  primitives: Object.freeze(["box", "sphere", "cylinder"]),
+  variantDeltaFields: Object.freeze([
+    "limbPresence",
+    "moduleVisibility",
+  ]),
+  errorCodes: Object.freeze([
+    "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+    "ACTOR_BLUEPRINT_FILE_INVALID",
+    "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+    "ACTOR_BLUEPRINT_VARIANT_INVALID",
+    "ACTOR_BLUEPRINT_HASH_MISMATCH",
+    "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+    "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+    "ACTOR_BLUEPRINT_ID_CONFLICT",
+  ]),
+});
 const expectedIntentReportSchemaDigest =
-  "786a67f6e7e6d7ab73da4826b3e8cf972b8199d3fe8a991b0f58a1484d5c86ad";
+  "be40666d595a8d675b28a0b55d039ce27eed977f46c3f64f64b37684b1e887a7";
 const runtimeTimeoutMs = 30_000;
 const runtimeMaxBufferBytes = 1024 * 1024;
+const actorBlueprintMaxInputBytes = 1024 * 1024;
 const stableActionIds = new Set([
   "doctor",
   "ensure",
@@ -63,6 +86,7 @@ const stableActionIds = new Set([
   "stop",
   "health",
   "snapshot",
+  "blueprint.validate",
   "scene.create",
   "scene.submit",
   "scene.save",
@@ -222,6 +246,14 @@ const WRAPPER_ERROR_MESSAGES = Object.freeze({
     "The requested limb presence conflicts with the actor hierarchy.",
   ACTOR_LIMB_TARGET_INVALID:
     "The requested limb target is not an editable actor.",
+  ACTOR_BLUEPRINT_FILE_READ_FAILED:
+    "The Actor Blueprint file could not be read.",
+  ACTOR_BLUEPRINT_FILE_INVALID:
+    "The Actor Blueprint document is invalid.",
+  ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED:
+    "The Actor Blueprint schema version is unsupported.",
+  ACTOR_BLUEPRINT_VARIANT_INVALID:
+    "The Actor Blueprint variant is invalid.",
   CAPABILITY_NOT_AVAILABLE:
     "The requested runtime capability is not available.",
   WORKSPACE_ID_INVALID: "The workspace ID is invalid.",
@@ -261,6 +293,10 @@ const stableRuntimeErrorCodes = new Set([
   "CONTACT_CONSTRAINT_ACTIVE",
   "LIMB_HIERARCHY_CONFLICT",
   "ACTOR_LIMB_TARGET_INVALID",
+  "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+  "ACTOR_BLUEPRINT_FILE_INVALID",
+  "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+  "ACTOR_BLUEPRINT_VARIANT_INVALID",
   "CAPABILITY_NOT_AVAILABLE",
 ]);
 
@@ -449,6 +485,21 @@ const actionFromArgs = (args) => {
   ) {
     return { kind: "target", action: `scene.${args[1]}` };
   }
+  if (command === "blueprint" && args[1] === "validate") {
+    if (
+      args.length !== 4 ||
+      args[2] !== "--file" ||
+      typeof args[3] !== "string" ||
+      args[3].trim().length === 0
+    ) {
+      throw new WrapperError("CLI_ARGUMENT_REQUIRED");
+    }
+    return {
+      kind: "target",
+      action: "blueprint.validate",
+      blueprintFile: args[3],
+    };
+  }
   if (
     command === "patch" &&
     ["apply", "submit"].includes(args[1])
@@ -545,6 +596,40 @@ const resolveFileArguments = (
   return resolved;
 };
 
+const readBlueprintSource = async (
+  fileArgument,
+  callerDirectory = process.cwd(),
+) => {
+  if (windowsDriveRelativePathPattern.test(fileArgument)) {
+    throw new WrapperError("ACTOR_BLUEPRINT_FILE_READ_FAILED");
+  }
+
+  let handle;
+  try {
+    handle = await open(path.resolve(callerDirectory, fileArgument), "r");
+    const stats = await handle.stat();
+    if (!stats.isFile() || stats.size > actorBlueprintMaxInputBytes) {
+      throw new WrapperError("ACTOR_BLUEPRINT_FILE_READ_FAILED");
+    }
+    const source = await handle.readFile("utf8");
+    if (Buffer.byteLength(source, "utf8") > actorBlueprintMaxInputBytes) {
+      throw new WrapperError("ACTOR_BLUEPRINT_FILE_READ_FAILED");
+    }
+    try {
+      return JSON.stringify(JSON.parse(source));
+    } catch {
+      throw new WrapperError("ACTOR_BLUEPRINT_FILE_INVALID");
+    }
+  } catch (error) {
+    if (error instanceof WrapperError) {
+      throw error;
+    }
+    throw new WrapperError("ACTOR_BLUEPRINT_FILE_READ_FAILED");
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+};
+
 const readBundledSchemaVersion = async (fileName, expectedDigest) => {
   try {
     const schema = JSON.parse(
@@ -586,6 +671,26 @@ const stringSetsEqual = (left, right) =>
   isNonEmptyUniqueStringArray(left) &&
   left.length === right.length &&
   left.every((value) => right.includes(value));
+const actorBlueprintEqual = (value, expected) =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === 5 &&
+  value.schemaVersion === expected.schemaVersion &&
+  stringSetsEqual(value.mounts, expected.mounts) &&
+  stringSetsEqual(value.primitives, expected.primitives) &&
+  stringSetsEqual(
+    value.variantDeltaFields,
+    expected.variantDeltaFields,
+  ) &&
+  stringSetsEqual(value.errorCodes, expected.errorCodes);
+const cloneActorBlueprintCapability = (value) => ({
+  schemaVersion: value.schemaVersion,
+  mounts: [...value.mounts],
+  primitives: [...value.primitives],
+  variantDeltaFields: [...value.variantDeltaFields],
+  errorCodes: [...value.errorCodes],
+});
 
 const readBundledContractVersions = async () => {
   try {
@@ -611,9 +716,9 @@ const readBundledContractVersions = async () => {
       metadata?.modelIntegration !== "none" ||
       metadata?.credentialPolicy !== "forbidden" ||
       metadata?.networkPolicy !== "loopback-only" ||
-      metadata?.sceneSchemaVersion !== 4 ||
-      metadata?.patchSchemaVersion !== 4 ||
-      metadata?.intentReportSchemaVersion !== 4 ||
+      metadata?.sceneSchemaVersion !== 5 ||
+      metadata?.patchSchemaVersion !== 5 ||
+      metadata?.intentReportSchemaVersion !== 5 ||
       !stringSetsEqual(
         metadata?.entityLockModes,
         bundledEntityLockModes,
@@ -637,6 +742,10 @@ const readBundledContractVersions = async () => {
       !stringSetsEqual(
         metadata?.actorLimbErrorCodes,
         bundledActorLimbErrorCodes,
+      ) ||
+      !actorBlueprintEqual(
+        metadata?.actorBlueprint,
+        bundledActorBlueprint,
       )
     ) {
       throw new Error("invalid bundled contract");
@@ -654,6 +763,9 @@ const readBundledContractVersions = async () => {
       skillActorLimbPartIds: [...metadata.actorLimbPartIds],
       skillActorLimbPresenceModes: [...metadata.actorLimbPresenceModes],
       skillActorLimbErrorCodes: [...metadata.actorLimbErrorCodes],
+      skillActorBlueprint: cloneActorBlueprintCapability(
+        metadata.actorBlueprint,
+      ),
     };
   } catch (error) {
     if (error instanceof WrapperError) {
@@ -738,7 +850,7 @@ const runtimeChildEnvironment = (
   return child;
 };
 
-const runRuntime = (runtime, args, workspaceRoute) =>
+const runRuntime = (runtime, args, workspaceRoute, stdinSource) =>
   new Promise((resolve) => {
     let child;
     try {
@@ -746,12 +858,21 @@ const runRuntime = (runtime, args, workspaceRoute) =>
         cwd: runtime.runtimeRoot,
         env: runtimeChildEnvironment(process.env, workspaceRoute),
         shell: false,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [
+          stdinSource === undefined ? "ignore" : "pipe",
+          "pipe",
+          "pipe",
+        ],
         windowsHide: true,
       });
     } catch {
       resolve({ unavailable: true });
       return;
+    }
+
+    if (stdinSource !== undefined) {
+      child.stdin.on("error", () => undefined);
+      child.stdin.end(stdinSource, "utf8");
     }
 
     let stdout = "";
@@ -887,6 +1008,7 @@ const createPlan = async (
     skillActorLimbPartIds,
     skillActorLimbPresenceModes,
     skillActorLimbErrorCodes,
+    skillActorBlueprint,
   },
   workspaceRoute,
 ) => {
@@ -907,6 +1029,9 @@ const createPlan = async (
     skillActorLimbPartIds: [...skillActorLimbPartIds],
     skillActorLimbPresenceModes: [...skillActorLimbPresenceModes],
     skillActorLimbErrorCodes: [...skillActorLimbErrorCodes],
+    skillActorBlueprint: cloneActorBlueprintCapability(
+      skillActorBlueprint,
+    ),
   };
   const offlinePlan = buildCompatibilityPlan(baseInput);
   if (!live || offlinePlan.mode === "incompatible") {
@@ -928,8 +1053,18 @@ const createPlan = async (
   });
 };
 
-const forwardRuntime = async (runtime, args, workspaceRoute) => {
-  const result = await runRuntime(runtime, args, workspaceRoute);
+const forwardRuntime = async (
+  runtime,
+  args,
+  workspaceRoute,
+  stdinSource,
+) => {
+  const result = await runRuntime(
+    runtime,
+    args,
+    workspaceRoute,
+    stdinSource,
+  );
   if (result.unavailable) {
     throw new WrapperError("RUNTIME_UNAVAILABLE");
   }
@@ -1091,7 +1226,15 @@ const main = async () => {
   rejectLegacyText(args);
   rejectForbiddenArguments(args);
   const invocation = parseInvocation(args);
-  const runtimeArgs = resolveFileArguments(args, invocation);
+  const blueprintStdinSource =
+    invocation.kind === "target" &&
+    invocation.action === "blueprint.validate"
+      ? await readBlueprintSource(invocation.blueprintFile)
+      : undefined;
+  const runtimeArgs =
+    blueprintStdinSource === undefined
+      ? resolveFileArguments(args, invocation)
+      : ["blueprint", "validate", "--stdin"];
   if (invocation.kind === "help") {
     output({
       ok: true,
@@ -1123,11 +1266,19 @@ const main = async () => {
     validateCapabilitiesManifest,
   } = await import("./compatibility-plan.mjs");
   const contractVersions = await readBundledContractVersions();
-  if (invocation.kind !== "doctor") {
+  if (
+    invocation.kind !== "doctor" &&
+    !(
+      invocation.kind === "target" &&
+      invocation.action === "blueprint.validate"
+    )
+  ) {
     await loadWorkspaceRouting();
   }
   const workspaceContext =
-    invocation.kind === "doctor"
+    invocation.kind === "doctor" ||
+    (invocation.kind === "target" &&
+      invocation.action === "blueprint.validate")
       ? undefined
       : await resolveInvocationWorkspace(runtime);
   const workspaceRoute = workspaceContext?.route;
@@ -1205,6 +1356,7 @@ const main = async () => {
       runtime,
       runtimeArgs,
       workspaceRoute,
+      blueprintStdinSource,
     );
     if (
       workspaceRoute !== undefined &&

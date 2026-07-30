@@ -11,7 +11,7 @@ Use this reference for every natural-language edit to an existing shot.
 5. Use `source: "natural-language"` and a generic `patchId`.
 6. Set `preserveLock: true` for ordinary natural-language corrections.
 7. Emit only operations required by the follow-up.
-8. Pair the Patch with a v4 modify `IntentReport` whose evidence covers the applied operations.
+8. Pair the Patch with a v5 modify `IntentReport` whose evidence covers the applied operations.
 9. Submit one envelope with `patch submit --file`.
 10. Fetch `snapshot` again. Require the same `sceneId`, revision `baseRevision + 1`, and only requested changes.
 
@@ -26,6 +26,8 @@ Never route a follow-up through scene replacement. On `STALE_REVISION`, discard 
 - Lens or clip planes: `camera.lens.set`
 - Actor pose: `actor.pose.set`
 - Actor limb presence: one minimal `actor.limb-presence.set` operation with a canonical actor ID and one to twelve explicit updates
+- Register one canonical Actor Blueprint snapshot: `actor.blueprint.register`
+- Select an existing variant on a blueprint actor: `actor.variant.set`
 - Add or replace a complete constraint: `constraint.set`
 - Remove a constraint: `constraint.remove`
 - Add or remove a complete entity: `entity.add` or `entity.remove`
@@ -48,7 +50,7 @@ Do not use JSON Patch, JSON Pointer, arbitrary property paths, or a root replace
 
 ## Preserve lock provenance
 
-`preserveLock` is required on every canonical v4 Patch.
+`preserveLock` is required on every canonical v5 Patch.
 
 - Ordinary natural-language corrections use `preserveLock: true`.
 - `workflow` means workflow-checkpoint protection. Workflow locks never require confirmation or user authorization. `WORKFLOW_LOCKED` means the Patch was authored with the wrong policy: re-author with `preserveLock: true`, not ask the user.
@@ -79,6 +81,8 @@ Author one minimal `actor.limb-presence.set` operation. An absent parent closes 
 Use `preserveLock: true` for an ordinary workflow-locked correction without asking. Stop on `USER_LOCKED` and request explicit confirmation. On `ACTOR_LIMB_TARGET_INVALID`, refresh the snapshot and correct the target to an actor; never fallback to `entity.*`, hidden geometry, zero scale, detached geometry, or a prop.
 
 Report replacement parts, prostheses, mechanical limbs, sockets, and custom meshes as unsupported. Never degrade those requests into `present` or `absent` states.
+
+For blueprint actors, read `actor-blueprints.md`. Register a path-free snapshot before adding its first instance. If the same SHA-256 is already present, reuse it and omit registration. Reject same-ID/different-hash instead of overwriting, and never remove or garbage-collect snapshots. Variant selection is a minimal `actor.variant.set`; do not copy body/proportion data or mutate the actor into the legacy branch.
 
 ## Apply workflow checkpoints
 

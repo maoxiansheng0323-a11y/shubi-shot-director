@@ -8,7 +8,7 @@ Shubi Shot Director is a local, browser-based 3D graybox camera-previsualization
 
 **[Watch the 49-second launch demo](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/shubi-shot-director-launch-demo.mp4)** · [Exported PNG](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/final-perspective.png) · [English subtitles](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.en.srt) · [中文字幕](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.zh-CN.srt)
 
-Current release: [v0.5.0 release notes](docs/releases/v0.5.0.md).
+Current release: [v0.6.0 release notes](docs/releases/v0.6.0.md).
 
 Shubi Shot Director is open-source graybox camera previs: it turns natural-language shot intent into a structured, editable 3D scene, shows the actual final camera through the real browser Shot Preview, and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
 
@@ -16,7 +16,7 @@ Shubi Shot Director is open-source graybox camera previs: it turns natural-langu
 
 It turns a shot description into an editable `SceneSpec` containing either a
 legacy single-room environment or a same-floor graph of arbitrary regions,
-boundaries, openings, and connections, plus actors with generic editable limb presence, props, poses, constraints,
+boundaries, openings, and connections, plus legacy actors with generic editable limb presence or reusable Actor Blueprint instances, props, poses, constraints,
 and perspective cameras. The browser provides Overview, focused Local preview,
 and an independent final-camera Shot Preview, and it can export a 16:9 PNG
 reference for blocking, scale, contact, occlusion, camera height, angle, and
@@ -135,7 +135,7 @@ The project-local Skill is stored at [`.agents/skills/shubi-shot-director/SKILL.
 
 Host Codex must author `IntentReport`, `SceneSpec`, and `ScenePatch` according to the Skill references. The Skill then calls the structured CLI, verifies `sceneId` and revision transitions, and inspects the browser preview. Account mode or KEY mode belongs to the host and is never forwarded into Director files, arguments, processes, logs, or artifacts.
 
-Canonical authoring uses SceneSpec, ScenePatch, and IntentReport schema version 4. Every actor stores a complete twelve-key `body.limbPresence` map, and natural-language limb edits use the minimal `actor.limb-presence.set` operation. New and unfinished graybox entities use `lockMode: "none"`. Ordinary natural-language corrections use `preserveLock: true`.
+Canonical authoring uses SceneSpec, ScenePatch, and IntentReport schema version 5. Legacy actors retain the complete twelve-key `body.limbPresence` map and `actor.limb-presence.set`. Blueprint actors reference one embedded canonical snapshot through `blueprintInstance`, and use `actor.variant.set` for an existing variant. New and unfinished graybox entities use `lockMode: "none"`. Ordinary natural-language corrections use `preserveLock: true`.
 
 Capability contract version 2 now requires workspace routing version 1 and `bridge.thread-workspaces`. The normal parallel workflow is automatic:
 
@@ -154,6 +154,20 @@ node scripts/director.mjs patch apply --file <patch-file>
 ```
 
 These commands are not a natural-language route and carry no semantic-completeness claim.
+
+## Reusable Actor Blueprints
+
+v0.6 can validate an explicitly supplied external JSON blueprint at the Host boundary:
+
+```powershell
+node scripts/director.mjs blueprint validate --file <actor-blueprint.json>
+```
+
+The result is a generic summary containing the blueprint ID, version, canonical content SHA-256, module count, and variant count. The source path and raw file never enter SceneSpec, ScenePatch, history, diagnostics, logs, screenshots, or PNG metadata.
+
+A SceneSpec embeds one path-free canonical snapshot and may contain multiple independent actor instances that reference it. Equal SHA-256 content reuses that snapshot. A reused ID with different content is rejected rather than overwritten. Snapshots persist across save/load without the source file, are never automatically garbage-collected, and have no removal operation in v0.6.
+
+Blueprint modules are combinations of box, sphere, and cylinder primitives mounted at supported shoulder, elbow, wrist, hip, and knee frames. Variants contain only limb-presence and module-visibility deltas. The existing Inspector shows a read-only summary and selects only variants already in the snapshot; it is not a blueprint editor.
 
 ## Copy-paste Codex example
 
@@ -209,7 +223,7 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Known limits
 
-- Actors are generic graybox rigs with editable present/absent limb chains, not production character assets or replacement-part systems.
+- Actors are generic graybox rigs or strict reusable blueprints with box/sphere/cylinder modules; arbitrary custom meshes and production character assets remain unsupported.
 - Pose and relationship presets materialize transforms and joints; they are not live IK, animation, physics, or collision systems.
 - Ground contact currently supports room floors and horizontal box or plane surfaces.
 - Connected layouts currently support one shared floor elevation. Stairs,
@@ -221,7 +235,7 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Verified platform
 
-Verified on Windows 11 Pro, 64-bit (build 26200). The v0.5.0 schema, Skill, and automated repository checks use Windows PowerShell 5.1, Node.js 24.16.0, and pnpm 11.9.0. This is the only operating system verified for v0.5.0. macOS and Linux have not yet been verified for v0.5.0.
+Verified on Windows 11 Pro, 64-bit (build 26200). The v0.6.0 schema, Skill, and automated repository checks use Windows PowerShell 5.1, Node.js 24.16.0, and pnpm 11.9.0. This is the only operating system verified for v0.6.0. macOS and Linux have not yet been verified for v0.6.0.
 
 ## Origin & Maintainer
 

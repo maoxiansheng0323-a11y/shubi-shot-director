@@ -255,15 +255,15 @@ describe("authoritative actor limb Inspector controls", () => {
     ).toBe(false);
   });
 
-  it("uses canonical anatomy dimensions and conditional chain rendering", () => {
+  it("uses the shared resolved projection for actor rendering", () => {
     const source = readFileSync(
       fileURLToPath(new URL("../src/three/SceneWorld.tsx", import.meta.url)),
       "utf8",
     );
 
-    expect(source).toContain("deriveActorRigProjection");
+    expect(source).toContain("resolveActorProjection");
     expect(
-      source.match(/deriveActorRigProjection\(actor\)/gu),
+      source.match(/resolveActorProjection\(scene, actor\)/gu),
     ).toHaveLength(1);
     expect(source).not.toContain("DownwardLimb");
     expect(source).not.toContain("deriveActorAnatomyDimensions(actor.body)");

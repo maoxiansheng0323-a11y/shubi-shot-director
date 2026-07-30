@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultScene } from "../src/domain/default-scene";
-import { actorAnchorWorldPoint } from "../src/domain/humanoid-rig";
+import { actorAnchorWorldPoint } from "../src/domain/actor-projection";
 import { rotateVector } from "../src/domain/scene-math";
 import type {
   CameraEntity,

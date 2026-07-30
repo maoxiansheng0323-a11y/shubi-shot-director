@@ -299,7 +299,7 @@ describe("spatial ScenePatch operations", () => {
       ],
     });
 
-    expect(applied.patch.schemaVersion).toBe(4);
+    expect(applied.patch.schemaVersion).toBe(5);
     expect(applied.patch.preserveLock).toBe(false);
     expect(applied.next.title).toBe("Migrated legacy title");
   });

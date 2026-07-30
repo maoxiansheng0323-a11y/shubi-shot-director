@@ -1,7 +1,8 @@
 import {
   actorAnchorWorldPoint,
+  resolveActorProjection,
   type ActorAnchor,
-} from "./humanoid-rig";
+} from "./actor-projection";
 import {
   actorVisibleFramingPoints,
   actorVisibleRigBounds,
@@ -11,15 +12,15 @@ import {
   deriveBoundaryWallBoxes,
   type SpatialRegion,
 } from "./spatial-layout";
-import type {
-  ActorEntity,
-  CameraEntity,
-  CompositionFramingMode,
-  QuaternionTuple,
-  SceneEntity,
-  SceneSpec,
-  TransformSpec,
-  Vec3,
+import {
+  type AnyActorEntity,
+  type CameraEntity,
+  type CompositionFramingMode,
+  type QuaternionTuple,
+  type SceneEntity,
+  type SceneSpec,
+  type TransformSpec,
+  type Vec3,
 } from "./scene-schema";
 
 type PropEntity = Extract<SceneEntity, { kind: "prop" }>;
@@ -228,9 +229,13 @@ const worldToLocalPoint = (
     transform.scale,
   );
 
-const resolveAnchor = (entity: SceneEntity, anchor: ActorAnchor): Vec3 =>
+const resolveAnchor = (
+  scene: SceneSpec,
+  entity: SceneEntity,
+  anchor: ActorAnchor,
+): Vec3 =>
   entity.kind === "actor"
-    ? actorAnchorWorldPoint(entity, anchor)
+    ? actorAnchorWorldPoint(scene, entity, anchor)
     : [...entity.transform.positionM];
 
 const projectPoint = (
@@ -313,19 +318,23 @@ const numberParameter = (
     : fallback;
 };
 
-const actorFullBoundsPoints = (actor: ActorEntity): Vec3[] => {
-  const bounds = actorVisibleRigBounds(actor);
+const actorFullBoundsPoints = (
+  scene: SceneSpec,
+  actor: AnyActorEntity,
+): Vec3[] => {
+  const bounds = actorVisibleRigBounds(scene, actor);
   return [
     ...bounds.worldPoints,
-    actorAnchorWorldPoint(actor, "face"),
-    actorAnchorWorldPoint(actor, "head"),
-    actorAnchorWorldPoint(actor, "chest"),
-    actorAnchorWorldPoint(actor, "pelvis"),
+    actorAnchorWorldPoint(scene, actor, "face"),
+    actorAnchorWorldPoint(scene, actor, "head"),
+    actorAnchorWorldPoint(scene, actor, "chest"),
+    actorAnchorWorldPoint(scene, actor, "pelvis"),
   ];
 };
 
 const actorFramingBoundsPoints = (
-  actor: ActorEntity,
+  scene: SceneSpec,
+  actor: AnyActorEntity,
   mode: Exclude<CompositionFramingMode, "whole-prop">,
 ): Vec3[] => {
   const lowerFraction: Record<
@@ -337,7 +346,7 @@ const actorFramingBoundsPoints = (
     medium: 0.3,
     full: 0,
   };
-  return actorVisibleFramingPoints(actor, lowerFraction[mode]);
+  return actorVisibleFramingPoints(scene, actor, lowerFraction[mode]);
 };
 
 const propFullBoundsPoints = (prop: PropEntity): Vec3[] => {
@@ -352,9 +361,12 @@ const propFullBoundsPoints = (prop: PropEntity): Vec3[] => {
   ).map((point) => transformPoint(prop.transform, point));
 };
 
-const entityFullBoundsPoints = (entity: SceneEntity): Vec3[] => {
+const entityFullBoundsPoints = (
+  scene: SceneSpec,
+  entity: SceneEntity,
+): Vec3[] => {
   if (entity.kind === "actor") {
-    return actorFullBoundsPoints(entity);
+    return actorFullBoundsPoints(scene, entity);
   }
   if (entity.kind === "prop") {
     return propFullBoundsPoints(entity);
@@ -363,10 +375,11 @@ const entityFullBoundsPoints = (entity: SceneEntity): Vec3[] => {
 };
 
 const createOcclusionProxy = (
+  scene: SceneSpec,
   entity: SceneEntity,
 ): OcclusionProxy | null => {
   if (entity.kind === "actor") {
-    const bounds = actorVisibleRigBounds(entity);
+    const bounds = actorVisibleRigBounds(scene, entity);
     const center: Vec3 = [
       (bounds.minWorld[0] + bounds.maxWorld[0]) / 2,
       (bounds.minWorld[1] + bounds.maxWorld[1]) / 2,
@@ -865,7 +878,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
 
       const projection = projectPoint(
         activeCamera,
-        resolveAnchor(subject, constraint.anchor),
+        resolveAnchor(scene, subject, constraint.anchor),
         aspect,
       );
       const evidence =
@@ -986,7 +999,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
 
       const points =
         target.kind === "actor" && framing.mode !== "whole-prop"
-          ? actorFramingBoundsPoints(target, framing.mode)
+          ? actorFramingBoundsPoints(scene, target, framing.mode)
           : target.kind === "prop" && framing.mode === "whole-prop"
             ? propFullBoundsPoints(target)
             : [];
@@ -1059,18 +1072,26 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
       }
 
       if (target.kind === "actor") {
+        const dimensions = resolveActorProjection(scene, target).dimensions;
         const localUp = rotateVector(
-          [0, target.body.heightM * target.transform.scale[1] * 0.08, 0],
+          [
+            0,
+            dimensions.heightM * target.transform.scale[1] * 0.08,
+            0,
+          ],
           target.transform.rotation,
         );
         const headTop = projectPoint(
           activeCamera,
-          addVectors(actorAnchorWorldPoint(target, "head"), localUp),
+          addVectors(
+            actorAnchorWorldPoint(scene, target, "head"),
+            localUp,
+          ),
           aspect,
         );
         const eyeLine = projectPoint(
           activeCamera,
-          actorAnchorWorldPoint(target, "face"),
+          actorAnchorWorldPoint(scene, target, "face"),
           aspect,
         );
         const headroomFraction = clamp01((1 - headTop.ndcY) / 2);
@@ -1131,7 +1152,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
       }
       const bounds = projectBounds(
         activeCamera,
-        entityFullBoundsPoints(target),
+        entityFullBoundsPoints(scene, target),
         aspect,
       );
       captionState.approximate ||= target.kind === "actor";
@@ -1236,7 +1257,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
       if (!subject.visible) {
         continue;
       }
-      const subjectProxy = createOcclusionProxy(subject);
+      const subjectProxy = createOcclusionProxy(scene, subject);
       const projectedSubject = subjectProxy
         ? projectProxy(activeCamera, subjectProxy, aspect)
         : null;
@@ -1247,7 +1268,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
         (constraint) => constraint.subjectEntityId === subject.id,
       );
       const anchorPosition = activeConstraint
-        ? resolveAnchor(subject, activeConstraint.anchor)
+        ? resolveAnchor(scene, subject, activeConstraint.anchor)
         : subjectProxy.center;
       for (const candidate of scene.entities) {
         if (
@@ -1258,7 +1279,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
         ) {
           continue;
         }
-        const candidateProxy = createOcclusionProxy(candidate);
+        const candidateProxy = createOcclusionProxy(scene, candidate);
         const projectedCandidate = candidateProxy
           ? projectProxy(activeCamera, candidateProxy, aspect)
           : null;
@@ -1342,7 +1363,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
         }
         const targetPoint =
           target.kind === "actor"
-            ? actorAnchorWorldPoint(target, "chest")
+            ? actorAnchorWorldPoint(scene, target, "chest")
             : target.transform.positionM;
         for (const room of rooms) {
           const targetLocal = worldToLocalPoint(room.transform, targetPoint);
@@ -1525,7 +1546,7 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
       if (entity.kind !== "actor" || !entity.visible) {
         continue;
       }
-      const bounds = actorVisibleRigBounds(entity);
+      const bounds = actorVisibleRigBounds(scene, entity);
       if (
         pointInsideAabb(activeCamera.transform.positionM, {
           min: bounds.minWorld,

@@ -8,6 +8,11 @@ import {
   ACTOR_LIMB_PART_IDS,
   ACTOR_LIMB_PRESENCE_MODES,
 } from "../src/domain/actor-anatomy";
+import {
+  ACTOR_BLUEPRINT_MOUNT_IDS,
+  ACTOR_BLUEPRINT_PRIMITIVES,
+  ACTOR_BLUEPRINT_SCHEMA_VERSION,
+} from "../src/domain/actor-blueprint";
 import { APPLICATION_VERSION } from "./application-metadata";
 
 export { INTENT_REPORT_SCHEMA_VERSION };
@@ -29,6 +34,20 @@ export const LOCK_ERROR_CODES = [
 export const ACTOR_LIMB_ERROR_CODES = [
   "LIMB_HIERARCHY_CONFLICT",
 ] as const;
+export const ACTOR_BLUEPRINT_VARIANT_DELTA_FIELDS = [
+  "limbPresence",
+  "moduleVisibility",
+] as const;
+export const ACTOR_BLUEPRINT_CAPABILITY_ERROR_CODES = [
+  "ACTOR_BLUEPRINT_FILE_READ_FAILED",
+  "ACTOR_BLUEPRINT_FILE_INVALID",
+  "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
+  "ACTOR_BLUEPRINT_VARIANT_INVALID",
+  "ACTOR_BLUEPRINT_HASH_MISMATCH",
+  "ACTOR_BLUEPRINT_HASH_DUPLICATE",
+  "ACTOR_BLUEPRINT_REFERENCE_INVALID",
+  "ACTOR_BLUEPRINT_ID_CONFLICT",
+] as const;
 
 export const CLI_COMMAND_DEFINITIONS = [
   { id: "doctor", usage: "doctor" },
@@ -37,6 +56,10 @@ export const CLI_COMMAND_DEFINITIONS = [
   { id: "stop", usage: "stop" },
   { id: "health", usage: "health" },
   { id: "snapshot", usage: "snapshot" },
+  {
+    id: "blueprint.validate",
+    usage: "blueprint validate --stdin",
+  },
   { id: "scene.create", usage: "scene create --file <scene.json>" },
   {
     id: "scene.submit",
@@ -77,7 +100,19 @@ export const RUNTIME_FEATURE_IDS = [
   "composition.segmented-report",
   "bridge.safe-shutdown",
   "actor.limb-presence",
+  "actor.blueprint-snapshots",
+  "actor.modular-primitives",
+  "actor.variants",
+  "actor.resolved-projection",
 ] as const;
+
+export interface ActorBlueprintCapability {
+  schemaVersion: number;
+  mounts: string[];
+  primitives: string[];
+  variantDeltaFields: string[];
+  errorCodes: string[];
+}
 
 export interface RuntimeCapabilityManifest {
   service: typeof BRIDGE_SERVICE;
@@ -101,6 +136,7 @@ export interface RuntimeCapabilityManifest {
   actorLimbPartIds: string[];
   actorLimbPresenceModes: string[];
   actorLimbErrorCodes: string[];
+  actorBlueprint: ActorBlueprintCapability;
 }
 
 export interface RuntimeCapabilityCompatibilityHeader {
@@ -248,6 +284,7 @@ const MANIFEST_REQUIRED_FIELDS = [
   "actorLimbPartIds",
   "actorLimbPresenceModes",
   "actorLimbErrorCodes",
+  "actorBlueprint",
 ] as const;
 
 const plainOwnRecord = (
@@ -284,6 +321,47 @@ const isNonEmptyUniqueStringArray = (
   isUniqueStringArray(value) &&
   value.length > 0 &&
   value.every((item) => item.trim().length > 0);
+
+const stringSetsEqual = (
+  left: readonly string[],
+  right: readonly string[],
+): boolean =>
+  left.length === right.length &&
+  left.every((value) => right.includes(value));
+
+const parseActorBlueprintCapability = (
+  value: unknown,
+): ActorBlueprintCapability | null => {
+  const record = plainOwnRecord(value);
+  if (
+    !record ||
+    Object.keys(record).length !== 5 ||
+    record.schemaVersion !== ACTOR_BLUEPRINT_SCHEMA_VERSION ||
+    !isNonEmptyUniqueStringArray(record.mounts) ||
+    !isNonEmptyUniqueStringArray(record.primitives) ||
+    !isNonEmptyUniqueStringArray(record.variantDeltaFields) ||
+    !isNonEmptyUniqueStringArray(record.errorCodes) ||
+    !stringSetsEqual(record.mounts, ACTOR_BLUEPRINT_MOUNT_IDS) ||
+    !stringSetsEqual(record.primitives, ACTOR_BLUEPRINT_PRIMITIVES) ||
+    !stringSetsEqual(
+      record.variantDeltaFields,
+      ACTOR_BLUEPRINT_VARIANT_DELTA_FIELDS,
+    ) ||
+    !stringSetsEqual(
+      record.errorCodes,
+      ACTOR_BLUEPRINT_CAPABILITY_ERROR_CODES,
+    )
+  ) {
+    return null;
+  }
+  return {
+    schemaVersion: record.schemaVersion,
+    mounts: [...record.mounts],
+    primitives: [...record.primitives],
+    variantDeltaFields: [...record.variantDeltaFields],
+    errorCodes: [...record.errorCodes],
+  };
+};
 
 const containsForbiddenId = (
   value: unknown,
@@ -470,6 +548,9 @@ export const parseRuntimeCapabilityManifest = (
   try {
     const { header, record } =
       inspectRuntimeCapabilityCompatibilityHeader(input);
+    const actorBlueprint = parseActorBlueprintCapability(
+      record.actorBlueprint,
+    );
     if (
       !MANIFEST_REQUIRED_FIELDS.every((field) =>
         hasOwnDataProperty(record, field),
@@ -484,7 +565,8 @@ export const parseRuntimeCapabilityManifest = (
       !isNonEmptyUniqueStringArray(record.lockErrorCodes) ||
       !isNonEmptyUniqueStringArray(record.actorLimbPartIds) ||
       !isNonEmptyUniqueStringArray(record.actorLimbPresenceModes) ||
-      !isNonEmptyUniqueStringArray(record.actorLimbErrorCodes)
+      !isNonEmptyUniqueStringArray(record.actorLimbErrorCodes) ||
+      actorBlueprint === null
     ) {
       return throwRuntimeCapabilityError("CAPABILITIES_INVALID");
     }
@@ -499,6 +581,7 @@ export const parseRuntimeCapabilityManifest = (
       actorLimbPartIds: [...record.actorLimbPartIds],
       actorLimbPresenceModes: [...record.actorLimbPresenceModes],
       actorLimbErrorCodes: [...record.actorLimbErrorCodes],
+      actorBlueprint,
     };
   } catch (error) {
     return sanitizeRuntimeCapabilityFailure(error);
@@ -528,4 +611,11 @@ export const getRuntimeCapabilityManifest =
     actorLimbPartIds: [...ACTOR_LIMB_PART_IDS],
     actorLimbPresenceModes: [...ACTOR_LIMB_PRESENCE_MODES],
     actorLimbErrorCodes: [...ACTOR_LIMB_ERROR_CODES],
+    actorBlueprint: {
+      schemaVersion: ACTOR_BLUEPRINT_SCHEMA_VERSION,
+      mounts: [...ACTOR_BLUEPRINT_MOUNT_IDS],
+      primitives: [...ACTOR_BLUEPRINT_PRIMITIVES],
+      variantDeltaFields: [...ACTOR_BLUEPRINT_VARIANT_DELTA_FIELDS],
+      errorCodes: [...ACTOR_BLUEPRINT_CAPABILITY_ERROR_CODES],
+    },
   });

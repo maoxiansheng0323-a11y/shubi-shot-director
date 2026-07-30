@@ -3,10 +3,57 @@ import { SceneDomainError } from "../src/domain/apply-scene-patch";
 import { SceneSession } from "../server/scene-session";
 import { resolveActorLimbPresenceUpdates } from "../src/domain/actor-anatomy";
 import { createDefaultScene } from "../src/domain/default-scene";
+import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
+import { sceneSpecSchema, type SceneSpec } from "../src/domain/scene-schema";
 import { buildRelationshipOperations } from "../src/domain/presets";
 import { createStructuredTwoActorScene } from "./helpers/structured-fixtures";
+import {
+  createBlueprintActor,
+  createGenericActorBlueprintDocument,
+} from "./helpers/actor-blueprint-fixtures";
 
 describe("SceneSession history", () => {
+  it("keeps an unused snapshot through removal, undo, and redo", () => {
+    const scene: SceneSpec = sceneSpecSchema.parse(createDefaultScene());
+    const snapshot = createActorBlueprintSnapshot(
+      createGenericActorBlueprintDocument(),
+    );
+    const first = createBlueprintActor({
+      id: "actor_entity_blueprint_1",
+      slot: "actor_female_1",
+    });
+    const second = createBlueprintActor({
+      id: "actor_entity_blueprint_2",
+      slot: "actor_female_2",
+      variantId: "repaired",
+    });
+    scene.actorBlueprints = [snapshot];
+    scene.entities.push(first, second);
+    const session = new SceneSession(sceneSpecSchema.parse(scene));
+
+    const removed = session.applyPatch({
+      schemaVersion: 5,
+      patchId: "patch_remove_blueprint_instances",
+      sceneId: scene.sceneId,
+      baseRevision: scene.revision,
+      source: "manual",
+      preserveLock: true,
+      operations: [
+        { op: "entity.remove", entityId: first.id },
+        { op: "entity.remove", entityId: second.id },
+      ],
+    });
+    expect(removed.actorBlueprints).toEqual([snapshot]);
+    expect(
+      removed.entities.some(
+        ({ id }) => id === first.id || id === second.id,
+      ),
+    ).toBe(false);
+
+    expect(session.undo()?.actorBlueprints).toEqual([snapshot]);
+    expect(session.redo()?.actorBlueprints).toEqual([snapshot]);
+  });
+
   it("undoes and redoes a patch while keeping revisions monotonic", () => {
     const session = new SceneSession(createDefaultScene());
     session.applyPatch({

@@ -1,6 +1,9 @@
 export {
+  actorEntitySchema,
+  blueprintActorEntitySchema,
   cameraLensSchema,
   compositionGoalsSchema,
+  legacyActorEntitySchema,
   jsonObjectSchema,
   outputSpecSchema,
   poseSchema,

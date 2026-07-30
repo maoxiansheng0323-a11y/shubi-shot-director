@@ -1,6 +1,6 @@
 import { applyScenePatch } from "../../src/domain/apply-scene-patch";
 import { createDefaultScene } from "../../src/domain/default-scene";
-import { actorAnchorWorldPoint } from "../../src/domain/humanoid-rig";
+import { actorAnchorWorldPoint } from "../../src/domain/actor-projection";
 import { buildRelationshipOperations } from "../../src/domain/presets";
 import { lookAtQuaternion } from "../../src/domain/scene-math";
 import {

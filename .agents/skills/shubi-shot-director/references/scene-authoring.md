@@ -12,12 +12,12 @@ Use this reference only for an initial shot or an explicitly requested new shot.
    environment entity. Include generic actors and props plus at least one
    perspective camera.
 5. Give every new and unfinished graybox entity `lockMode: "none"`. Do not create a workflow or user lock merely because an entity is present in an initial submission.
-6. For every actor, author a complete `body.limbPresence` object with exactly these twelve keys in canonical order: `upper_arm_l`, `forearm_l`, `hand_l`, `upper_arm_r`, `forearm_r`, `hand_r`, `upper_leg_l`, `lower_leg_l`, `foot_l`, `upper_leg_r`, `lower_leg_r`, `foot_r`. Use only `present` or `absent`.
+6. Select exactly one strict actor branch. A legacy actor has `rig`, `body`, and a complete twelve-key `body.limbPresence` map. A blueprint actor has `blueprintInstance` and no legacy `rig`, `body`, or instance-level limb map; its referenced canonical snapshot must already exist in `actorBlueprints`.
 7. Materialize actor transforms, poses, contact, relationship blocking, camera rotation, and composition constraints. Leave no instruction for runtime semantic inference.
 8. Persist focal length and sensor width, not FOV. Persist the camera quaternion, not a second look-at state.
 9. Use 16:9 output; default to 1920 x 1080 unless the user requests another supported resolution.
 10. Use generic IDs, slots, labels, title, and constraint IDs. Exclude source wording, aliases, profile data, and private asset paths.
-11. Pair the scene with a v4 create `IntentReport`. Require `allowPartial: false`, `canApplySafely: true`, empty unsupported/unresolved arrays, and valid evidence for every required recognized constraint. Use all twelve exact limb evidence paths when limb presence is required.
+11. Pair the scene with a v5 create `IntentReport`. Require `allowPartial: false`, `canApplySafely: true`, empty unsupported/unresolved arrays, and valid evidence for every required recognized constraint. Use all twelve exact limb evidence paths when limb presence is required.
 12. Put both objects in one transient scene-submission envelope and call `scene submit --file`.
 
 Do not use a complete SceneSpec for a follow-up to an existing shot.
@@ -70,6 +70,12 @@ Treat each chain as ordered from parent to descendant:
 An absent parent closes every descendant to absent. A present child restores every required ancestor to present. Reject one explicit parent-absent plus descendant-present request as `LIMB_HIERARCHY_CONFLICT`; rewrite one consistent operation rather than storing an invalid map.
 
 Replacement parts, prostheses, mechanical limbs, sockets, and custom meshes are unsupported. Do not express them as limb presence, props, hidden geometry, zero scale, detached geometry, pose state, preset parameters, or source metadata.
+
+This restriction applies to legacy actor edits and arbitrary imported geometry. A blueprint snapshot may contain only its strict box, sphere, and cylinder modules at the supported mounts. Read `actor-blueprints.md`; do not reinterpret those modules as legacy limb-presence state.
+
+## Blueprint actors
+
+When an external Actor Blueprint is explicitly supplied, validate it at the Host-only `blueprint validate --file` boundary, embed one canonical path-free snapshot in `actorBlueprints`, and reference it from any number of strict `blueprintInstance` actors. Reuse the same snapshot for the same SHA-256, keep every actor ID and slot unique, and never retain the source path. The SceneSpec remains independently reloadable after the external file is moved or deleted.
 
 ## Built-in graybox registry
 

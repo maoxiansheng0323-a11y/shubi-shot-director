@@ -17,7 +17,7 @@ const stateFor = (
 
 describe("authoritative limb presence command", () => {
   it("reads the latest scene revision each time a stable callback is invoked", async () => {
-    let currentScene = createDefaultScene();
+    let currentScene: SceneSpec = createDefaultScene();
     const submitted = [] as Array<ReturnType<typeof createActorLimbPresencePatch>>;
     const getState = () =>
       stateFor(currentScene, async (patch) => {

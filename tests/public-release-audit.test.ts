@@ -79,6 +79,26 @@ describe("public release audit", () => {
     expect(JSON.stringify(findings)).not.toContain(apiSecret);
   });
 
+  it("rejects blueprint path fields and arbitrary drive paths in runtime artifacts", async () => {
+    const { auditText } = await loadAudit();
+    const marker = ["D:", "workspace", "actor.json"].join("\\");
+    const findings = auditText(
+      "fixtures/runtime.scene.json",
+      JSON.stringify({
+        sourcePath: marker,
+        sourceFile: "actor.json",
+        externalPath: marker,
+        blueprintFile: "actor.json",
+      }),
+    );
+
+    expect(findings.map(({ code }) => code)).toEqual([
+      "MACHINE_ABSOLUTE_PATH",
+      "BLUEPRINT_PROVENANCE_FIELD",
+    ]);
+    expect(JSON.stringify(findings)).not.toContain(marker);
+  });
+
   it("detects caller-supplied private markers by index only", async () => {
     const { auditText } = await loadAudit();
     const privateMarker = ["private", "project", "marker"].join("-");

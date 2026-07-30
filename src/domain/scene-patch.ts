@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { actorLimbPresenceModeSchema } from "./actor-anatomy";
+import {
+  actorBlueprintSlugSchema,
+  actorBlueprintSnapshotSchema,
+  actorBlueprintSnapshotStructureSchema,
+} from "./actor-blueprint";
 import { entityLockModeSchema } from "./entity-lock";
 import {
   cameraLensSchema,
@@ -52,6 +57,12 @@ export const actorLimbPresenceUpdatesSchema = z
   );
 
 const operationSchemas = [
+  z
+    .object({
+      op: z.literal("actor.blueprint.register"),
+      snapshot: actorBlueprintSnapshotStructureSchema,
+    })
+    .strict(),
   z
     .object({
       op: z.literal("entity.add"),
@@ -121,6 +132,13 @@ const operationSchemas = [
       op: z.literal("actor.limb-presence.set"),
       actorId: entityIdSchema,
       updates: actorLimbPresenceUpdatesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("actor.variant.set"),
+      actorId: entityIdSchema,
+      variantId: actorBlueprintSlugSchema,
     })
     .strict(),
   z
@@ -268,7 +286,7 @@ export const sceneOperationSchema = z.discriminatedUnion(
   operationSchemas,
 );
 
-export const scenePatchSchema = z
+export const scenePatchStructureSchema = z
   .object({
     schemaVersion: z.literal(PATCH_SCHEMA_VERSION),
     patchId: z
@@ -283,6 +301,29 @@ export const scenePatchSchema = z
     operations: z.array(sceneOperationSchema).min(1).max(256),
   })
   .strict();
+
+export const scenePatchSchema = scenePatchStructureSchema.superRefine(
+  (patch, context) => {
+    for (const [operationIndex, operation] of patch.operations.entries()) {
+      if (operation.op !== "actor.blueprint.register") continue;
+      const parsed = actorBlueprintSnapshotSchema.safeParse(
+        operation.snapshot,
+      );
+      if (parsed.success) continue;
+      for (const issue of parsed.error.issues) {
+        context.addIssue({
+          ...issue,
+          path: [
+            "operations",
+            operationIndex,
+            "snapshot",
+            ...issue.path,
+          ],
+        });
+      }
+    }
+  },
+);
 
 export type SceneOperation = z.infer<typeof sceneOperationSchema>;
 export type ScenePatch = z.infer<typeof scenePatchSchema>;

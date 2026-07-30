@@ -1,18 +1,18 @@
 import { actorVisibleRigBounds } from "../domain/actor-visible-bounds";
-import { actorAnchorWorldPoint } from "../domain/humanoid-rig";
+import { actorAnchorWorldPoint } from "../domain/actor-projection";
 import {
   addVectors,
   lookAtQuaternion,
   rotateVector,
   transformPoint,
 } from "../domain/scene-math";
-import type {
-  CameraEntity,
-  SceneConstraint,
-  SceneEntity,
-  SceneSpec,
-  TransformSpec,
-  Vec3,
+import {
+  type CameraEntity,
+  type SceneConstraint,
+  type SceneEntity,
+  type SceneSpec,
+  type TransformSpec,
+  type Vec3,
 } from "../domain/scene-schema";
 
 export type ShotNavigationKey =
@@ -109,13 +109,16 @@ const propWorldPoints = (
   return points;
 };
 
-const visibleEntityPoints = (entity: SceneEntity): Vec3[] => {
+const visibleEntityPoints = (
+  scene: SceneSpec,
+  entity: SceneEntity,
+): Vec3[] => {
   if (!entity.visible || entity.kind === "camera") {
     return [];
   }
   switch (entity.kind) {
     case "actor":
-      return actorVisibleRigBounds(entity).worldPoints;
+      return actorVisibleRigBounds(scene, entity).worldPoints;
     case "prop":
       return propWorldPoints(entity);
     case "environment":
@@ -123,11 +126,16 @@ const visibleEntityPoints = (entity: SceneEntity): Vec3[] => {
   }
 };
 
-const visibleEntityCenter = (entity: SceneEntity): Vec3 | null =>
-  pointsCenter(visibleEntityPoints(entity));
+const visibleEntityCenter = (
+  scene: SceneSpec,
+  entity: SceneEntity,
+): Vec3 | null =>
+  pointsCenter(visibleEntityPoints(scene, entity));
 
 const visibleSceneBoundsCenter = (scene: SceneSpec): Vec3 | null => {
-  const points = scene.entities.flatMap(visibleEntityPoints);
+  const points = scene.entities.flatMap((entity) =>
+    visibleEntityPoints(scene, entity),
+  );
   if (scene.spatialLayout) {
     for (const region of scene.spatialLayout.regions) {
       if (!region.visible) {
@@ -157,7 +165,7 @@ const resolveConstraintTarget = (
   }
   const target =
     subject.kind === "actor"
-      ? actorAnchorWorldPoint(subject, constraint.anchor)
+      ? actorAnchorWorldPoint(scene, subject, constraint.anchor)
       : ([...subject.transform.positionM] as Vec3);
   return finiteVector(target) ? target : null;
 };
@@ -319,7 +327,7 @@ export const deriveShotOrbitTarget = (
       (candidate) =>
         candidate.id === entityId && candidate.visible,
     );
-    const targetM = entity ? visibleEntityCenter(entity) : null;
+    const targetM = entity ? visibleEntityCenter(scene, entity) : null;
     if (targetM) {
       return { targetM, source: "framing" };
     }

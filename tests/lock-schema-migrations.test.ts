@@ -169,7 +169,7 @@ describe("lock schema migrations", () => {
     },
   );
 
-  it("accepts exactly the three canonical v4 SceneSpec lock modes", () => {
+  it("accepts exactly the three canonical v5 SceneSpec lock modes", () => {
     const canonical = createCanonicalScene();
 
     expect(sceneSpecSchema.safeParse(canonical).success).toBe(true);

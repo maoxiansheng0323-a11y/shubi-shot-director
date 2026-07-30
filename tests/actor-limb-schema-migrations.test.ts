@@ -18,7 +18,11 @@ import {
 import { INTENT_REPORT_SCHEMA_VERSION } from "../src/domain/intent-report";
 import { PATCH_SCHEMA_VERSION, SCENE_SCHEMA_VERSION } from "../src/domain/schema-versions";
 import { scenePatchSchema } from "../src/domain/scene-patch";
-import { sceneSpecSchema } from "../src/domain/scene-schema";
+import {
+  isLegacyActorEntity,
+  sceneSpecSchema,
+  type SceneSpec,
+} from "../src/domain/scene-schema";
 
 const allAbsent = (): ActorLimbPresence =>
   Object.fromEntries(
@@ -44,9 +48,9 @@ const sceneWithoutLimbPresence = (schemaVersion: 1 | 2 | 3) => {
   return current;
 };
 
-const actorFromScene = (scene: ReturnType<typeof createDefaultScene>) => {
+const actorFromScene = (scene: SceneSpec) => {
   const actor = scene.entities.find((entity) => entity.kind === "actor");
-  if (!actor || actor.kind !== "actor") throw new Error("Default scene is missing actor.");
+  if (!isLegacyActorEntity(actor)) throw new Error("Default scene is missing actor.");
   return actor;
 };
 
@@ -195,7 +199,7 @@ describe("canonical actor limb anatomy", () => {
 });
 
 describe("actor limb schema migrations", () => {
-  it("requires limbPresence in canonical v4 actors", () => {
+  it("requires limbPresence in canonical v5 legacy actors", () => {
     const canonical = structuredClone(createDefaultScene()) as unknown as Record<
       string,
       unknown
@@ -323,7 +327,7 @@ describe("actor limb schema migrations", () => {
       ]);
       const add = parsed.operations[1];
       expect(add.op).toBe("entity.add");
-      if (add.op === "entity.add" && add.value.kind === "actor") {
+      if (add.op === "entity.add" && isLegacyActorEntity(add.value)) {
         expect(add.value.body.limbPresence).toEqual(
           createAllPresentLimbPresence(),
         );

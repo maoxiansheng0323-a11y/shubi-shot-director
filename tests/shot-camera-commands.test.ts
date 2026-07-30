@@ -26,7 +26,7 @@ const requireCamera = (scene: SceneSpec): CameraEntity => {
 };
 
 const createHarness = (initialScene = createDefaultScene()) => {
-  let scene = initialScene;
+  let scene: SceneSpec = initialScene;
   const applyPatch = vi.fn(async (patch: ScenePatch) => {
     scene = applyScenePatch(scene, patch).next;
     return scene;

@@ -4,6 +4,7 @@ import {
   readFile,
   readdir,
   rm,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -15,11 +16,20 @@ import {
 } from "../server/scene-persistence";
 import { resolveActorLimbPresenceUpdates } from "../src/domain/actor-anatomy";
 import { createDefaultScene } from "../src/domain/default-scene";
+import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
 import {
   parseSceneFile,
   serializeSceneFile,
 } from "../src/editor/scene-files";
-import type { SceneSpec } from "../src/domain/scene-schema";
+import {
+  isBlueprintActorEntity,
+  sceneSpecSchema,
+  type SceneSpec,
+} from "../src/domain/scene-schema";
+import {
+  createBlueprintActor,
+  createGenericActorBlueprintDocument,
+} from "./helpers/actor-blueprint-fixtures";
 
 const temporaryDirectories: string[] = [];
 
@@ -40,7 +50,49 @@ afterEach(async () => {
 });
 
 describe("ScenePersistence", () => {
-  it("serializes and reparses the exact canonical v4 limb map", async () => {
+  it("reloads two independent instances from one embedded snapshot after the source file is gone", async () => {
+    const runtimeDirectory = await createRuntimeDirectory();
+    const externalFile = path.join(
+      path.dirname(runtimeDirectory),
+      "generic-actor-blueprint.json",
+    );
+    const document = createGenericActorBlueprintDocument();
+    await writeFile(externalFile, JSON.stringify(document), "utf8");
+
+    const scene: SceneSpec = sceneSpecSchema.parse(createDefaultScene());
+    scene.actorBlueprints = [createActorBlueprintSnapshot(document)];
+    const first = createBlueprintActor({
+      id: "actor_entity_blueprint_1",
+      slot: "actor_female_1",
+      variantId: "damaged",
+    });
+    first.transform.positionM = [-1, 0.81, 0.5];
+    first.color = "#b4bdc8";
+    const second = createBlueprintActor({
+      id: "actor_entity_blueprint_2",
+      slot: "actor_female_2",
+      variantId: "repaired",
+    });
+    second.transform.positionM = [1.25, 0.92, -0.5];
+    second.pose.joints.shoulder_l = [0, 0, 0, 1];
+    second.color = "#8894a2";
+    second.lockMode = "workflow";
+    scene.entities.push(first, second);
+
+    const persistence = new ScenePersistence(runtimeDirectory);
+    await persistence.persist(sceneSpecSchema.parse(scene));
+    await unlink(externalFile);
+    const reloaded = await new ScenePersistence(runtimeDirectory).load();
+    const actors = reloaded.entities.filter(isBlueprintActorEntity);
+
+    expect(reloaded.actorBlueprints).toHaveLength(1);
+    expect(actors).toHaveLength(2);
+    expect(actors.find(({ id }) => id === first.id)).toMatchObject(first);
+    expect(actors.find(({ id }) => id === second.id)).toMatchObject(second);
+    expect(JSON.stringify(reloaded)).not.toContain(externalFile);
+  });
+
+  it("serializes and reparses the exact canonical v5 legacy limb map", async () => {
     const scene = createDefaultScene();
     const actor = scene.entities.find((entity) => entity.kind === "actor");
     if (!actor || actor.kind !== "actor") {
@@ -58,7 +110,7 @@ describe("ScenePersistence", () => {
       (entity) => entity.kind === "actor",
     );
 
-    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: 4 });
+    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: 5 });
     expect(reparsedActor).toMatchObject({
       body: { limbPresence: expectedPresence },
     });
