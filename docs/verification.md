@@ -4,6 +4,38 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v0.8.0 refined white mannequin gates
+
+Run the asset, renderer, compatibility, and public checks before the full
+repository gate:
+
+```powershell
+pnpm exec vitest run tests/mannequin-asset.test.ts tests/mannequin-converter.test.ts tests/refined-mannequin-renderer.test.ts tests/actor-profile-rendering.test.ts
+pnpm exec vitest run tests/runtime-capabilities.test.ts tests/skill-compatibility.test.ts tests/skill-scripts.test.ts tests/public-release-audit.test.ts tests/public-onboarding.test.ts
+pnpm verify
+```
+
+Require application 0.8.0 with capability contract 2, workspace routing 1,
+and SceneSpec/ScenePatch/IntentReport version 6. The committed CC0 asset must
+match its manifest SHA-256 and byte length, remain below 2 MB, contain exactly
+sixteen normalized mesh nodes and one material, and contain no skin, animation,
+camera, light, image, texture, external URI, or private metadata. The
+reproducible Blender converter must exclude sex-specific breast geometry,
+average topology-verified female/male sources, join fingers into hands and toes
+into feet, and use one subdivision level.
+
+In the real browser, verify neutral front and three-quarter views, a complete
+Walking pose, a bent arm, minimum and maximum supported stature, incomplete
+limb chains, and a forced asset-load failure. Require a nonblank WebGL canvas,
+correct framing, preserved ground contact, no incoherent overlap, no relevant
+console or page errors, and the complete procedural fallback when loading or
+validation fails. Export one browser-authored 1920 x 1080 final-camera PNG and
+verify its signature, dimensions, byte-derived SHA-256, scene ID, revision, and
+warning codes. Visual taste remains a human approval boundary.
+
+The v0.7 actor-control and migration gates below remain required historical
+compatibility coverage; their dated results are not v0.8 asset evidence.
+
 ## v0.7.0 adjustable actor puppet gates
 
 Run the public-contract and actor-puppet automation before the full repository gate:
