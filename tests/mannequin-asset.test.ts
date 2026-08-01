@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type {
   ActorRigFrame,
@@ -17,6 +21,45 @@ import {
 const identityFrame: ActorRigFrame = {
   position: [0, 0, 0],
   rotation: [0, 0, 0, 1],
+};
+
+const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
+
+interface GltfDocument {
+  readonly asset: { readonly version: string };
+  readonly accessors: readonly {
+    readonly count: number;
+    readonly min?: readonly number[];
+    readonly max?: readonly number[];
+  }[];
+  readonly animations?: readonly unknown[];
+  readonly cameras?: readonly unknown[];
+  readonly images?: readonly unknown[];
+  readonly materials?: readonly { readonly name?: string }[];
+  readonly meshes?: readonly {
+    readonly name?: string;
+    readonly primitives: readonly {
+      readonly indices?: number;
+      readonly attributes: { readonly POSITION: number };
+    }[];
+  }[];
+  readonly nodes?: readonly {
+    readonly name?: string;
+    readonly mesh?: number;
+  }[];
+  readonly skins?: readonly unknown[];
+  readonly textures?: readonly unknown[];
+}
+
+const readGlbJson = (bytes: Buffer): GltfDocument => {
+  expect(bytes.subarray(0, 4).toString("ascii")).toBe("glTF");
+  expect(bytes.readUInt32LE(4)).toBe(2);
+  expect(bytes.readUInt32LE(8)).toBe(bytes.length);
+  const jsonLength = bytes.readUInt32LE(12);
+  expect(bytes.subarray(16, 20).toString("ascii")).toBe("JSON");
+  return JSON.parse(
+    bytes.subarray(20, 20 + jsonLength).toString("utf8"),
+  ) as GltfDocument;
 };
 
 const createManifest = () => ({
@@ -85,7 +128,14 @@ describe("built-in refined mannequin asset", () => {
     ["remote", { assetUrl: "https://example.invalid/actor.glb" }],
     ["protocol relative", { assetUrl: "//example.invalid/actor.glb" }],
     ["traversal", { assetUrl: "/assets/../actor.glb" }],
-    ["filesystem", { assetUrl: "C:\\models\\actor.glb" }],
+    [
+      "filesystem",
+      {
+        assetUrl: ["C:", "models", "actor.glb"].join(
+          String.fromCharCode(92),
+        ),
+      },
+    ],
     ["wrong license", { license: "MIT" }],
     ["extra material", { file: { materialCount: 2 } }],
     ["invalid hash", { file: { sha256: "invalid" } }],
@@ -227,5 +277,74 @@ describe("built-in refined mannequin asset", () => {
       position: [0.02, -0.04, 0.08],
       scale: [0.12, 0.08, 0.24],
     });
+  });
+
+  it("matches the committed GLB integrity, topology, and normalized bounds", async () => {
+    const manifestSource = await readFile(
+      path.join(
+        repositoryRoot,
+        "public",
+        "assets",
+        "refined-white-mannequin-v1.json",
+      ),
+      "utf8",
+    );
+    const bytes = await readFile(
+      path.join(
+        repositoryRoot,
+        "public",
+        "assets",
+        "refined-white-mannequin-v1.glb",
+      ),
+    );
+    const manifest = parseRefinedMannequinManifest(
+      JSON.parse(manifestSource),
+    );
+    const gltf = readGlbJson(bytes);
+
+    expect(bytes).toHaveLength(manifest.file.byteLength);
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(
+      manifest.file.sha256,
+    );
+    expect(gltf.asset.version).toBe("2.0");
+    expect(gltf.materials?.map(({ name }) => name)).toEqual([
+      "refined_white",
+    ]);
+    expect(gltf.nodes?.map(({ name }) => name)).toEqual(
+      REFINED_SECTION_IDS,
+    );
+    expect(gltf.meshes).toHaveLength(REFINED_SECTION_IDS.length);
+    expect(gltf.animations ?? []).toHaveLength(0);
+    expect(gltf.skins ?? []).toHaveLength(0);
+    expect(gltf.cameras ?? []).toHaveLength(0);
+    expect(gltf.images ?? []).toHaveLength(0);
+    expect(gltf.textures ?? []).toHaveLength(0);
+
+    let triangleCount = 0;
+    for (const [index, sectionId] of REFINED_SECTION_IDS.entries()) {
+      const node = gltf.nodes?.[index];
+      const mesh = gltf.meshes?.[index];
+      expect(node).toMatchObject({ name: sectionId, mesh: index });
+      expect(mesh?.name).toBe(`${sectionId}_mesh`);
+      expect(mesh?.primitives).toHaveLength(1);
+      const primitive = mesh?.primitives[0];
+      if (!primitive) continue;
+      const positionAccessor = gltf.accessors[primitive.attributes.POSITION];
+      const indexAccessor =
+        primitive.indices === undefined
+          ? undefined
+          : gltf.accessors[primitive.indices];
+      triangleCount += (indexAccessor?.count ?? positionAccessor?.count ?? 0) / 3;
+      for (const [actual, expected] of [
+        [positionAccessor?.min, [-0.5, -0.5, -0.5]],
+        [positionAccessor?.max, [0.5, 0.5, 0.5]],
+      ] as const) {
+        expect(actual).toHaveLength(3);
+        for (let axis = 0; axis < 3; axis += 1) {
+          expect(actual?.[axis]).toBeCloseTo(expected[axis] ?? 0, 5);
+        }
+      }
+    }
+    expect(triangleCount).toBe(manifest.file.triangleCount);
   });
 });
