@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { BoxGeometry, Group, Mesh } from "three";
 import { describe, expect, it } from "vitest";
 import type {
   ActorRigFrame,
@@ -13,6 +14,7 @@ import {
   BUILT_IN_REFINED_MANNEQUIN_URL,
   REFINED_MANNEQUIN_MAX_BYTES,
   REFINED_SECTION_IDS,
+  createRefinedGeometryCatalog,
   parseRefinedMannequinManifest,
   refinedPrimitiveTransform,
   refinedSectionForPrimitive,
@@ -346,5 +348,73 @@ describe("built-in refined mannequin asset", () => {
       }
     }
     expect(triangleCount).toBe(manifest.file.triangleCount);
+  });
+
+  it("validates and clones exactly one geometry for every runtime section", () => {
+    const root = new Group();
+    const sources = new Map<string, BoxGeometry>();
+    for (const sectionId of REFINED_SECTION_IDS) {
+      const geometry = new BoxGeometry(1, 1, 1);
+      sources.set(sectionId, geometry);
+      const mesh = new Mesh(geometry);
+      mesh.name = sectionId;
+      root.add(mesh);
+    }
+
+    const catalog = createRefinedGeometryCatalog(root);
+    expect(Object.keys(catalog)).toEqual(REFINED_SECTION_IDS);
+    for (const sectionId of REFINED_SECTION_IDS) {
+      expect(catalog[sectionId]).not.toBe(sources.get(sectionId));
+      expect(catalog[sectionId].getAttribute("position").count).toBe(
+        sources.get(sectionId)?.getAttribute("position").count,
+      );
+      catalog[sectionId].dispose();
+      sources.get(sectionId)?.dispose();
+    }
+  });
+
+  it("rejects missing, duplicate, unexpected, and non-mesh runtime nodes", () => {
+    const createRoot = () => {
+      const root = new Group();
+      for (const sectionId of REFINED_SECTION_IDS) {
+        const mesh = new Mesh(new BoxGeometry(1, 1, 1));
+        mesh.name = sectionId;
+        root.add(mesh);
+      }
+      return root;
+    };
+    const invalidRoots = [];
+
+    const missing = createRoot();
+    missing.remove(missing.children[0]);
+    invalidRoots.push(missing);
+
+    const duplicate = createRoot();
+    const duplicateMesh = new Mesh(new BoxGeometry(1, 1, 1));
+    duplicateMesh.name = REFINED_SECTION_IDS[0];
+    duplicate.add(duplicateMesh);
+    invalidRoots.push(duplicate);
+
+    const unexpected = createRoot();
+    const unexpectedMesh = new Mesh(new BoxGeometry(1, 1, 1));
+    unexpectedMesh.name = "unexpected";
+    unexpected.add(unexpectedMesh);
+    invalidRoots.push(unexpected);
+
+    const nonMesh = createRoot();
+    nonMesh.children[0].name = "not_a_section";
+    const group = new Group();
+    group.name = REFINED_SECTION_IDS[0];
+    nonMesh.add(group);
+    invalidRoots.push(nonMesh);
+
+    for (const root of invalidRoots) {
+      expect(() => createRefinedGeometryCatalog(root)).toThrow(
+        "REFINED_MANNEQUIN_ASSET_INVALID",
+      );
+      root.traverse((object) => {
+        if (object instanceof Mesh) object.geometry.dispose();
+      });
+    }
   });
 });

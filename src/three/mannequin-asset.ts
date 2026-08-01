@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { BufferGeometry, Object3D } from "three";
 import type {
   ActorProjectionEllipsoidPrimitive,
   ActorProjectionPrimitive,
@@ -31,6 +32,10 @@ export const REFINED_SECTION_IDS = [
 ] as const;
 
 export type RefinedSectionId = (typeof REFINED_SECTION_IDS)[number];
+
+export type RefinedGeometryCatalog = Readonly<
+  Record<RefinedSectionId, BufferGeometry>
+>;
 
 const profileSectionIds = new Set<RefinedSectionId>([
   "pelvis",
@@ -146,6 +151,54 @@ export const parseRefinedMannequinManifest = (
 
 const isRefinedSectionId = (value: string): value is RefinedSectionId =>
   (REFINED_SECTION_IDS as readonly string[]).includes(value);
+
+export const createRefinedGeometryCatalog = (
+  root: Object3D,
+): RefinedGeometryCatalog => {
+  const sourceGeometries = new Map<RefinedSectionId, BufferGeometry>();
+  let invalid = false;
+  root.traverse((object) => {
+    const candidate = object as Object3D & {
+      readonly isMesh?: boolean;
+      readonly geometry?: BufferGeometry & {
+        readonly isBufferGeometry?: boolean;
+      };
+    };
+    if (candidate.isMesh === true) {
+      if (
+        !isRefinedSectionId(candidate.name) ||
+        candidate.geometry?.isBufferGeometry !== true ||
+        sourceGeometries.has(candidate.name)
+      ) {
+        invalid = true;
+        return;
+      }
+      sourceGeometries.set(candidate.name, candidate.geometry);
+      return;
+    }
+    if (isRefinedSectionId(candidate.name)) invalid = true;
+  });
+  if (
+    invalid ||
+    sourceGeometries.size !== REFINED_SECTION_IDS.length ||
+    REFINED_SECTION_IDS.some((id) => !sourceGeometries.has(id))
+  ) {
+    throw new Error("REFINED_MANNEQUIN_ASSET_INVALID");
+  }
+
+  const catalog = {} as Record<RefinedSectionId, BufferGeometry>;
+  try {
+    for (const id of REFINED_SECTION_IDS) {
+      const geometry = sourceGeometries.get(id);
+      if (!geometry) throw new Error("REFINED_MANNEQUIN_ASSET_INVALID");
+      catalog[id] = geometry.clone();
+    }
+  } catch {
+    for (const geometry of Object.values(catalog)) geometry.dispose();
+    throw new Error("REFINED_MANNEQUIN_ASSET_INVALID");
+  }
+  return Object.freeze(catalog);
+};
 
 export const refinedSectionForPrimitive = (
   primitive: ActorProjectionPrimitive,
