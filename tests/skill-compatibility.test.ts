@@ -43,6 +43,7 @@ const wrapperPath = path.resolve(
   "scripts",
   "director.mjs",
 );
+const skillDirectory = path.dirname(path.dirname(wrapperPath));
 
 const commandIds = [
   "doctor",
@@ -79,7 +80,37 @@ const featureIds = [
   "actor.modular-primitives",
   "actor.variants",
   "actor.resolved-projection",
+  "actor.height",
+  "actor.pose-joints",
+  "actor.blueprint-instance-limb-overrides",
 ] as const;
+const actorPuppet = {
+  heightLimitsM: { min: 1, max: 2.4 },
+  jointIds: [
+    "pelvis",
+    "spine",
+    "neck",
+    "upper_arm_l",
+    "forearm_l",
+    "hand_l",
+    "upper_arm_r",
+    "forearm_r",
+    "hand_r",
+    "upper_leg_l",
+    "lower_leg_l",
+    "foot_l",
+    "upper_leg_r",
+    "lower_leg_r",
+    "foot_r",
+  ],
+  operationIds: ["actor.height.set", "actor.pose.joints.set"],
+  errorCodes: [
+    "ACTOR_HEIGHT_TARGET_INVALID",
+    "ACTOR_HEIGHT_RANGE_INVALID",
+    "ACTOR_JOINT_TARGET_INVALID",
+    "ACTOR_JOINT_ID_INVALID",
+  ],
+} as const;
 const actorBlueprint = {
   schemaVersion: 1,
   mounts: [
@@ -205,9 +236,9 @@ const v2Manifest = (
   applicationVersion: "1.0.0",
   bridgeProtocolVersion: 1,
   workspaceRoutingVersion: 1,
-  sceneSchemaVersion: 5,
-  patchSchemaVersion: 5,
-  intentReportSchemaVersion: 5,
+  sceneSchemaVersion: 6,
+  patchSchemaVersion: 6,
+  intentReportSchemaVersion: 6,
   semanticAuthority: "host",
   inputContract: "structured-only",
   modelIntegration: "none",
@@ -221,6 +252,7 @@ const v2Manifest = (
   actorLimbPartIds: [...actorLimbPartIds],
   actorLimbPresenceModes: [...actorLimbPresenceModes],
   actorLimbErrorCodes: [...actorLimbErrorCodes],
+  actorPuppet: structuredClone(actorPuppet),
   actorBlueprint: structuredClone(actorBlueprint),
   ...overrides,
 });
@@ -411,15 +443,16 @@ const buildPlan = (
     doctorData,
     skillBridgeProtocolVersion: 1,
     skillWorkspaceRoutingVersion: 1,
-    skillSceneSchemaVersion: 5,
-    skillPatchSchemaVersion: 5,
-    skillIntentReportSchemaVersion: 5,
+    skillSceneSchemaVersion: 6,
+    skillPatchSchemaVersion: 6,
+    skillIntentReportSchemaVersion: 6,
     skillEntityLockModes: [...entityLockModes],
     skillPatchPolicyFields: [...patchPolicyFields],
     skillLockErrorCodes: [...lockErrorCodes],
     skillActorLimbPartIds: [...actorLimbPartIds],
     skillActorLimbPresenceModes: [...actorLimbPresenceModes],
     skillActorLimbErrorCodes: [...actorLimbErrorCodes],
+    skillActorPuppet: structuredClone(actorPuppet),
     skillActorBlueprint: structuredClone(actorBlueprint),
     ...overrides,
   });
@@ -462,6 +495,72 @@ beforeAll(async () => {
   planner = (await import(
     /* @vite-ignore */ plannerModuleUrl
   )) as PlannerModule;
+});
+
+describe("v0.7 portable Skill contract", () => {
+  it("publishes the canonical v6 actor puppet metadata, schemas, and authoring guidance", async () => {
+    const referenceNames = [
+      "scene-authoring.md",
+      "patch-authoring.md",
+      "intent-report.md",
+      "actor-blueprints.md",
+      "visual-qa.md",
+    ] as const;
+    const generatedNames = [
+      "scene-spec.schema.json",
+      "scene-patch.schema.json",
+      "intent-report.schema.json",
+      "scene-submission.schema.json",
+      "patch-submission.schema.json",
+    ] as const;
+    const [runtimeSource, skillSource, referenceSources, generatedSources] =
+      await Promise.all([
+        readFile(path.join(skillDirectory, "runtime.json"), "utf8"),
+        readFile(path.join(skillDirectory, "SKILL.md"), "utf8"),
+        Promise.all(
+          referenceNames.map((name) =>
+            readFile(path.join(skillDirectory, "references", name), "utf8"),
+          ),
+        ),
+        Promise.all(
+          generatedNames.map((name) =>
+            readFile(
+              path.join(skillDirectory, "references", "generated", name),
+              "utf8",
+            ),
+          ),
+        ),
+      ]);
+    const runtime = JSON.parse(runtimeSource) as Record<string, unknown>;
+    const guidance = [skillSource, ...referenceSources].join("\n");
+    const generated = generatedSources.join("\n");
+
+    expect(runtime).toMatchObject({
+      capabilitiesContractVersion: 2,
+      workspaceRoutingVersion: 1,
+      sceneSchemaVersion: 6,
+      patchSchemaVersion: 6,
+      intentReportSchemaVersion: 6,
+      actorPuppet: structuredClone(actorPuppet),
+    });
+    for (const feature of featureIds.slice(-3)) {
+      expect(guidance).toContain(feature);
+    }
+    for (const jointId of actorPuppet.jointIds) {
+      expect(guidance).toContain(jointId);
+    }
+    for (const operationId of actorPuppet.operationIds) {
+      expect(guidance).toContain(operationId);
+      expect(generated).toContain(operationId);
+    }
+    for (const errorCode of actorPuppet.errorCodes) {
+      expect(guidance).toContain(errorCode);
+    }
+    expect(guidance).toContain("1.0-2.4");
+    expect(guidance).toContain("limbPresenceOverrides");
+    expect(generated).toContain("heightScale");
+    expect(generated).toContain("limbPresenceOverrides");
+  });
 });
 
 afterEach(async () => {
@@ -861,7 +960,7 @@ describe("v2 compatibility planner", () => {
       {
         semanticAuthority: "model",
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 6,
+        sceneSchemaVersion: 7,
         entityLockModes: ["none", "workflow", "system"],
       },
       "SEMANTIC_BOUNDARY_VIOLATION",
@@ -870,7 +969,7 @@ describe("v2 compatibility planner", () => {
       "protocol before altered lock capabilities",
       {
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 6,
+        sceneSchemaVersion: 7,
         entityLockModes: ["none", "workflow", "system"],
       },
       "BRIDGE_PROTOCOL_UNSUPPORTED",
@@ -879,7 +978,7 @@ describe("v2 compatibility planner", () => {
       "protocol before missing lock capabilities",
       {
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 6,
+        sceneSchemaVersion: 7,
         entityLockModes: undefined,
       },
       "BRIDGE_PROTOCOL_UNSUPPORTED",
@@ -887,7 +986,7 @@ describe("v2 compatibility planner", () => {
     [
       "schema before lock capabilities",
       {
-        sceneSchemaVersion: 6,
+        sceneSchemaVersion: 7,
         entityLockModes: ["none", "workflow", "system"],
       },
       "SCENE_SCHEMA_UNSUPPORTED",
@@ -912,7 +1011,7 @@ describe("v2 compatibility planner", () => {
       {
         semanticAuthority: "model",
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 6,
+        sceneSchemaVersion: 7,
         entityLockModes: ["none", "workflow", "system"],
       },
       "SEMANTIC_BOUNDARY_VIOLATION",
@@ -921,7 +1020,7 @@ describe("v2 compatibility planner", () => {
       "protocol before altered lock capabilities",
       {
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 6,
+        sceneSchemaVersion: 7,
         entityLockModes: ["none", "workflow", "system"],
       },
       "BRIDGE_PROTOCOL_UNSUPPORTED",
@@ -930,7 +1029,7 @@ describe("v2 compatibility planner", () => {
       "protocol before missing lock capabilities",
       {
         bridgeProtocolVersion: 999,
-        sceneSchemaVersion: 6,
+        sceneSchemaVersion: 7,
         entityLockModes: undefined,
       },
       "BRIDGE_PROTOCOL_UNSUPPORTED",
@@ -938,7 +1037,7 @@ describe("v2 compatibility planner", () => {
     [
       "schema before lock capabilities",
       {
-        sceneSchemaVersion: 6,
+        sceneSchemaVersion: 7,
         entityLockModes: ["none", "workflow", "system"],
       },
       "SCENE_SCHEMA_UNSUPPORTED",
@@ -973,7 +1072,7 @@ describe("v2 compatibility planner", () => {
         requestedAction,
         v2Manifest({
           ...lockOverride,
-          [schemaField]: 6,
+          [schemaField]: 7,
         }),
       );
 
@@ -987,7 +1086,7 @@ describe("v2 compatibility planner", () => {
       const plan = buildPlan(
         "doctor",
         v2Manifest({
-          [schemaField]: 6,
+          [schemaField]: 7,
           lockErrorCodes: "malformed",
         }),
       );
@@ -1009,7 +1108,7 @@ describe("v2 compatibility planner", () => {
         liveRequested: true,
         healthData: v2Manifest({
           ...lockOverride,
-          [schemaField]: 6,
+          [schemaField]: 7,
         }),
       });
 
@@ -1166,19 +1265,19 @@ describe("v2 compatibility planner", () => {
   it.each([
     [
       "scene",
-      { sceneSchemaVersion: 6 },
+      { sceneSchemaVersion: 7 },
       ["scene.create", "scene.submit"],
       "SCENE_SCHEMA_UNSUPPORTED",
     ],
     [
       "patch",
-      { patchSchemaVersion: 6 },
+      { patchSchemaVersion: 7 },
       ["patch.apply", "patch.submit"],
       "PATCH_SCHEMA_UNSUPPORTED",
     ],
     [
       "intent",
-      { intentReportSchemaVersion: 6 },
+      { intentReportSchemaVersion: 7 },
       ["scene.submit", "patch.submit"],
       "INTENT_REPORT_SCHEMA_UNSUPPORTED",
     ],
@@ -2040,7 +2139,7 @@ describe("portable v2 Skill wrapper", () => {
 
   it("forwards an unrelated action when one schema is degraded", async () => {
     const runtime = await createFixture(
-      v2Manifest({ sceneSchemaVersion: 6 }),
+      v2Manifest({ sceneSchemaVersion: 7 }),
     );
 
     const result = await runtime.run(["snapshot"]);
@@ -2358,15 +2457,16 @@ describe("forward compatibility fixture generator", () => {
       ) as { doctorData: Record<string, unknown> };
       expect(fixture.doctorData).toMatchObject({
         capabilitiesContractVersion: 2,
-        sceneSchemaVersion: 5,
-        patchSchemaVersion: 5,
-        intentReportSchemaVersion: 5,
+        sceneSchemaVersion: 6,
+        patchSchemaVersion: 6,
+        intentReportSchemaVersion: 6,
         entityLockModes: [...entityLockModes],
         patchPolicyFields: [...patchPolicyFields],
         lockErrorCodes: [...lockErrorCodes],
         actorLimbPartIds: [...actorLimbPartIds],
         actorLimbPresenceModes: [...actorLimbPresenceModes],
         actorLimbErrorCodes: [...actorLimbErrorCodes],
+        actorPuppet: structuredClone(actorPuppet),
         actorBlueprint: structuredClone(actorBlueprint),
       });
     }

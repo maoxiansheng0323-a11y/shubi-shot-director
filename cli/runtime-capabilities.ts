@@ -8,6 +8,11 @@ import {
   ACTOR_LIMB_PART_IDS,
   ACTOR_LIMB_PRESENCE_MODES,
 } from "../src/domain/actor-anatomy";
+import { canonicalPuppetJointIds } from "../src/domain/actor-joints";
+import {
+  MAX_ACTOR_HEIGHT_M,
+  MIN_ACTOR_HEIGHT_M,
+} from "../src/domain/actor-stature";
 import {
   ACTOR_BLUEPRINT_MOUNT_IDS,
   ACTOR_BLUEPRINT_PRIMITIVES,
@@ -33,6 +38,20 @@ export const LOCK_ERROR_CODES = [
 ] as const;
 export const ACTOR_LIMB_ERROR_CODES = [
   "LIMB_HIERARCHY_CONFLICT",
+] as const;
+export const ACTOR_PUPPET_HEIGHT_LIMITS_M = {
+  min: MIN_ACTOR_HEIGHT_M,
+  max: MAX_ACTOR_HEIGHT_M,
+} as const;
+export const ACTOR_PUPPET_OPERATION_IDS = [
+  "actor.height.set",
+  "actor.pose.joints.set",
+] as const;
+export const ACTOR_PUPPET_ERROR_CODES = [
+  "ACTOR_HEIGHT_TARGET_INVALID",
+  "ACTOR_HEIGHT_RANGE_INVALID",
+  "ACTOR_JOINT_TARGET_INVALID",
+  "ACTOR_JOINT_ID_INVALID",
 ] as const;
 export const ACTOR_BLUEPRINT_VARIANT_DELTA_FIELDS = [
   "limbPresence",
@@ -104,7 +123,20 @@ export const RUNTIME_FEATURE_IDS = [
   "actor.modular-primitives",
   "actor.variants",
   "actor.resolved-projection",
+  "actor.height",
+  "actor.pose-joints",
+  "actor.blueprint-instance-limb-overrides",
 ] as const;
+
+export interface ActorPuppetCapability {
+  heightLimitsM: {
+    min: number;
+    max: number;
+  };
+  jointIds: string[];
+  operationIds: string[];
+  errorCodes: string[];
+}
 
 export interface ActorBlueprintCapability {
   schemaVersion: number;
@@ -136,6 +168,7 @@ export interface RuntimeCapabilityManifest {
   actorLimbPartIds: string[];
   actorLimbPresenceModes: string[];
   actorLimbErrorCodes: string[];
+  actorPuppet: ActorPuppetCapability;
   actorBlueprint: ActorBlueprintCapability;
 }
 
@@ -284,6 +317,7 @@ const MANIFEST_REQUIRED_FIELDS = [
   "actorLimbPartIds",
   "actorLimbPresenceModes",
   "actorLimbErrorCodes",
+  "actorPuppet",
   "actorBlueprint",
 ] as const;
 
@@ -359,6 +393,38 @@ const parseActorBlueprintCapability = (
     mounts: [...record.mounts],
     primitives: [...record.primitives],
     variantDeltaFields: [...record.variantDeltaFields],
+    errorCodes: [...record.errorCodes],
+  };
+};
+
+const parseActorPuppetCapability = (
+  value: unknown,
+): ActorPuppetCapability | null => {
+  const record = plainOwnRecord(value);
+  const heightLimitsM = plainOwnRecord(record?.heightLimitsM);
+  if (
+    !record ||
+    Object.keys(record).length !== 4 ||
+    !heightLimitsM ||
+    Object.keys(heightLimitsM).length !== 2 ||
+    heightLimitsM.min !== ACTOR_PUPPET_HEIGHT_LIMITS_M.min ||
+    heightLimitsM.max !== ACTOR_PUPPET_HEIGHT_LIMITS_M.max ||
+    !isNonEmptyUniqueStringArray(record.jointIds) ||
+    !isNonEmptyUniqueStringArray(record.operationIds) ||
+    !isNonEmptyUniqueStringArray(record.errorCodes) ||
+    !stringSetsEqual(record.jointIds, canonicalPuppetJointIds) ||
+    !stringSetsEqual(record.operationIds, ACTOR_PUPPET_OPERATION_IDS) ||
+    !stringSetsEqual(record.errorCodes, ACTOR_PUPPET_ERROR_CODES)
+  ) {
+    return null;
+  }
+  return {
+    heightLimitsM: {
+      min: ACTOR_PUPPET_HEIGHT_LIMITS_M.min,
+      max: ACTOR_PUPPET_HEIGHT_LIMITS_M.max,
+    },
+    jointIds: [...record.jointIds],
+    operationIds: [...record.operationIds],
     errorCodes: [...record.errorCodes],
   };
 };
@@ -551,6 +617,7 @@ export const parseRuntimeCapabilityManifest = (
     const actorBlueprint = parseActorBlueprintCapability(
       record.actorBlueprint,
     );
+    const actorPuppet = parseActorPuppetCapability(record.actorPuppet);
     if (
       !MANIFEST_REQUIRED_FIELDS.every((field) =>
         hasOwnDataProperty(record, field),
@@ -566,6 +633,7 @@ export const parseRuntimeCapabilityManifest = (
       !isNonEmptyUniqueStringArray(record.actorLimbPartIds) ||
       !isNonEmptyUniqueStringArray(record.actorLimbPresenceModes) ||
       !isNonEmptyUniqueStringArray(record.actorLimbErrorCodes) ||
+      actorPuppet === null ||
       actorBlueprint === null
     ) {
       return throwRuntimeCapabilityError("CAPABILITIES_INVALID");
@@ -581,6 +649,7 @@ export const parseRuntimeCapabilityManifest = (
       actorLimbPartIds: [...record.actorLimbPartIds],
       actorLimbPresenceModes: [...record.actorLimbPresenceModes],
       actorLimbErrorCodes: [...record.actorLimbErrorCodes],
+      actorPuppet,
       actorBlueprint,
     };
   } catch (error) {
@@ -611,6 +680,15 @@ export const getRuntimeCapabilityManifest =
     actorLimbPartIds: [...ACTOR_LIMB_PART_IDS],
     actorLimbPresenceModes: [...ACTOR_LIMB_PRESENCE_MODES],
     actorLimbErrorCodes: [...ACTOR_LIMB_ERROR_CODES],
+    actorPuppet: {
+      heightLimitsM: {
+        min: ACTOR_PUPPET_HEIGHT_LIMITS_M.min,
+        max: ACTOR_PUPPET_HEIGHT_LIMITS_M.max,
+      },
+      jointIds: [...canonicalPuppetJointIds],
+      operationIds: [...ACTOR_PUPPET_OPERATION_IDS],
+      errorCodes: [...ACTOR_PUPPET_ERROR_CODES],
+    },
     actorBlueprint: {
       schemaVersion: ACTOR_BLUEPRINT_SCHEMA_VERSION,
       mounts: [...ACTOR_BLUEPRINT_MOUNT_IDS],

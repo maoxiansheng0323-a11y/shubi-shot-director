@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { getRuntimeCapabilityManifest } from "../cli/runtime-capabilities";
 import { SceneDomainError } from "../src/domain/apply-scene-patch";
 import { ContactConstraintError } from "../src/domain/contact-constraints";
+import { actorPuppetInputErrorCode } from "../src/domain/scene-patch";
 import {
   IntentSubmissionError,
   parsePatchSubmission,
@@ -38,6 +39,14 @@ const safeSceneDomainMessage = (code: string): string => {
       return "A requested scene entity is workflow locked.";
     case "LOCK_PRESERVATION_CONFLICT":
       return "The requested Patch would change preserved lock state.";
+    case "ACTOR_HEIGHT_TARGET_INVALID":
+      return "The requested actor height target is invalid.";
+    case "ACTOR_HEIGHT_RANGE_INVALID":
+      return "Actor stature must be between 1.0 and 2.4 meters.";
+    case "ACTOR_JOINT_TARGET_INVALID":
+      return "The requested actor joint target is invalid.";
+    case "ACTOR_JOINT_ID_INVALID":
+      return "The requested actor joint ID is unsupported.";
     default:
       return "The scene request was rejected.";
   }
@@ -254,8 +263,10 @@ export const createApiApp = (
 
   app.post("/api/v1/submissions/patch", (request, response) => {
     const parsed = parsePatchSubmission(request.body);
-    const intentSummary = summarizeIntentReport(parsed.intentReport);
-    const scene = session.submitPatch(request.body);
+    const intentSummary = summarizeIntentReport(
+      parsed.submission.intentReport,
+    );
+    const scene = session.submitParsedPatch(parsed);
     sendOk(response, {
       scene,
       history: session.historyStatus(),
@@ -312,10 +323,21 @@ export const createApiApp = (
   app.use(
     (
       error: unknown,
-      _request: Request,
+      request: Request,
       response: Response,
       _next: NextFunction,
     ) => {
+      const actorPuppetCode = actorPuppetInputErrorCode(error, request.body);
+      if (actorPuppetCode !== undefined) {
+        response.status(400).json({
+          ok: false,
+          error: {
+            code: actorPuppetCode,
+            message: safeSceneDomainMessage(actorPuppetCode),
+          },
+        });
+        return;
+      }
       if (error instanceof ZodError) {
         response.status(400).json({
           ok: false,

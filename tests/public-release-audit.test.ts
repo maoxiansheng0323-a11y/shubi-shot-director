@@ -1,6 +1,13 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -43,6 +50,33 @@ const loadAudit = async (): Promise<PublicReleaseAuditModule> => {
 };
 
 describe("public release audit", () => {
+  it("keeps the v0.7 actor puppet public contract generic and publication-safe", async () => {
+    const root = fileURLToPath(new URL("../", import.meta.url));
+    const releasePath = path.join(root, "docs", "releases", "v0.7.0.md");
+    const [packageSource, skillSource, releaseSource] = await Promise.all([
+      readFile(path.join(root, "package.json"), "utf8"),
+      readFile(
+        path.join(
+          root,
+          ".agents",
+          "skills",
+          "shubi-shot-director",
+          "SKILL.md",
+        ),
+        "utf8",
+      ),
+      readFile(releasePath, "utf8").catch(() => ""),
+    ]);
+    const { auditPackageMetadata, auditText } = await loadAudit();
+    const packageMetadata = JSON.parse(packageSource) as Record<string, unknown>;
+
+    expect(packageMetadata.version).toBe("0.7.0");
+    expect(auditPackageMetadata(packageMetadata)).toEqual([]);
+    expect(releaseSource).not.toBe("");
+    expect(auditText("SKILL.md", skillSource)).toEqual([]);
+    expect(auditText("docs/releases/v0.7.0.md", releaseSource)).toEqual([]);
+  });
+
   it("accepts generic repository text", async () => {
     const { auditText } = await loadAudit();
 

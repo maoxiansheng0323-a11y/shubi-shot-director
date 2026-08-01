@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   createActorBlueprintSnapshot,
   type ActorBlueprintSnapshot,
@@ -57,7 +58,7 @@ const legacyInput = (version: 1 | 2 | 3 | 4): Record<string, unknown> => {
   return scene;
 };
 
-describe("SceneSpec v5 Actor Blueprint snapshots", () => {
+describe("SceneSpec v6 Actor Blueprint snapshots", () => {
   it("stores one snapshot for two independently authored actor instances", () => {
     const snapshot = createActorBlueprintSnapshot(
       createGenericActorBlueprintDocument(),
@@ -76,7 +77,7 @@ describe("SceneSpec v5 Actor Blueprint snapshots", () => {
       variantId: "repaired",
     });
     second.transform.positionM = [2, 0.81, -1];
-    second.pose.joints.shoulder_l = [0, 0, 0, 1];
+    second.pose.joints.upper_arm_l = [0, 0, 0, 1];
     second.color = "#929aa6";
     second.lockMode = "workflow";
     scene.entities.push(first, second);
@@ -84,7 +85,7 @@ describe("SceneSpec v5 Actor Blueprint snapshots", () => {
     const parsed = sceneSpecSchema.parse(scene);
     const blueprintActors = parsed.entities.filter(isBlueprintActorEntity);
 
-    expect(SCENE_SCHEMA_VERSION).toBe(5);
+    expect(SCENE_SCHEMA_VERSION).toBe(6);
     expect(parsed.actorBlueprints).toEqual([snapshot]);
     expect(blueprintActors).toHaveLength(2);
     expect(blueprintActors[0]).toMatchObject(first);
@@ -198,7 +199,7 @@ describe("SceneSpec v5 Actor Blueprint snapshots", () => {
       const parsed = parseSceneSpecInput(legacyInput(version));
       const actors = parsed.entities.filter(isLegacyActorEntity);
 
-      expect(parsed.schemaVersion).toBe(5);
+      expect(parsed.schemaVersion).toBe(6);
       expect(parsed.actorBlueprints).toEqual([]);
       expect(actors).toHaveLength(1);
       expect(actors[0]?.rig.id).toBe("rig.humanoid-v1");
@@ -208,4 +209,11 @@ describe("SceneSpec v5 Actor Blueprint snapshots", () => {
       );
     },
   );
+
+  it("routes App pose actions through resolved actor stature for either actor branch", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+
+    expect(source).not.toContain("!isLegacyActorEntity(actor)");
+    expect(source).toContain("actorStatureHeightM(currentScene, actor)");
+  });
 });

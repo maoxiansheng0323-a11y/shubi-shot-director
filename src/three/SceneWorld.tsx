@@ -18,7 +18,7 @@ import type {
   Group,
   PerspectiveCamera as ThreePerspectiveCamera,
 } from "three";
-import { DoubleSide, Shape } from "three";
+import { DoubleSide, Shape, Vector2 } from "three";
 import {
   resolveActorProjection,
   type ActorRigPrimitive,
@@ -73,6 +73,23 @@ export interface SceneWorldProps {
   ) => void | Promise<void>;
   transformDomElement?: HTMLElement;
 }
+
+export const toCappedLathePoints = (
+  points: readonly { readonly y: number; readonly radius: number }[],
+): Vector2[] => {
+  const rendered = points.map(
+    ({ radius, y }) => new Vector2(radius, y),
+  );
+  const first = points[0];
+  const last = points.at(-1);
+  if (first && first.radius > 0) {
+    rendered.unshift(new Vector2(0, first.y));
+  }
+  if (last && last.radius > 0) {
+    rendered.push(new Vector2(0, last.y));
+  }
+  return rendered;
+};
 
 const numberParameter = (
   parameters: Record<string, JsonValue>,
@@ -129,6 +146,7 @@ interface GrayMeshProps {
   children: ReactNode;
   position?: [number, number, number];
   rotation?: [number, number, number];
+  scale?: [number, number, number];
   castShadow?: boolean;
   receiveShadow?: boolean;
   opacity?: number;
@@ -142,6 +160,7 @@ const GrayMesh = ({
   children,
   position,
   rotation,
+  scale,
   castShadow = true,
   receiveShadow = true,
   opacity,
@@ -152,6 +171,7 @@ const GrayMesh = ({
     <mesh
       position={position}
       rotation={rotation}
+      scale={scale}
       castShadow={castShadow && resolvedOpacity >= 0.99}
       receiveShadow={receiveShadow}
     >
@@ -504,6 +524,23 @@ const ActorRigPrimitiveMesh = ({
         />
       );
       break;
+    case "profile":
+      geometry = (
+        <latheGeometry
+          args={[
+            toCappedLathePoints(primitive.points),
+            primitive.radialSegments,
+          ]}
+        />
+      );
+      break;
+    case "ellipsoid":
+      geometry = (
+        <sphereGeometry
+          args={[1, primitive.widthSegments, primitive.heightSegments]}
+        />
+      );
+      break;
   }
 
   return (
@@ -515,6 +552,13 @@ const ActorRigPrimitiveMesh = ({
         color={primitive.id === "face" && !selected ? "#aab4bf" : color}
         selected={selected}
         position={primitive.center}
+        scale={
+          primitive.kind === "profile"
+            ? [1, 1, primitive.depthScale]
+            : primitive.kind === "ellipsoid"
+              ? [...primitive.radii]
+              : undefined
+        }
       >
         {geometry}
       </GrayMesh>
@@ -801,8 +845,9 @@ export const SceneWorld = ({
         castShadow
         position={[4, 7, 5]}
         intensity={2.2}
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-radius={3}
         shadow-camera-near={0.1}
         shadow-camera-far={30}
         shadow-camera-left={-8}

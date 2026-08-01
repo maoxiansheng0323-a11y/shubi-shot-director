@@ -62,7 +62,37 @@ const EXPECTED_FEATURE_IDS = [
   "actor.modular-primitives",
   "actor.variants",
   "actor.resolved-projection",
+  "actor.height",
+  "actor.pose-joints",
+  "actor.blueprint-instance-limb-overrides",
 ] as const;
+const EXPECTED_ACTOR_PUPPET_CAPABILITY = {
+  heightLimitsM: { min: 1, max: 2.4 },
+  jointIds: [
+    "pelvis",
+    "spine",
+    "neck",
+    "upper_arm_l",
+    "forearm_l",
+    "hand_l",
+    "upper_arm_r",
+    "forearm_r",
+    "hand_r",
+    "upper_leg_l",
+    "lower_leg_l",
+    "foot_l",
+    "upper_leg_r",
+    "lower_leg_r",
+    "foot_r",
+  ],
+  operationIds: ["actor.height.set", "actor.pose.joints.set"],
+  errorCodes: [
+    "ACTOR_HEIGHT_TARGET_INVALID",
+    "ACTOR_HEIGHT_RANGE_INVALID",
+    "ACTOR_JOINT_TARGET_INVALID",
+    "ACTOR_JOINT_ID_INVALID",
+  ],
+} as const;
 const EXPECTED_ACTOR_BLUEPRINT_CAPABILITY = {
   schemaVersion: 1,
   mounts: [
@@ -214,12 +244,18 @@ describe("runtime capability manifest", () => {
     ) as { version: string };
     const manifest = getRuntimeCapabilityManifest();
 
-    expect(packageMetadata.version).toBe("0.6.0");
+    expect(packageMetadata.version).toBe("0.7.0");
     expect(APPLICATION_VERSION).toBe(packageMetadata.version);
     expect(runtimeCapabilities).toMatchObject({
       CAPABILITIES_CONTRACT_VERSION: 2,
       WORKSPACE_ROUTING_VERSION: 1,
-      INTENT_REPORT_SCHEMA_VERSION: 5,
+      INTENT_REPORT_SCHEMA_VERSION: 6,
+      ACTOR_PUPPET_HEIGHT_LIMITS_M:
+        EXPECTED_ACTOR_PUPPET_CAPABILITY.heightLimitsM,
+      ACTOR_PUPPET_OPERATION_IDS:
+        EXPECTED_ACTOR_PUPPET_CAPABILITY.operationIds,
+      ACTOR_PUPPET_ERROR_CODES:
+        EXPECTED_ACTOR_PUPPET_CAPABILITY.errorCodes,
       PATCH_POLICY_FIELDS: EXPECTED_PATCH_POLICY_FIELDS,
       LOCK_ERROR_CODES: EXPECTED_LOCK_ERROR_CODES,
       ACTOR_LIMB_ERROR_CODES: EXPECTED_ACTOR_LIMB_ERROR_CODES,
@@ -238,7 +274,7 @@ describe("runtime capability manifest", () => {
       workspaceRoutingVersion: 1,
       sceneSchemaVersion: SCENE_SCHEMA_VERSION,
       patchSchemaVersion: PATCH_SCHEMA_VERSION,
-      intentReportSchemaVersion: 5,
+      intentReportSchemaVersion: 6,
       semanticAuthority: "host",
       inputContract: "structured-only",
       modelIntegration: "none",
@@ -252,6 +288,14 @@ describe("runtime capability manifest", () => {
       actorLimbPartIds: [...EXPECTED_ACTOR_LIMB_PART_IDS],
       actorLimbPresenceModes: [...EXPECTED_ACTOR_LIMB_PRESENCE_MODES],
       actorLimbErrorCodes: [...EXPECTED_ACTOR_LIMB_ERROR_CODES],
+      actorPuppet: {
+        heightLimitsM: {
+          ...EXPECTED_ACTOR_PUPPET_CAPABILITY.heightLimitsM,
+        },
+        jointIds: [...EXPECTED_ACTOR_PUPPET_CAPABILITY.jointIds],
+        operationIds: [...EXPECTED_ACTOR_PUPPET_CAPABILITY.operationIds],
+        errorCodes: [...EXPECTED_ACTOR_PUPPET_CAPABILITY.errorCodes],
+      },
       actorBlueprint: {
         schemaVersion: 1,
         mounts: [...EXPECTED_ACTOR_BLUEPRINT_CAPABILITY.mounts],
@@ -267,6 +311,15 @@ describe("runtime capability manifest", () => {
     expect(ACTOR_LIMB_PART_IDS).toEqual(EXPECTED_ACTOR_LIMB_PART_IDS);
     expect(ACTOR_LIMB_PRESENCE_MODES).toEqual(
       EXPECTED_ACTOR_LIMB_PRESENCE_MODES,
+    );
+    expect(runtimeCapabilities.ACTOR_PUPPET_HEIGHT_LIMITS_M).toEqual(
+      EXPECTED_ACTOR_PUPPET_CAPABILITY.heightLimitsM,
+    );
+    expect(runtimeCapabilities.ACTOR_PUPPET_OPERATION_IDS).toEqual(
+      EXPECTED_ACTOR_PUPPET_CAPABILITY.operationIds,
+    );
+    expect(runtimeCapabilities.ACTOR_PUPPET_ERROR_CODES).toEqual(
+      EXPECTED_ACTOR_PUPPET_CAPABILITY.errorCodes,
     );
     expect(manifest).not.toHaveProperty("requiresApiKey");
     expect(manifest.actorBlueprint).toMatchObject({
@@ -298,6 +351,15 @@ describe("runtime capability manifest", () => {
     expect(new Set(manifest.actorLimbErrorCodes).size).toBe(
       manifest.actorLimbErrorCodes.length,
     );
+    expect(new Set(manifest.actorPuppet.jointIds).size).toBe(
+      manifest.actorPuppet.jointIds.length,
+    );
+    expect(new Set(manifest.actorPuppet.operationIds).size).toBe(
+      manifest.actorPuppet.operationIds.length,
+    );
+    expect(new Set(manifest.actorPuppet.errorCodes).size).toBe(
+      manifest.actorPuppet.errorCodes.length,
+    );
     expect(manifest.commands).toEqual([...EXPECTED_COMMAND_IDS]);
     expect(CLI_COMMAND_DEFINITIONS.map(({ id }) => id)).toEqual([
       ...EXPECTED_COMMAND_IDS,
@@ -328,6 +390,14 @@ describe("runtime capability manifest", () => {
       ...EXPECTED_ACTOR_LIMB_ERROR_CODES,
     ]);
     expect(ACTOR_LIMB_ERROR_CODES).toEqual(EXPECTED_ACTOR_LIMB_ERROR_CODES);
+    expect(manifest.actorPuppet).toEqual({
+      heightLimitsM: {
+        ...EXPECTED_ACTOR_PUPPET_CAPABILITY.heightLimitsM,
+      },
+      jointIds: [...EXPECTED_ACTOR_PUPPET_CAPABILITY.jointIds],
+      operationIds: [...EXPECTED_ACTOR_PUPPET_CAPABILITY.operationIds],
+      errorCodes: [...EXPECTED_ACTOR_PUPPET_CAPABILITY.errorCodes],
+    });
   });
 
   it("classifies malformed manifests as invalid", () => {

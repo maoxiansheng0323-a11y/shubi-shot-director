@@ -7,7 +7,7 @@
       "properties": {
         "schemaVersion": {
           "type": "number",
-          "const": 5
+          "const": 6
         },
         "operation": {
           "type": "string",
@@ -62,7 +62,8 @@
                   "actor-limb-presence",
                   "actor-blueprint-registration",
                   "actor-blueprint-instance",
-                  "actor-blueprint-variant"
+                  "actor-blueprint-variant",
+                  "actor-height"
                 ]
               },
               "required": {
@@ -143,7 +144,9 @@
                             "entity.body.limbPresence.upper_leg_r",
                             "entity.body.limbPresence.lower_leg_r",
                             "entity.body.limbPresence.foot_r",
-                            "actor.blueprintInstance"
+                            "actor.blueprintInstance",
+                            "actor.body.heightM",
+                            "actor.blueprintInstance.heightScale"
                           ]
                         }
                       },
@@ -352,7 +355,7 @@
       "properties": {
         "schemaVersion": {
           "type": "number",
-          "const": 5
+          "const": 6
         },
         "patchId": {
           "type": "string",
@@ -751,7 +754,32 @@
                           "lower_leg_r",
                           "foot_r"
                         ],
-                        "additionalProperties": false
+                        "additionalProperties": false,
+                        "x-shubi-limb-hierarchy": {
+                          "chains": [
+                            [
+                              "upper_arm_l",
+                              "forearm_l",
+                              "hand_l"
+                            ],
+                            [
+                              "upper_arm_r",
+                              "forearm_r",
+                              "hand_r"
+                            ],
+                            [
+                              "upper_leg_l",
+                              "lower_leg_l",
+                              "foot_l"
+                            ],
+                            [
+                              "upper_leg_r",
+                              "lower_leg_r",
+                              "foot_r"
+                            ]
+                          ],
+                          "enforcedBy": "runtime-zod-refinement"
+                        }
                       },
                       "modules": {
                         "maxItems": 64,
@@ -1209,7 +1237,32 @@
                                   ]
                                 }
                               },
-                              "additionalProperties": false
+                              "additionalProperties": false,
+                              "x-shubi-limb-hierarchy": {
+                                "chains": [
+                                  [
+                                    "upper_arm_l",
+                                    "forearm_l",
+                                    "hand_l"
+                                  ],
+                                  [
+                                    "upper_arm_r",
+                                    "forearm_r",
+                                    "hand_r"
+                                  ],
+                                  [
+                                    "upper_leg_l",
+                                    "lower_leg_l",
+                                    "foot_l"
+                                  ],
+                                  [
+                                    "upper_leg_r",
+                                    "lower_leg_r",
+                                    "foot_r"
+                                  ]
+                                ],
+                                "enforcedBy": "runtime-zod-refinement"
+                              }
                             },
                             "moduleVisibility": {
                               "type": "object",
@@ -1326,7 +1379,11 @@
                                   {
                                     "type": "number"
                                   }
-                                ]
+                                ],
+                                "x-shubi-normalized-quaternion": true,
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "items": false
                               },
                               "scale": {
                                 "type": "array",
@@ -1479,7 +1536,11 @@
                                   {
                                     "type": "number"
                                   }
-                                ]
+                                ],
+                                "x-shubi-normalized-quaternion": true,
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "items": false
                               },
                               "scale": {
                                 "type": "array",
@@ -1666,7 +1727,11 @@
                                   {
                                     "type": "number"
                                   }
-                                ]
+                                ],
+                                "x-shubi-normalized-quaternion": true,
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "items": false
                               },
                               "scale": {
                                 "type": "array",
@@ -1871,7 +1936,32 @@
                                   "lower_leg_r",
                                   "foot_r"
                                 ],
-                                "additionalProperties": false
+                                "additionalProperties": false,
+                                "x-shubi-limb-hierarchy": {
+                                  "chains": [
+                                    [
+                                      "upper_arm_l",
+                                      "forearm_l",
+                                      "hand_l"
+                                    ],
+                                    [
+                                      "upper_arm_r",
+                                      "forearm_r",
+                                      "hand_r"
+                                    ],
+                                    [
+                                      "upper_leg_l",
+                                      "lower_leg_l",
+                                      "foot_l"
+                                    ],
+                                    [
+                                      "upper_leg_r",
+                                      "lower_leg_r",
+                                      "foot_r"
+                                    ]
+                                  ],
+                                  "enforcedBy": "runtime-zod-refinement"
+                                }
                               }
                             },
                             "required": [
@@ -1926,9 +2016,23 @@
                                 "type": "object",
                                 "propertyNames": {
                                   "type": "string",
-                                  "minLength": 2,
-                                  "maxLength": 40,
-                                  "pattern": "^[a-z][a-z0-9_-]*$"
+                                  "enum": [
+                                    "pelvis",
+                                    "spine",
+                                    "neck",
+                                    "upper_arm_l",
+                                    "forearm_l",
+                                    "hand_l",
+                                    "upper_arm_r",
+                                    "forearm_r",
+                                    "hand_r",
+                                    "upper_leg_l",
+                                    "lower_leg_l",
+                                    "foot_l",
+                                    "upper_leg_r",
+                                    "lower_leg_r",
+                                    "foot_r"
+                                  ]
                                 },
                                 "additionalProperties": {
                                   "type": "array",
@@ -1945,8 +2049,29 @@
                                     {
                                       "type": "number"
                                     }
-                                  ]
-                                }
+                                  ],
+                                  "x-shubi-normalized-quaternion": true,
+                                  "minItems": 4,
+                                  "maxItems": 4,
+                                  "items": false
+                                },
+                                "required": [
+                                  "pelvis",
+                                  "spine",
+                                  "neck",
+                                  "upper_arm_l",
+                                  "forearm_l",
+                                  "hand_l",
+                                  "upper_arm_r",
+                                  "forearm_r",
+                                  "hand_r",
+                                  "upper_leg_l",
+                                  "lower_leg_l",
+                                  "foot_l",
+                                  "upper_leg_r",
+                                  "lower_leg_r",
+                                  "foot_r"
+                                ]
                               }
                             },
                             "required": [
@@ -2035,7 +2160,11 @@
                                   {
                                     "type": "number"
                                   }
-                                ]
+                                ],
+                                "x-shubi-normalized-quaternion": true,
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "items": false
                               },
                               "scale": {
                                 "type": "array",
@@ -2093,11 +2222,139 @@
                                 "minLength": 1,
                                 "maxLength": 40,
                                 "pattern": "^[a-z][a-z0-9_-]{0,39}$"
+                              },
+                              "heightScale": {
+                                "type": "number",
+                                "minimum": 0.01,
+                                "maximum": 100,
+                                "x-shubi-resolved-stature": {
+                                  "formula": "snapshot.body.heightM * heightScale",
+                                  "minimumM": 1,
+                                  "maximumM": 2.4,
+                                  "enforcedBy": "runtime-zod-refinement"
+                                }
+                              },
+                              "limbPresenceOverrides": {
+                                "type": "object",
+                                "properties": {
+                                  "upper_arm_l": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "forearm_l": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "hand_l": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "upper_arm_r": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "forearm_r": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "hand_r": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "upper_leg_l": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "lower_leg_l": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "foot_l": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "upper_leg_r": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "lower_leg_r": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  },
+                                  "foot_r": {
+                                    "type": "string",
+                                    "enum": [
+                                      "present",
+                                      "absent"
+                                    ]
+                                  }
+                                },
+                                "additionalProperties": false,
+                                "x-shubi-limb-hierarchy": {
+                                  "chains": [
+                                    [
+                                      "upper_arm_l",
+                                      "forearm_l",
+                                      "hand_l"
+                                    ],
+                                    [
+                                      "upper_arm_r",
+                                      "forearm_r",
+                                      "hand_r"
+                                    ],
+                                    [
+                                      "upper_leg_l",
+                                      "lower_leg_l",
+                                      "foot_l"
+                                    ],
+                                    [
+                                      "upper_leg_r",
+                                      "lower_leg_r",
+                                      "foot_r"
+                                    ]
+                                  ],
+                                  "enforcedBy": "runtime-zod-refinement"
+                                }
                               }
                             },
                             "required": [
                               "blueprintId",
-                              "variantId"
+                              "variantId",
+                              "heightScale",
+                              "limbPresenceOverrides"
                             ],
                             "additionalProperties": false
                           },
@@ -2145,9 +2402,23 @@
                                 "type": "object",
                                 "propertyNames": {
                                   "type": "string",
-                                  "minLength": 2,
-                                  "maxLength": 40,
-                                  "pattern": "^[a-z][a-z0-9_-]*$"
+                                  "enum": [
+                                    "pelvis",
+                                    "spine",
+                                    "neck",
+                                    "upper_arm_l",
+                                    "forearm_l",
+                                    "hand_l",
+                                    "upper_arm_r",
+                                    "forearm_r",
+                                    "hand_r",
+                                    "upper_leg_l",
+                                    "lower_leg_l",
+                                    "foot_l",
+                                    "upper_leg_r",
+                                    "lower_leg_r",
+                                    "foot_r"
+                                  ]
                                 },
                                 "additionalProperties": {
                                   "type": "array",
@@ -2164,8 +2435,29 @@
                                     {
                                       "type": "number"
                                     }
-                                  ]
-                                }
+                                  ],
+                                  "x-shubi-normalized-quaternion": true,
+                                  "minItems": 4,
+                                  "maxItems": 4,
+                                  "items": false
+                                },
+                                "required": [
+                                  "pelvis",
+                                  "spine",
+                                  "neck",
+                                  "upper_arm_l",
+                                  "forearm_l",
+                                  "hand_l",
+                                  "upper_arm_r",
+                                  "forearm_r",
+                                  "hand_r",
+                                  "upper_leg_l",
+                                  "lower_leg_l",
+                                  "foot_l",
+                                  "upper_leg_r",
+                                  "lower_leg_r",
+                                  "foot_r"
+                                ]
                               }
                             },
                             "required": [
@@ -2253,7 +2545,11 @@
                                   {
                                     "type": "number"
                                   }
-                                ]
+                                ],
+                                "x-shubi-normalized-quaternion": true,
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "items": false
                               },
                               "scale": {
                                 "type": "array",
@@ -2416,7 +2712,11 @@
                           {
                             "type": "number"
                           }
-                        ]
+                        ],
+                        "x-shubi-normalized-quaternion": true,
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "items": false
                       },
                       "scale": {
                         "type": "array",
@@ -2526,7 +2826,11 @@
                       {
                         "type": "number"
                       }
-                    ]
+                    ],
+                    "x-shubi-normalized-quaternion": true,
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": false
                   },
                   "referenceSpace": {
                     "type": "string",
@@ -2663,9 +2967,23 @@
                         "type": "object",
                         "propertyNames": {
                           "type": "string",
-                          "minLength": 2,
-                          "maxLength": 40,
-                          "pattern": "^[a-z][a-z0-9_-]*$"
+                          "enum": [
+                            "pelvis",
+                            "spine",
+                            "neck",
+                            "upper_arm_l",
+                            "forearm_l",
+                            "hand_l",
+                            "upper_arm_r",
+                            "forearm_r",
+                            "hand_r",
+                            "upper_leg_l",
+                            "lower_leg_l",
+                            "foot_l",
+                            "upper_leg_r",
+                            "lower_leg_r",
+                            "foot_r"
+                          ]
                         },
                         "additionalProperties": {
                           "type": "array",
@@ -2682,8 +3000,29 @@
                             {
                               "type": "number"
                             }
-                          ]
-                        }
+                          ],
+                          "x-shubi-normalized-quaternion": true,
+                          "minItems": 4,
+                          "maxItems": 4,
+                          "items": false
+                        },
+                        "required": [
+                          "pelvis",
+                          "spine",
+                          "neck",
+                          "upper_arm_l",
+                          "forearm_l",
+                          "hand_l",
+                          "upper_arm_r",
+                          "forearm_r",
+                          "hand_r",
+                          "upper_leg_l",
+                          "lower_leg_l",
+                          "foot_l",
+                          "upper_leg_r",
+                          "lower_leg_r",
+                          "foot_r"
+                        ]
                       }
                     },
                     "required": [
@@ -2697,6 +3036,99 @@
                   "op",
                   "entityId",
                   "value"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "op": {
+                    "type": "string",
+                    "const": "actor.height.set"
+                  },
+                  "actorId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "heightM": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 2.4
+                  }
+                },
+                "required": [
+                  "op",
+                  "actorId",
+                  "heightM"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "op": {
+                    "type": "string",
+                    "const": "actor.pose.joints.set"
+                  },
+                  "actorId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "updates": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "enum": [
+                        "pelvis",
+                        "spine",
+                        "neck",
+                        "upper_arm_l",
+                        "forearm_l",
+                        "hand_l",
+                        "upper_arm_r",
+                        "forearm_r",
+                        "hand_r",
+                        "upper_leg_l",
+                        "lower_leg_l",
+                        "foot_l",
+                        "upper_leg_r",
+                        "lower_leg_r",
+                        "foot_r"
+                      ]
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "x-shubi-normalized-quaternion": true,
+                      "minItems": 4,
+                      "maxItems": 4,
+                      "items": false
+                    },
+                    "minProperties": 1,
+                    "maxProperties": 15
+                  }
+                },
+                "required": [
+                  "op",
+                  "actorId",
+                  "updates"
                 ],
                 "additionalProperties": false
               },
@@ -2802,6 +3234,31 @@
                       }
                     },
                     "additionalProperties": false,
+                    "x-shubi-limb-hierarchy": {
+                      "chains": [
+                        [
+                          "upper_arm_l",
+                          "forearm_l",
+                          "hand_l"
+                        ],
+                        [
+                          "upper_arm_r",
+                          "forearm_r",
+                          "hand_r"
+                        ],
+                        [
+                          "upper_leg_l",
+                          "lower_leg_l",
+                          "foot_l"
+                        ],
+                        [
+                          "upper_leg_r",
+                          "lower_leg_r",
+                          "foot_r"
+                        ]
+                      ],
+                      "enforcedBy": "runtime-zod-refinement"
+                    },
                     "minProperties": 1,
                     "maxProperties": 12
                   }

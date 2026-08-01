@@ -24,7 +24,7 @@ ordering, wall penetration, key-prop completeness, headroom, look room,
 caption clearance, and the requested shot size. Approximate domain checks do
 not replace the rendered view.
 
-First inspect Overview for the whole actor and scene. Then inspect every affected Local preview for the edited limb chains and any contact correction. Finally inspect Shot Preview from the authoritative final camera. Do not claim visual success until contact, framing, persistence across snapshot/save-load, and export state have all been verified.
+First inspect Overview for the whole actor and scene. Confirm requested resolved stature against nearby geometry and compare actor branches at the same meter scale when relevant. Then inspect every affected Local preview for edited limb chains, wrist/ankle articulation, and any contact correction. Finally inspect Shot Preview from the authoritative final camera. Do not claim visual success until stature, missing limbs, pose, contact, framing, persistence across snapshot/save-load, and export state have all been verified.
 
 For a connected layout, inspect Overview for complete region footprints,
 wall continuity, door/opening cuts, and connection markers. Then inspect every
@@ -34,9 +34,9 @@ faded but readable, and distant regions remain context only. Finally switch to
 Shot Preview and confirm that Local fading is absent and persistent visibility,
 wall openings, entity placement, and the active camera are authoritative.
 
-For limb-presence edits, confirm the requested complete chains are absent or present without hidden geometry, zero-scale geometry, detached fallback parts, phantom joints, or stale bounds. Confirm contact correction does not move unrelated entities or alter framing unexpectedly.
+For limb-presence edits on either actor branch, confirm the requested complete chains are absent or present without hidden geometry, zero-scale geometry, detached fallback parts, phantom joints, or stale bounds. For joint edits, inspect the named canonical joint and its child segment; remember that `hand_*` is the wrist terminal and `foot_*` is the ankle terminal. Confirm contact correction does not move unrelated entities or alter framing unexpectedly.
 
-For blueprint actors, verify effective variant state and the resolved module geometry from the same projection used by render, bounds, contact, composition, and diagnostics. Confirm exposed terminals or sealed interfaces follow their mount bones through pose changes, hidden modules leave no stale bounds, and a saved/reloaded scene remains identical without the external source file.
+For Blueprint actors, verify base -> variant -> instance `limbPresenceOverrides` layering, effective variant state, resolved stature from `heightScale`, and module geometry from the same projection used by render, bounds, contact, composition, and diagnostics. Confirm exposed terminals or sealed interfaces follow their mount bones through pose changes, hidden modules leave no stale bounds, variant changes preserve manual overrides, the embedded snapshot SHA-256 does not change, and a saved/reloaded scene remains identical without the external source file.
 
 Region labels are Host-authored display text, not runtime room types. Do not
 claim a semantic room classification from floor colors, label wording, or

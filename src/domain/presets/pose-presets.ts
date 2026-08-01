@@ -1,4 +1,5 @@
 import { quaternionFromEulerDegrees } from "../scene-math";
+import { canonicalPuppetJointIds } from "../actor-joints";
 import {
   isLegacyActorEntity,
   poseSchema,
@@ -8,19 +9,8 @@ import {
   type Vec3,
 } from "../scene-schema";
 
-export const canonicalHumanoidJointIds = [
-  "pelvis",
-  "spine",
-  "neck",
-  "upper_arm_l",
-  "forearm_l",
-  "upper_arm_r",
-  "forearm_r",
-  "upper_leg_l",
-  "lower_leg_l",
-  "upper_leg_r",
-  "lower_leg_r",
-] as const;
+export const canonicalHumanoidJointIds = canonicalPuppetJointIds;
+export const POSE_CONTACT_OFFSET_DECIMAL_PLACES = 5;
 
 export type CanonicalHumanoidJointId =
   (typeof canonicalHumanoidJointIds)[number];
@@ -162,6 +152,65 @@ const posePresets = Object.freeze([
       lower_leg_r: [9, 0, 0],
     },
   ),
+  definePose(
+    "pose.reaching-right-v1",
+    "Right-arm reach",
+    0.568,
+    {
+      spine: [6, -8, 0],
+      neck: [-3, 12, 0],
+      upper_arm_l: [8, 0, 12],
+      forearm_l: [-18, 0, 0],
+      hand_l: [0, -6, 4],
+      upper_arm_r: [-82, -8, -14],
+      forearm_r: [-16, 0, -6],
+      hand_r: [0, 14, -10],
+    },
+  ),
+  definePose(
+    "pose.walking-step-v1",
+    "Walking step",
+    0.54,
+    {
+      pelvis: [0, 8, 0],
+      spine: [4, -6, 0],
+      neck: [-3, 4, 0],
+      upper_arm_l: [24, 0, 8],
+      forearm_l: [-24, 0, 0],
+      hand_l: [0, 0, 6],
+      upper_arm_r: [-24, 0, -8],
+      forearm_r: [-32, 0, 0],
+      hand_r: [0, 0, -6],
+      upper_leg_l: [-30, 0, 4],
+      lower_leg_l: [18, 0, 0],
+      foot_l: [-10, 0, 0],
+      upper_leg_r: [24, 0, -4],
+      lower_leg_r: [44, 0, 0],
+      foot_r: [-20, 0, 0],
+    },
+  ),
+  definePose(
+    "pose.crouching-v1",
+    "Crouching",
+    0.32,
+    {
+      pelvis: [8, 0, 0],
+      spine: [22, 0, 0],
+      neck: [-12, 0, 0],
+      upper_arm_l: [-42, 0, 12],
+      forearm_l: [-28, 0, 0],
+      hand_l: [0, 0, 8],
+      upper_arm_r: [-42, 0, -12],
+      forearm_r: [-28, 0, 0],
+      hand_r: [0, 0, -8],
+      upper_leg_l: [-68, 0, 7],
+      lower_leg_l: [112, 0, 0],
+      foot_l: [-38, 0, 0],
+      upper_leg_r: [-68, 0, -7],
+      lower_leg_r: [112, 0, 0],
+      foot_r: [-38, 0, 0],
+    },
+  ),
 ] satisfies readonly PosePresetDefinition[]);
 
 const poseAliases = new Map<string, PosePresetDefinition>();
@@ -174,8 +223,11 @@ for (const preset of posePresets) {
   );
 }
 
+const contactOffsetScale =
+  10 ** POSE_CONTACT_OFFSET_DECIMAL_PLACES;
+
 const roundMeters = (value: number): number =>
-  Math.round(value * 100_000) / 100_000;
+  Math.round(value * contactOffsetScale) / contactOffsetScale;
 
 export const listPosePresets = (): readonly PosePresetDefinition[] =>
   posePresets;

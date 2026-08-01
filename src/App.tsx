@@ -6,14 +6,16 @@ import {
 } from "react";
 import {
   isBlueprintActorEntity,
-  isLegacyActorEntity,
+  type QuaternionTuple,
   type SceneSpec,
   type TransformSpec,
 } from "./domain/scene-schema";
+import { actorStatureHeightM } from "./domain/actor-stature";
 import type {
   ActorLimbPartId,
   ActorLimbPresenceMode,
 } from "./domain/actor-anatomy";
+import type { CanonicalPuppetJointId } from "./domain/actor-joints";
 import { snapTransformToContact } from "./domain/contact-constraints";
 import {
   buildRelationshipOperations,
@@ -24,6 +26,8 @@ import { Outliner } from "./editor/Outliner";
 import { useEditorStore } from "./editor/editor-store";
 import {
   createCameraLensPatch,
+  createActorHeightPatch,
+  createActorJointPatch,
   createActorVariantPatch,
   createLockModePatch,
   createOperationsPatch,
@@ -55,6 +59,17 @@ const connectionLabels = {
   reconnecting: "重连中",
   disconnected: "已断开",
 } as const;
+
+const quaternionsEquivalent = (
+  left: QuaternionTuple,
+  right: QuaternionTuple,
+): boolean => {
+  const dot = left.reduce(
+    (sum, value, index) => sum + value * right[index],
+    0,
+  );
+  return Math.abs(Math.abs(dot) - 1) <= 1e-6;
+};
 
 export const App = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -162,13 +177,17 @@ export const App = () => {
       if (
         !currentScene ||
         !actor ||
-        !isLegacyActorEntity(actor) ||
+        actor.kind !== "actor" ||
         actor.lockMode !== "none"
       ) {
         return;
       }
       try {
-        const pose = materializePose(actor, presetId);
+        const pose = materializePose(
+          actor,
+          presetId,
+          actorStatureHeightM(currentScene, actor),
+        );
         await state.applyPatch(
           createOperationsPatch(currentScene, "pose", [
             {
@@ -335,6 +354,63 @@ export const App = () => {
         setLocalError(null);
       } catch (error) {
         setLocalError(userFacingError(error));
+      }
+    },
+    [],
+  );
+
+  const setActorHeight = useCallback(
+    async (actorId: string, heightM: number): Promise<void> => {
+      const state = useEditorStore.getState();
+      const currentScene = state.scene;
+      const actor = currentScene?.entities.find(
+        (entity) => entity.id === actorId,
+      );
+      if (
+        !currentScene ||
+        actor?.kind !== "actor" ||
+        actor.lockMode !== "none" ||
+        Math.abs(actorStatureHeightM(currentScene, actor) - heightM) < 1e-8
+      ) {
+        return;
+      }
+      try {
+        await state.applyPatch(
+          createActorHeightPatch(currentScene, actor.id, heightM),
+        );
+        setLocalError(null);
+      } catch (cause) {
+        setLocalError(userFacingError(cause, "人物身高更新失败。"));
+      }
+    },
+    [],
+  );
+
+  const setActorJointRotation = useCallback(
+    async (
+      actorId: string,
+      jointId: CanonicalPuppetJointId,
+      rotation: QuaternionTuple,
+    ): Promise<void> => {
+      const state = useEditorStore.getState();
+      const currentScene = state.scene;
+      const actor = currentScene?.entities.find(
+        (entity) => entity.id === actorId,
+      );
+      if (!currentScene || actor?.kind !== "actor" || actor.lockMode !== "none") {
+        return;
+      }
+      const currentRotation = actor.pose.joints[jointId] ?? [0, 0, 0, 1];
+      if (quaternionsEquivalent(currentRotation, rotation)) {
+        return;
+      }
+      try {
+        await state.applyPatch(
+          createActorJointPatch(currentScene, actor.id, jointId, rotation),
+        );
+        setLocalError(null);
+      } catch (cause) {
+        setLocalError(userFacingError(cause, "人物关节更新失败。"));
       }
     },
     [],
@@ -870,6 +946,8 @@ export const App = () => {
           selectedId={selectedEntityId}
           selectedRegionId={focusedRegionId}
           disabled={interactionDisabled}
+          onSetHeight={setActorHeight}
+          onSetJointRotation={setActorJointRotation}
           onSetLimbPresence={setLimbPresence}
           onSetVariant={(actorId, variantId) => {
             void setActorVariant(actorId, variantId);

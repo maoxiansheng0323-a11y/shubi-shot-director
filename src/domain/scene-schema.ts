@@ -4,8 +4,15 @@ import {
   actorBlueprintIdSchema,
   actorBlueprintSlugSchema,
   actorBlueprintSnapshotSchema,
+  resolveActorBlueprintVariant,
 } from "./actor-blueprint";
-import { actorLimbPresenceSchema } from "./actor-anatomy";
+import { canonicalPuppetJointIdSchema } from "./actor-joints";
+import {
+  actorLimbPresenceSchema,
+  actorLimbPresenceUpdatesSchema,
+  resolveActorLimbPresenceUpdates,
+} from "./actor-anatomy";
+import { isActorHeightWithinRange } from "./actor-stature-limits";
 import { entityLockModeSchema } from "./entity-lock";
 import { SCENE_SCHEMA_VERSION } from "./schema-versions";
 import {
@@ -34,7 +41,8 @@ export const quaternionSchema = z
     ([x, y, z, w]) =>
       Math.abs(Math.sqrt(x * x + y * y + z * z + w * w) - 1) < 0.001,
     "Quaternion must be normalized.",
-  );
+  )
+  .meta({ "x-shubi-normalized-quaternion": true });
 
 export const transformSchema = z
   .object({
@@ -85,11 +93,7 @@ export const presetRefSchema = z
   })
   .strict();
 
-export const jointIdSchema = z
-  .string()
-  .min(2)
-  .max(40)
-  .regex(/^[a-z][a-z0-9_-]*$/);
+export const jointIdSchema = canonicalPuppetJointIdSchema;
 
 export const poseSchema = z
   .object({
@@ -164,6 +168,8 @@ export const blueprintActorEntitySchema = z
       .object({
         blueprintId: actorBlueprintIdSchema,
         variantId: actorBlueprintSlugSchema,
+        heightScale: positiveFiniteNumber.min(0.01).max(100),
+        limbPresenceOverrides: actorLimbPresenceUpdatesSchema,
       })
       .strict(),
     pose: poseSchema,
@@ -402,6 +408,48 @@ export const sceneSpecSchema = z
                 "blueprintInstance",
               ],
             });
+          } else {
+            const variant = resolveActorBlueprintVariant(
+              snapshot,
+              entity.blueprintInstance.variantId,
+            );
+            if (
+              !isActorHeightWithinRange(
+                snapshot.body.heightM *
+                  entity.blueprintInstance.heightScale,
+              )
+            ) {
+              context.addIssue({
+                code: "custom",
+                message: "ACTOR_HEIGHT_RANGE_INVALID",
+                path: [
+                  "entities",
+                  scene.entities.indexOf(entity),
+                  "blueprintInstance",
+                  "heightScale",
+                ],
+              });
+            }
+            try {
+              resolveActorLimbPresenceUpdates(
+                variant.limbPresence,
+                entity.blueprintInstance.limbPresenceOverrides,
+              );
+            } catch (error) {
+              context.addIssue({
+                code: "custom",
+                message:
+                  error instanceof Error && "code" in error
+                    ? String((error as Error & { code?: unknown }).code)
+                    : "LIMB_HIERARCHY_CONFLICT",
+                path: [
+                  "entities",
+                  scene.entities.indexOf(entity),
+                  "blueprintInstance",
+                  "limbPresenceOverrides",
+                ],
+              });
+            }
           }
         }
       }

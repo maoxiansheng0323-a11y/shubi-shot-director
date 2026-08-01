@@ -20,7 +20,7 @@ Load an external `project-profile.json` only when the user supplies its exact pa
    ```
 
 3. Require every `slot` to match `^actor_(male|female|generic)_[1-9][0-9]*$`. Require non-empty alias arrays and reject duplicate or ambiguous normalized aliases.
-4. Normalize aliases only in host memory for comparison. Resolve them to generic slots before authoring entities, targets, evidence, or Patch operations.
+4. Normalize aliases only in host memory for comparison. Resolve an alias to its generic slot only to locate the matching snapshot actor, then use that actor's SceneSpec `entity.id` for targets, evidence entity IDs, and operation targets. Use `actor.pose.set { op, entityId, value }` as the sole actor-operation target-field exception. `actor.height.set`, `actor.pose.joints.set`, `actor.limb-presence.set`, and `actor.variant.set` use `actorId`.
 5. If an alias remains ambiguous, ask the user only when the choice changes the result. Do not guess.
 6. Discard the path, file content, aliases, and normalized lookup after host planning.
 

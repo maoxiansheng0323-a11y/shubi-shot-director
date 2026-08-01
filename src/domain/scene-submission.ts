@@ -11,9 +11,11 @@ import {
 } from "./intent-coverage";
 import { IntentSubmissionError } from "./intent-submission-error";
 import {
-  parseScenePatchInput,
+  parseScenePatchInputWithProvenance,
   parseSceneSpecInput,
   parseIntentReportInput,
+  type PatchSourceSchemaVersion,
+  type ParsedScenePatchInput,
 } from "./scene-migrations";
 import { scenePatchSchema } from "./scene-patch";
 import { sceneSpecSchema } from "./scene-schema";
@@ -37,6 +39,69 @@ export const patchSubmissionSchema = z
 
 export type SceneSubmission = z.infer<typeof sceneSubmissionSchema>;
 export type PatchSubmission = z.infer<typeof patchSubmissionSchema>;
+
+export interface ParsedPatchSubmissionInput {
+  readonly submission: PatchSubmission;
+  readonly patchSourceSchemaVersion: PatchSourceSchemaVersion;
+}
+
+const parsedPatchSubmissionInputs = new WeakMap<
+  object,
+  ParsedScenePatchInput
+>();
+
+const deepFreeze = <Value>(value: Value): Value => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Object.isFrozen(value)
+  ) {
+    return value;
+  }
+  for (const nested of Object.values(value)) {
+    deepFreeze(nested);
+  }
+  return Object.freeze(value);
+};
+
+const createParsedPatchSubmissionInput = (
+  submission: PatchSubmission,
+  parsedPatch: ParsedScenePatchInput,
+): ParsedPatchSubmissionInput => {
+  const parsed = deepFreeze({
+    submission,
+    patchSourceSchemaVersion: parsedPatch.sourceSchemaVersion,
+  });
+  parsedPatchSubmissionInputs.set(parsed, parsedPatch);
+  return parsed;
+};
+
+export function assertParsedPatchSubmissionInput(
+  input: unknown,
+): asserts input is ParsedPatchSubmissionInput {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    !parsedPatchSubmissionInputs.has(input)
+  ) {
+    throw new TypeError(
+      "Parsed Patch submissions must be produced by the official parser.",
+    );
+  }
+}
+
+export const getParsedPatchSubmissionProvenance = (
+  input: unknown,
+): ParsedScenePatchInput => {
+  assertParsedPatchSubmissionInput(input);
+  const provenance = parsedPatchSubmissionInputs.get(input);
+  if (provenance === undefined) {
+    throw new TypeError(
+      "Parsed Patch submission provenance is unavailable.",
+    );
+  }
+  return provenance;
+};
 
 export const intentSummarySchema = z
   .object({
@@ -121,17 +186,22 @@ export const normalizeSceneSubmissionInput = (
   return { intentReport, scene };
 };
 
-export const parsePatchSubmission = (input: unknown): PatchSubmission => {
-  const submission = normalizePatchSubmissionInput(input);
-  validateSubmissionPolicy(submission.intentReport, "modify");
-  return submission;
-};
-
 export const normalizePatchSubmissionInput = (
   input: unknown,
-): PatchSubmission => {
+): ParsedPatchSubmissionInput => {
   const envelope = patchSubmissionEnvelopeSchema.parse(input);
   const intentReport = parseIntentReport(envelope.intentReport);
-  const patch = parseScenePatchInput(envelope.patch);
-  return { intentReport, patch };
+  const parsedPatch = parseScenePatchInputWithProvenance(envelope.patch);
+  return createParsedPatchSubmissionInput(
+    { intentReport, patch: parsedPatch.patch },
+    parsedPatch,
+  );
+};
+
+export const parsePatchSubmission = (
+  input: unknown,
+): ParsedPatchSubmissionInput => {
+  const parsed = normalizePatchSubmissionInput(input);
+  validateSubmissionPolicy(parsed.submission.intentReport, "modify");
+  return parsed;
 };

@@ -1,5 +1,6 @@
 import { lookAtQuaternion } from "./scene-math";
 import { createAllPresentLimbPresence } from "./actor-anatomy";
+import { createIdentityPuppetJointMap } from "./actor-joints";
 import {
   identityQuaternion,
   sceneSpecSchema,
@@ -91,7 +92,7 @@ export const createDefaultScene = (): LegacySceneSpec =>
               contactOffsetM: 0.977,
             },
           },
-          joints: {},
+          joints: createIdentityPuppetJointMap(),
         },
         color: "#c7ced8",
       },

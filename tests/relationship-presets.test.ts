@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
 import { applyScenePatch } from "../src/domain/apply-scene-patch";
 import { actorVisibleRigBounds } from "../src/domain/actor-visible-bounds";
 import { createDefaultScene } from "../src/domain/default-scene";
@@ -12,12 +13,17 @@ import {
   type ScenePatch,
 } from "../src/domain/scene-patch";
 import {
+  isBlueprintActorEntity,
   isLegacyActorEntity,
   sceneSpecSchema,
   type ActorEntity,
   type SceneSpec,
 } from "../src/domain/scene-schema";
 import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
+import {
+  createBlueprintActor,
+  createGenericActorBlueprintDocument,
+} from "./helpers/actor-blueprint-fixtures";
 
 const createTwoActorScene = (): SceneSpec => {
   const base = createDefaultScene();
@@ -127,6 +133,57 @@ describe("relationship presets", () => {
       "relationship.face-to-face-v1",
       "relationship.over-under-focus-lower-v1",
     ]);
+  });
+
+  it("materializes a relationship for one Blueprint actor and one legacy actor", () => {
+    const base = createDefaultScene();
+    const legacy = base.entities.find(isLegacyActorEntity);
+    if (!legacy) throw new Error("Legacy actor fixture is missing.");
+    const blueprint = createBlueprintActor({
+      id: "actor_primary_blueprint_1",
+      slot: "actor_female_1",
+      variantId: "repaired",
+    });
+    const secondary: ActorEntity = {
+      ...structuredClone(legacy),
+      id: "actor_secondary_legacy_1",
+      slot: "actor_generic_1",
+    };
+    const scene = sceneSpecSchema.parse({
+      ...base,
+      actorBlueprints: [
+        createActorBlueprintSnapshot(createGenericActorBlueprintDocument()),
+      ],
+      entities: [
+        ...base.entities.filter((entity) => entity.kind !== "actor"),
+        blueprint,
+        secondary,
+      ],
+      constraints: [],
+    });
+
+    const operations = buildRelationshipOperations(
+      scene,
+      "relationship.face-to-face-v1",
+      {
+        primaryActorId: blueprint.id,
+        secondaryActorId: secondary.id,
+      },
+    );
+    const next = applyScenePatch(scene, asPatch(scene, operations)).next;
+    const nextBlueprint = next.entities.find(
+      (entity) => entity.id === blueprint.id,
+    );
+
+    expect(isBlueprintActorEntity(nextBlueprint)).toBe(true);
+    expect(
+      isBlueprintActorEntity(nextBlueprint)
+        ? nextBlueprint.pose.preset.id
+        : null,
+    ).toBe("pose.standing-neutral-v1");
+    expect(
+      operations.filter((operation) => operation.op === "actor.pose.set"),
+    ).toHaveLength(2);
   });
 
   it("builds a face-to-face pose and transform for both roles", () => {

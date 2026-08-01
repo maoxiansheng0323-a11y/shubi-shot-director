@@ -2,6 +2,8 @@
 
 Use this reference only for an initial shot or an explicitly requested new shot.
 
+The generated SceneSpec JSON Schema is a structural contract. Its `x-shubi-resolved-stature` and `x-shubi-limb-hierarchy` annotations document cross-snapshot stature and limb-chain semantics, but Ajv cannot enforce them independently. Runtime Zod refinement makes the final acceptance decision; Host Codex must author the resolved values and hierarchy correctly before submission rather than expecting runtime inference or repair.
+
 ## Author in Host Codex
 
 1. Read `generated/scene-spec.schema.json`, `generated/intent-report.schema.json`, and `generated/scene-submission.schema.json`.
@@ -12,12 +14,12 @@ Use this reference only for an initial shot or an explicitly requested new shot.
    environment entity. Include generic actors and props plus at least one
    perspective camera.
 5. Give every new and unfinished graybox entity `lockMode: "none"`. Do not create a workflow or user lock merely because an entity is present in an initial submission.
-6. Select exactly one strict actor branch. A legacy actor has `rig`, `body`, and a complete twelve-key `body.limbPresence` map. A blueprint actor has `blueprintInstance` and no legacy `rig`, `body`, or instance-level limb map; its referenced canonical snapshot must already exist in `actorBlueprints`.
-7. Materialize actor transforms, poses, contact, relationship blocking, camera rotation, and composition constraints. Leave no instruction for runtime semantic inference.
+6. Select exactly one strict actor branch. A legacy actor has `rig`, `body`, actual stature in `body.heightM`, and a complete twelve-key `body.limbPresence` map. A Blueprint actor has `blueprintInstance` and no legacy `rig` or `body`; its referenced canonical snapshot must already exist in `actorBlueprints`. Set `heightScale: 1` unless the requested resolved stature requires `requestedHeightM / snapshot.body.heightM`, and default `limbPresenceOverrides` to `{}`.
+7. Materialize actor transforms, a complete fifteen-key normalized joint map for every explicit action, contact, relationship blocking, camera rotation, and composition constraints. Read `references/generated/pose-presets.json` for complete actions. Leave no instruction for runtime semantic inference.
 8. Persist focal length and sensor width, not FOV. Persist the camera quaternion, not a second look-at state.
 9. Use 16:9 output; default to 1920 x 1080 unless the user requests another supported resolution.
 10. Use generic IDs, slots, labels, title, and constraint IDs. Exclude source wording, aliases, profile data, and private asset paths.
-11. Pair the scene with a v5 create `IntentReport`. Require `allowPartial: false`, `canApplySafely: true`, empty unsupported/unresolved arrays, and valid evidence for every required recognized constraint. Use all twelve exact limb evidence paths when limb presence is required.
+11. Pair the scene with a v6 create `IntentReport`. Require `allowPartial: false`, `canApplySafely: true`, empty unsupported/unresolved arrays, and valid evidence for every required recognized constraint. Use `actor.body.heightM` for legacy `actor-height` evidence and `actor.blueprintInstance.heightScale` for Blueprint `actor-height` evidence. Use `actor.pose` for pose evidence and all twelve exact legacy limb evidence paths when legacy limb presence is required. For required Blueprint limb-presence, instance, or variant evidence, use the actor entity's actual v6 `actor.blueprintInstance` evidence path; never invent a nested override evidence path.
 12. Put both objects in one transient scene-submission envelope and call `scene submit --file`.
 
 Do not use a complete SceneSpec for a follow-up to an existing shot.
@@ -58,6 +60,16 @@ levels, navigation, or streaming through labels or preset parameters.
 
 Actor labels remain generic. External aliases are host-only resolution inputs.
 
+## Canonical stature and pose
+
+- Resolved stature must be 1.0-2.4 meters. Legacy actors store it directly in `body.heightM`. Blueprint actors store `blueprintInstance.heightScale`, with resolved stature `snapshot.body.heightM * heightScale`.
+- `entity.transform.scale` is spatial transform scale, not actor stature evidence or a stature-edit substitute.
+- The fifteen joint IDs are `pelvis`, `spine`, `neck`, `upper_arm_l`, `forearm_l`, `hand_l`, `upper_arm_r`, `forearm_r`, `hand_r`, `upper_leg_l`, `lower_leg_l`, `foot_l`, `upper_leg_r`, `lower_leg_r`, and `foot_r`.
+- `hand_l` and `hand_r` are wrist terminal joints. `foot_l` and `foot_r` are ankle terminal joints.
+- Store normalized quaternions only. For an explicit action, write all fifteen keys, using identity `[0, 0, 0, 1]` where the action does not rotate a joint. A sparse map is not a complete action.
+
+For every complete action, read `references/generated/pose-presets.json`. Take `id`, `version`, `joints`, and `contactOffsetHeightRatio` from the generated recipe. Copy the exact immutable `id`, `version`, and fifteen-key `joints` into the pose. Set `contactOffsetM` to `round(resolvedHeightM * contactOffsetHeightRatio, 5)`. Use the ratio only to calculate `contactOffsetM`; do not include `contactOffsetHeightRatio` in the PoseSpec. For a modify, use only this operation shape: `{ op: "actor.pose.set", entityId, value: { preset: { registry: "builtin", id, version, parameters: { contactOffsetM } }, joints } }`; for a create, use that same `value` object as the actor's `pose`. Never author a sparse action, guess quaternions, or invent a preset.
+
 ## Canonical actor limb presence
 
 Treat each chain as ordered from parent to descendant:
@@ -75,7 +87,7 @@ This restriction applies to legacy actor edits and arbitrary imported geometry. 
 
 ## Blueprint actors
 
-When an external Actor Blueprint is explicitly supplied, validate it at the Host-only `blueprint validate --file` boundary, embed one canonical path-free snapshot in `actorBlueprints`, and reference it from any number of strict `blueprintInstance` actors. Reuse the same snapshot for the same SHA-256, keep every actor ID and slot unique, and never retain the source path. The SceneSpec remains independently reloadable after the external file is moved or deleted.
+When an external Actor Blueprint is explicitly supplied, validate it at the Host-only `blueprint validate --file` boundary, embed one canonical path-free snapshot in `actorBlueprints`, and reference it from any number of strict `blueprintInstance` actors. Every instance includes `heightScale` and `limbPresenceOverrides`. Reuse the same snapshot for the same SHA-256, keep every actor ID and slot unique, and never retain the source path. The SceneSpec remains independently reloadable after the external file is moved or deleted.
 
 ## Built-in graybox registry
 
@@ -86,6 +98,9 @@ When an external Actor Blueprint is explicitly supplied, validate it at the Host
 - Seated: `pose.seated-v1`
 - Lying supine: `pose.lying-supine-v1`
 - Leaning forward: `pose.leaning-forward-v1`
+- Right-arm reach: `pose.reaching-right-v1`
+- Walking step: `pose.walking-step-v1`
+- Crouching: `pose.crouching-v1`
 - Face-to-face recipe: `relationship.face-to-face-v1`
 - Over/under lower-face recipe: `relationship.over-under-focus-lower-v1`
 - Low support: `prop.platform-low-v1`

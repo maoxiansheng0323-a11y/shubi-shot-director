@@ -9,6 +9,7 @@ import { Euler, MathUtils, Quaternion } from "three";
 import {
   isBlueprintActorEntity,
   isLegacyActorEntity,
+  type QuaternionTuple,
   type SceneEntity,
   type SceneSpec,
   type TransformSpec,
@@ -18,11 +19,14 @@ import { quaternionFromEulerDegrees } from "../domain/scene-math";
 import { ActorPresetControls } from "./ActorPresetControls";
 import { ActorLimbControls } from "./ActorLimbControls";
 import { ActorBlueprintControls } from "./ActorBlueprintControls";
+import { ActorStatureControls } from "./ActorStatureControls";
+import { ActorJointControls } from "./ActorJointControls";
 import { CompositionChecks } from "./CompositionChecks";
 import type {
   ActorLimbPartId,
   ActorLimbPresenceMode,
 } from "../domain/actor-anatomy";
+import type { CanonicalPuppetJointId } from "../domain/actor-joints";
 
 export interface InspectorProps {
   scene: SceneSpec;
@@ -47,6 +51,12 @@ export interface InspectorProps {
     actorId: string,
     partId: ActorLimbPartId,
     mode: ActorLimbPresenceMode,
+  ) => void;
+  onSetHeight?: (actorId: string, heightM: number) => void;
+  onSetJointRotation?: (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+    rotation: QuaternionTuple,
   ) => void;
   onSetVariant?: (actorId: string, variantId: string) => void;
 }
@@ -520,6 +530,8 @@ export const Inspector = ({
   onApplyRelationship,
   onSetGroundContact,
   onSetLimbPresence,
+  onSetHeight,
+  onSetJointRotation,
   onSetVariant,
 }: InspectorProps) => {
   const selected = scene.entities.find((entity) => entity.id === selectedId);
@@ -578,31 +590,45 @@ export const Inspector = ({
             entity={selected}
             onCommit={onCommitTransform}
           />
-          {isLegacyActorEntity(selected) ? (
+          {selected.kind === "actor" ? (
             <>
-              <section className="inspector-section">
-                <div className="section-title-row">
-                  <h3>人偶</h3>
-                  <span>{selected.body.build}</span>
-                </div>
-                <dl className="property-list">
-                  <div>
-                    <dt>槽位</dt>
-                    <dd>{selected.slot}</dd>
+              {isLegacyActorEntity(selected) ? (
+                <section className="inspector-section">
+                  <div className="section-title-row">
+                    <h3>人偶</h3>
+                    <span>{selected.body.build}</span>
                   </div>
-                  <div>
-                    <dt>身高</dt>
-                    <dd>{selected.body.heightM.toFixed(2)} m</dd>
-                  </div>
-                  <div>
-                    <dt>姿势</dt>
-                    <dd>{selected.pose.preset.id}</dd>
-                  </div>
-                </dl>
-              </section>
+                  <dl className="property-list">
+                    <div>
+                      <dt>槽位</dt>
+                      <dd>{selected.slot}</dd>
+                    </div>
+                    <div>
+                      <dt>姿势</dt>
+                      <dd>{selected.pose.preset.id}</dd>
+                    </div>
+                  </dl>
+                </section>
+              ) : null}
+              {isBlueprintActorEntity(selected) ? (
+                <ActorBlueprintControls
+                  scene={scene}
+                  actor={selected}
+                  disabled={disabled}
+                  onSetVariant={onSetVariant}
+                />
+              ) : null}
+              <ActorStatureControls
+                key={`${selected.id}:${scene.revision}:stature`}
+                actor={selected}
+                disabled={disabled}
+                scene={scene}
+                onSetHeight={onSetHeight}
+              />
               <ActorLimbControls
                 actor={selected}
                 disabled={disabled}
+                scene={scene}
                 onSetLimbPresence={onSetLimbPresence}
               />
               <ActorPresetControls
@@ -613,15 +639,14 @@ export const Inspector = ({
                 onApplyRelationship={onApplyRelationship}
                 onSetGroundContact={onSetGroundContact}
               />
+              <ActorJointControls
+                key={`${selected.id}:joints`}
+                actor={selected}
+                disabled={disabled}
+                scene={scene}
+                onSetJointRotation={onSetJointRotation}
+              />
             </>
-          ) : null}
-          {isBlueprintActorEntity(selected) ? (
-            <ActorBlueprintControls
-              scene={scene}
-              actor={selected}
-              disabled={disabled}
-              onSetVariant={onSetVariant}
-            />
           ) : null}
           {selected.kind === "prop" ? (
             <section className="inspector-section">

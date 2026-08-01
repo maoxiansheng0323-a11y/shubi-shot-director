@@ -5,15 +5,20 @@ import {
   type AppliedScenePatch,
 } from "../src/domain/apply-scene-patch";
 import { enforceGroundContacts } from "../src/domain/contact-constraints";
-import { validateIntentCoverage } from "../src/domain/intent-coverage";
+import {
+  validateIntentCoverage,
+  validateIntentPolicy,
+} from "../src/domain/intent-coverage";
 import { parseSceneSpecInput } from "../src/domain/scene-migrations";
 import {
   sceneSpecSchema,
   type SceneSpec,
 } from "../src/domain/scene-schema";
 import {
+  getParsedPatchSubmissionProvenance,
   parsePatchSubmission,
   parseSceneSubmission,
+  type ParsedPatchSubmissionInput,
 } from "../src/domain/scene-submission";
 
 interface HistoryEntry {
@@ -70,8 +75,17 @@ export class SceneSession {
   }
 
   submitPatch(input: unknown): SceneSpec {
-    const submission = parsePatchSubmission(input);
-    const applied = applyScenePatch(this.scene, submission.patch);
+    const parsed = parsePatchSubmission(input);
+    return this.submitParsedPatch(parsed);
+  }
+
+  submitParsedPatch(parsed: ParsedPatchSubmissionInput): SceneSpec {
+    const provenance = getParsedPatchSubmissionProvenance(parsed);
+    const submission = parsed.submission;
+    validateIntentPolicy(submission.intentReport, "modify");
+    const applied = applyScenePatch(this.scene, submission.patch, {
+      provenance,
+    });
     validateIntentCoverage(submission.intentReport, {
       before: applied.previous,
       after: applied.next,

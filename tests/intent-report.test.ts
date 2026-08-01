@@ -7,12 +7,15 @@ import {
   ENTITY_EVIDENCE_PATHS_V3,
   ENTITY_EVIDENCE_PATHS_V4,
   ENTITY_EVIDENCE_PATHS_V5,
+  ENTITY_EVIDENCE_PATHS_V6,
   INTENT_CONSTRAINT_KINDS_V3,
   INTENT_CONSTRAINT_KINDS_V4,
   INTENT_CONSTRAINT_KINDS_V5,
+  INTENT_CONSTRAINT_KINDS_V6,
   INTENT_REPORT_SCHEMA_VERSION,
   SCENE_EVIDENCE_PATHS_V4,
   SCENE_EVIDENCE_PATHS_V5,
+  SCENE_EVIDENCE_PATHS_V6,
   intentReportSchema,
   type IntentReport,
 } from "../src/domain/intent-report";
@@ -80,12 +83,12 @@ describe("IntentReport schema", () => {
     const legacy = { ...structuredClone(current), schemaVersion: 4 };
     expect(parseIntentReportInput(legacy)).toEqual({
       ...current,
-      schemaVersion: 5,
+      schemaVersion: INTENT_REPORT_SCHEMA_VERSION,
     });
   });
 
-  it("exports exact v5 Actor Blueprint kinds and evidence paths", () => {
-    expect(INTENT_REPORT_SCHEMA_VERSION).toBe(5);
+  it("exports exact v6 actor-puppet kinds and evidence paths", () => {
+    expect(INTENT_REPORT_SCHEMA_VERSION).toBe(6);
     expect(INTENT_CONSTRAINT_KINDS_V5).toEqual([
       ...INTENT_CONSTRAINT_KINDS_V4,
       "actor-blueprint-registration",
@@ -100,6 +103,50 @@ describe("IntentReport schema", () => {
       ...SCENE_EVIDENCE_PATHS_V4,
       "scene.actorBlueprints",
     ]);
+    expect(INTENT_CONSTRAINT_KINDS_V6).toEqual([
+      ...INTENT_CONSTRAINT_KINDS_V5,
+      "actor-height",
+    ]);
+    expect(ENTITY_EVIDENCE_PATHS_V6).toEqual([
+      ...ENTITY_EVIDENCE_PATHS_V5,
+      "actor.body.heightM",
+      "actor.blueprintInstance.heightScale",
+    ]);
+    expect(SCENE_EVIDENCE_PATHS_V6).toEqual(SCENE_EVIDENCE_PATHS_V5);
+
+    const report = createPatchIntentReport({
+      recognizedConstraints: [
+        {
+          id: "intent_actor_height_1",
+          kind: "actor-height",
+          required: true,
+          targets: ["actor_generic_1"],
+          evidence: [
+            {
+              type: "entity-property",
+              entityId: "actor_generic_1",
+              path: "actor.body.heightM",
+            },
+            { type: "patch-operation", operationIndex: 0 },
+          ],
+        },
+        {
+          id: "intent_actor_limb_1",
+          kind: "actor-limb-presence",
+          required: true,
+          targets: ["actor_generic_1"],
+          evidence: [{ type: "patch-operation", operationIndex: 1 }],
+        },
+        {
+          id: "intent_actor_pose_1",
+          kind: "pose",
+          required: true,
+          targets: ["actor_generic_1"],
+          evidence: [{ type: "patch-operation", operationIndex: 2 }],
+        },
+      ],
+    });
+    expect(intentReportSchema.parse(report)).toEqual(report);
   });
 
   it("covers registration, instance creation, and variant selection by exact operations", () => {
@@ -233,8 +280,96 @@ describe("IntentReport schema", () => {
             },
           ],
         },
+        {
+          id: "intent_blueprint_limb_presence_1",
+          kind: "actor-limb-presence",
+          required: true,
+          targets: [actor.id],
+          evidence: [
+            {
+              type: "entity-property",
+              entityId: actor.id,
+              path: "actor.blueprintInstance",
+            },
+          ],
+        },
       ],
     });
+    expect(() => validateIntentCoverage(report, { after: scene })).not.toThrow();
+  });
+
+  it("rejects legacy limb-property evidence for a Blueprint actor on create", () => {
+    const base = createStructuredScene();
+    const snapshot = createActorBlueprintSnapshot(
+      createGenericActorBlueprintDocument(),
+    );
+    const actor = createBlueprintActor();
+    base.actorBlueprints.push(snapshot);
+    base.entities.push(actor);
+    const scene = sceneSpecSchema.parse(base);
+    const report = createIntentReport({
+      recognizedConstraints: [
+        {
+          id: "intent_blueprint_legacy_limb_evidence_1",
+          kind: "actor-limb-presence",
+          required: true,
+          targets: [actor.id],
+          evidence: [
+            {
+              type: "entity-property",
+              entityId: actor.id,
+              path: "entity.body.limbPresence.hand_r",
+            },
+          ],
+        },
+      ],
+    });
+
+    expectIntentCode(
+      () => validateIntentCoverage(report, { after: scene }),
+      "INTENT_COVERAGE_INCOMPLETE",
+    );
+  });
+
+  it("requires branch-specific height evidence for a Blueprint actor on create", () => {
+    const base = createStructuredScene();
+    const snapshot = createActorBlueprintSnapshot(
+      createGenericActorBlueprintDocument(),
+    );
+    const actor = createBlueprintActor();
+    base.actorBlueprints.push(snapshot);
+    base.entities.push(actor);
+    const scene = sceneSpecSchema.parse(base);
+    const report = createIntentReport({
+      recognizedConstraints: [
+        {
+          id: "intent_blueprint_height_evidence_1",
+          kind: "actor-height",
+          required: true,
+          targets: [actor.id],
+          evidence: [
+            {
+              type: "entity-property",
+              entityId: actor.id,
+              path: "actor.body.heightM",
+            },
+          ],
+        },
+      ],
+    });
+
+    expectIntentCode(
+      () => validateIntentCoverage(report, { after: scene }),
+      "INTENT_COVERAGE_INCOMPLETE",
+    );
+
+    report.recognizedConstraints[0].evidence = [
+      {
+        type: "entity-property",
+        entityId: actor.id,
+        path: "actor.blueprintInstance.heightScale",
+      },
+    ];
     expect(() => validateIntentCoverage(report, { after: scene })).not.toThrow();
   });
 
@@ -653,7 +788,9 @@ describe("IntentReport schema", () => {
         { type: "patch-operation", operationIndex: 128 },
       ];
 
-      expect(parseIntentReportInput(legacyReport).schemaVersion).toBe(5);
+      expect(parseIntentReportInput(legacyReport).schemaVersion).toBe(
+        INTENT_REPORT_SCHEMA_VERSION,
+      );
       expect(() => parseIntentReportInput(beyondLegacyLimit)).toThrow();
     },
   );
@@ -804,7 +941,7 @@ describe("IntentReport schema", () => {
 
       expect(migrated).toEqual({
         ...legacyReport,
-        schemaVersion: 5,
+        schemaVersion: INTENT_REPORT_SCHEMA_VERSION,
         recognizedConstraints: [
           {
             ...legacyReport.recognizedConstraints[0],
@@ -848,14 +985,14 @@ describe("IntentReport schema", () => {
 
     expect(parseIntentReportInput(legacyReport)).toEqual({
       ...legacyReport,
-      schemaVersion: 5,
+      schemaVersion: INTENT_REPORT_SCHEMA_VERSION,
     });
   });
 
   it("rejects mixed legacy paths and unrecognized report versions", () => {
     const canonicalWithLegacyPath = {
       ...createIntentReport(),
-      schemaVersion: 5,
+      schemaVersion: INTENT_REPORT_SCHEMA_VERSION,
       recognizedConstraints: [
         {
           id: "intent_mixed_canonical_1",
@@ -897,7 +1034,7 @@ describe("IntentReport schema", () => {
     expect(() =>
       parseIntentReportInput({
         ...createIntentReport(),
-        schemaVersion: 6,
+        schemaVersion: INTENT_REPORT_SCHEMA_VERSION + 1,
       }),
     ).toThrow();
   });

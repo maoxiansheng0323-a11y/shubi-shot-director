@@ -38,6 +38,7 @@ import { createDefaultScene } from "../src/domain/default-scene";
 import { renderSceneToPng } from "../server/software-png";
 import { getRuntimeCapabilityManifest } from "../cli/runtime-capabilities";
 import {
+  createExplicitPuppetActionPose,
   createPatchSubmission,
   createSceneSubmission,
 } from "./helpers/structured-fixtures";
@@ -101,6 +102,9 @@ const expectedFeatureIds = [
   "actor.modular-primitives",
   "actor.variants",
   "actor.resolved-projection",
+  "actor.height",
+  "actor.pose-joints",
+  "actor.blueprint-instance-limb-overrides",
 ] as const;
 const temporaryDirectories: string[] = [];
 
@@ -677,12 +681,12 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
   expect(data).toEqual(expect.objectContaining({
     service: "shubi-shot-director",
     capabilitiesContractVersion: 2,
-    applicationVersion: "0.6.0",
+    applicationVersion: "0.7.0",
     bridgeProtocolVersion: 1,
     workspaceRoutingVersion: 1,
-    sceneSchemaVersion: 5,
-    patchSchemaVersion: 5,
-    intentReportSchemaVersion: 5,
+    sceneSchemaVersion: 6,
+    patchSchemaVersion: 6,
+    intentReportSchemaVersion: 6,
     semanticAuthority: "host",
     inputContract: "structured-only",
     modelIntegration: "none",
@@ -713,6 +717,33 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
     ],
     actorLimbPresenceModes: ["present", "absent"],
     actorLimbErrorCodes: ["LIMB_HIERARCHY_CONFLICT"],
+    actorPuppet: {
+      heightLimitsM: { min: 1, max: 2.4 },
+      jointIds: [
+        "pelvis",
+        "spine",
+        "neck",
+        "upper_arm_l",
+        "forearm_l",
+        "hand_l",
+        "upper_arm_r",
+        "forearm_r",
+        "hand_r",
+        "upper_leg_l",
+        "lower_leg_l",
+        "foot_l",
+        "upper_leg_r",
+        "lower_leg_r",
+        "foot_r",
+      ],
+      operationIds: ["actor.height.set", "actor.pose.joints.set"],
+      errorCodes: [
+        "ACTOR_HEIGHT_TARGET_INVALID",
+        "ACTOR_HEIGHT_RANGE_INVALID",
+        "ACTOR_JOINT_TARGET_INVALID",
+        "ACTOR_JOINT_ID_INVALID",
+      ],
+    },
     actorBlueprint: {
       schemaVersion: 1,
       mounts: [
@@ -1388,6 +1419,58 @@ describe.sequential("offline structured Director real-process workflow", () => {
     expect(acceptedScene.revision).toBe(submittedScene.data.revision);
 
     const patchSubmission = createPatchSubmission(acceptedScene);
+    patchSubmission.patch.operations.push(
+      {
+        op: "actor.height.set",
+        actorId: "actor_generic_1",
+        heightM: 1.84,
+      },
+      {
+        op: "actor.limb-presence.set",
+        actorId: "actor_generic_1",
+        updates: { hand_l: "absent" },
+      },
+      {
+        op: "actor.pose.set",
+        entityId: "actor_generic_1",
+        value: createExplicitPuppetActionPose(),
+      },
+      {
+        op: "actor.pose.joints.set",
+        actorId: "actor_generic_1",
+        updates: { neck: [0, 0, 0, 1] },
+      },
+    );
+    patchSubmission.intentReport.recognizedConstraints.push(
+      {
+        id: "intent_actor_height_e2e_1",
+        kind: "actor-height",
+        required: true,
+        targets: ["actor_generic_1"],
+        evidence: [{ type: "patch-operation", operationIndex: 2 }],
+      },
+      {
+        id: "intent_actor_limb_e2e_1",
+        kind: "actor-limb-presence",
+        required: true,
+        targets: ["actor_generic_1"],
+        evidence: [{ type: "patch-operation", operationIndex: 3 }],
+      },
+      {
+        id: "intent_actor_action_e2e_1",
+        kind: "pose",
+        required: true,
+        targets: ["actor_generic_1"],
+        evidence: [{ type: "patch-operation", operationIndex: 4 }],
+      },
+      {
+        id: "intent_actor_joint_e2e_1",
+        kind: "pose",
+        required: true,
+        targets: ["actor_generic_1"],
+        evidence: [{ type: "patch-operation", operationIndex: 5 }],
+      },
+    );
     await writeFile(
       patchSubmissionPath,
       JSON.stringify(patchSubmission),
@@ -1405,7 +1488,7 @@ describe.sequential("offline structured Director real-process workflow", () => {
     expect(submittedPatch.data).toMatchObject({
       sceneId: acceptedScene.sceneId,
       revision: acceptedScene.revision + 1,
-      operationCount: 2,
+      operationCount: 6,
     });
 
     const patchedSnapshot = await runDirectCli<SnapshotData>(
@@ -1421,6 +1504,17 @@ describe.sequential("offline structured Director real-process workflow", () => {
         aspect: { width: 16, height: 9 },
         resolutionPx: { width: 1280, height: 720 },
       },
+    });
+    const patchedActor = sceneSpecSchema
+      .parse(patchedSnapshot.data.scene)
+      .entities.find(({ id }) => id === "actor_generic_1");
+    expect(patchedActor).toMatchObject({
+      kind: "actor",
+      body: {
+        heightM: 1.84,
+        limbPresence: { hand_l: "absent" },
+      },
+      pose: { preset: { id: "pose.custom-v1" } },
     });
 
     const undo = await runDirectCli<SnapshotData>(
@@ -1444,6 +1538,13 @@ describe.sequential("offline structured Director real-process workflow", () => {
       observedStreams,
     );
     expect(undoSnapshot.data.scene).toEqual(undo.data.scene);
+    expect(
+      sceneSpecSchema
+        .parse(undoSnapshot.data.scene)
+        .entities.find(({ id }) => id === "actor_generic_1"),
+    ).toEqual(
+      acceptedScene.entities.find(({ id }) => id === "actor_generic_1"),
+    );
 
     const redo = await runDirectCli<SnapshotData>(
       ["redo"],
@@ -1469,6 +1570,11 @@ describe.sequential("offline structured Director real-process workflow", () => {
       observedStreams,
     );
     expect(redoSnapshot.data.scene).toEqual(redo.data.scene);
+    expect(
+      sceneSpecSchema
+        .parse(redoSnapshot.data.scene)
+        .entities.find(({ id }) => id === "actor_generic_1"),
+    ).toEqual(patchedActor);
 
     const saved = await runDirectCli<{
       sceneId: string;

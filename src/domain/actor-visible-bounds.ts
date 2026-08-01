@@ -2,6 +2,9 @@ import {
   actorAnchorLocalPoint,
   resolveLegacyActorProjection,
   resolveActorProjection,
+  type ActorProjectionEllipsoidPrimitive,
+  type ActorProjectionProfilePrimitive,
+  type ActorProjectionCylinderPrimitive,
   type ActorRigFrame,
   type ActorRigPrimitiveId,
 } from "./actor-projection";
@@ -42,6 +45,37 @@ const axisDirections: readonly Vec3[] = [
 
 const framePoint = (frame: ActorRigFrame, point: Vec3): Vec3 =>
   addVectors(frame.position, rotateVector(point, frame.rotation));
+
+const actorLinearVector = (
+  transform: TransformSpec,
+  vector: Vec3,
+): Vec3 => rotateVector([
+  vector[0] * transform.scale[0],
+  vector[1] * transform.scale[1],
+  vector[2] * transform.scale[2],
+], transform.rotation);
+
+const primitiveAxes = (frame: ActorRigFrame): readonly [Vec3, Vec3, Vec3] => [
+  rotateVector([1, 0, 0], frame.rotation),
+  rotateVector([0, 1, 0], frame.rotation),
+  rotateVector([0, 0, 1], frame.rotation),
+];
+
+const axisGradients = (
+  frame: ActorRigFrame,
+  transform: TransformSpec,
+): Vec3[] => {
+  const axes = primitiveAxes(frame);
+  const worldAxes = axes.map((axis) => actorLinearVector(transform, axis));
+  const gradients: Vec3[] = [];
+  for (let axis = 0; axis < 3; axis += 1) {
+    gradients.push(
+      [axes[0][axis], axes[1][axis], axes[2][axis]],
+      [worldAxes[0][axis], worldAxes[1][axis], worldAxes[2][axis]],
+    );
+  }
+  return gradients;
+};
 
 const affineWorldExtremaOffsets = (
   radius: number,
@@ -97,6 +131,33 @@ const capsulePoints = (
   ...spherePoints(framePoint(frame, secondEndpoint), radius, transform),
 ];
 
+const cylinderPoints = (
+  primitive: ActorProjectionCylinderPrimitive,
+): Vec3[] => {
+  const points: Vec3[] = [];
+  const halfLength = primitive.length / 2;
+  for (const y of [-halfLength, halfLength]) {
+    points.push(framePoint(primitive.frame, [
+      primitive.center[0],
+      primitive.center[1] + y,
+      primitive.center[2],
+    ]));
+    for (
+      let segment = 0;
+      segment < primitive.radialSegments;
+      segment += 1
+    ) {
+      const angle = (segment / primitive.radialSegments) * Math.PI * 2;
+      points.push(framePoint(primitive.frame, [
+        primitive.center[0] + Math.sin(angle) * primitive.radius,
+        primitive.center[1] + y,
+        primitive.center[2] + Math.cos(angle) * primitive.radius,
+      ]));
+    }
+  }
+  return points;
+};
+
 const boxPoints = (
   frame: ActorRigFrame,
   center: Vec3,
@@ -108,6 +169,73 @@ const boxPoints = (
       for (const z of [-size[2] / 2, size[2] / 2]) {
         points.push(framePoint(frame, [center[0] + x, center[1] + y, center[2] + z]));
       }
+    }
+  }
+  return points;
+};
+
+const profilePoints = (
+  primitive: ActorProjectionProfilePrimitive,
+  transform: TransformSpec,
+): Vec3[] => {
+  const points: Vec3[] = [];
+  const gradients = axisGradients(primitive.frame, transform);
+  for (const ring of primitive.points) {
+    const radiusZ = ring.radius * primitive.depthScale;
+    for (let segment = 0; segment < primitive.radialSegments; segment += 1) {
+      const angle = (segment / primitive.radialSegments) * Math.PI * 2;
+      points.push(framePoint(primitive.frame, [
+        primitive.center[0] + Math.cos(angle) * ring.radius,
+        primitive.center[1] + ring.y,
+        primitive.center[2] + Math.sin(angle) * radiusZ,
+      ]));
+    }
+    for (const gradient of gradients) {
+      const denominator = Math.hypot(
+        ring.radius * gradient[0],
+        radiusZ * gradient[2],
+      );
+      if (denominator === 0) continue;
+      const offset: Vec3 = [
+        (ring.radius * ring.radius * gradient[0]) / denominator,
+        0,
+        (radiusZ * radiusZ * gradient[2]) / denominator,
+      ];
+      for (const sign of [-1, 1]) {
+        points.push(framePoint(primitive.frame, [
+          primitive.center[0] + offset[0] * sign,
+          primitive.center[1] + ring.y,
+          primitive.center[2] + offset[2] * sign,
+        ]));
+      }
+    }
+  }
+  return points;
+};
+
+const ellipsoidPoints = (
+  primitive: ActorProjectionEllipsoidPrimitive,
+  transform: TransformSpec,
+): Vec3[] => {
+  const points = [framePoint(primitive.frame, [...primitive.center])];
+  for (const gradient of axisGradients(primitive.frame, transform)) {
+    const denominator = Math.hypot(
+      primitive.radii[0] * gradient[0],
+      primitive.radii[1] * gradient[1],
+      primitive.radii[2] * gradient[2],
+    );
+    if (denominator === 0) continue;
+    const offset: Vec3 = [
+      (primitive.radii[0] ** 2 * gradient[0]) / denominator,
+      (primitive.radii[1] ** 2 * gradient[1]) / denominator,
+      (primitive.radii[2] ** 2 * gradient[2]) / denominator,
+    ];
+    for (const sign of [-1, 1]) {
+      points.push(framePoint(primitive.frame, [
+        primitive.center[0] + offset[0] * sign,
+        primitive.center[1] + offset[1] * sign,
+        primitive.center[2] + offset[2] * sign,
+      ]));
     }
   }
   return points;
@@ -180,24 +308,7 @@ export const actorVisibleRigBounds = (
         break;
       }
       case "cylinder": {
-        const halfLength = primitive.length / 2;
-        localPoints.push(
-          ...capsulePoints(
-            primitive.frame,
-            [
-              primitive.center[0],
-              primitive.center[1] + halfLength,
-              primitive.center[2],
-            ],
-            [
-              primitive.center[0],
-              primitive.center[1] - halfLength,
-              primitive.center[2],
-            ],
-            primitive.radius,
-            transform,
-          ),
-        );
+        localPoints.push(...cylinderPoints(primitive));
         break;
       }
       case "box":
@@ -208,6 +319,12 @@ export const actorVisibleRigBounds = (
             primitive.size,
           ),
         );
+        break;
+      case "profile":
+        localPoints.push(...profilePoints(primitive, transform));
+        break;
+      case "ellipsoid":
+        localPoints.push(...ellipsoidPoints(primitive, transform));
         break;
     }
   }

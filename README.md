@@ -8,7 +8,7 @@ Shubi Shot Director is a local, browser-based 3D graybox camera-previsualization
 
 **[Watch the 49-second launch demo](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/shubi-shot-director-launch-demo.mp4)** · [Exported PNG](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/final-perspective.png) · [English subtitles](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.en.srt) · [中文字幕](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.zh-CN.srt)
 
-Current release: [v0.6.0 release notes](docs/releases/v0.6.0.md).
+Current release contract: [v0.7.0 release notes](docs/releases/v0.7.0.md).
 
 Shubi Shot Director is open-source graybox camera previs: it turns natural-language shot intent into a structured, editable 3D scene, shows the actual final camera through the real browser Shot Preview, and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
 
@@ -16,7 +16,7 @@ Shubi Shot Director is open-source graybox camera previs: it turns natural-langu
 
 It turns a shot description into an editable `SceneSpec` containing either a
 legacy single-room environment or a same-floor graph of arbitrary regions,
-boundaries, openings, and connections, plus legacy actors with generic editable limb presence or reusable Actor Blueprint instances, props, poses, constraints,
+boundaries, openings, and connections, plus legacy or reusable Blueprint actors with editable 1.0-2.4 m stature, fifteen canonical joints, generic limb presence, props, poses, constraints,
 and perspective cameras. The browser provides Overview, focused Local preview,
 and an independent final-camera Shot Preview, and it can export a 16:9 PNG
 reference for blocking, scale, contact, occlusion, camera height, angle, and
@@ -119,7 +119,7 @@ The successful export response includes the `sceneId`, revision, dimensions, SHA
   only in the editor.
 - Press `W` to move, `E` to rotate, and `Q` to return to selection mode.
 - Use translation and rotation snapping for predictable blocking.
-- Edit actor pose, generic limb presence, contact settings, and final-camera focal length in the inspector.
+- Edit actor stature, canonical joints, complete actions, generic limb presence, contact settings, and final-camera focal length in the inspector.
 - In `镜头预览`, final-camera controls are immediately available without an activation toggle.
 - Left-drag translates in the image plane, right-drag orbits around the primary composition target, and the wheel changes focal length in millimeters without moving the camera.
 - Use the six-button movement pad or `ArrowUp`/`ArrowDown` for forward/backward, `ArrowLeft`/`ArrowRight` for lateral movement, and `PageUp`/`PageDown` for world-Y movement. Hold `Shift` for fast keyboard steps or `Alt` for precision steps; press `Escape` to cancel the current draft.
@@ -135,7 +135,7 @@ The project-local Skill is stored at [`.agents/skills/shubi-shot-director/SKILL.
 
 Host Codex must author `IntentReport`, `SceneSpec`, and `ScenePatch` according to the Skill references. The Skill then calls the structured CLI, verifies `sceneId` and revision transitions, and inspects the browser preview. Account mode or KEY mode belongs to the host and is never forwarded into Director files, arguments, processes, logs, or artifacts.
 
-Canonical authoring uses SceneSpec, ScenePatch, and IntentReport schema version 5. Legacy actors retain the complete twelve-key `body.limbPresence` map and `actor.limb-presence.set`. Blueprint actors reference one embedded canonical snapshot through `blueprintInstance`, and use `actor.variant.set` for an existing variant. New and unfinished graybox entities use `lockMode: "none"`. Ordinary natural-language corrections use `preserveLock: true`.
+Canonical authoring uses SceneSpec, ScenePatch, and IntentReport schema version 6. Legacy actors store actual stature in `body.heightM`; Blueprint actors resolve stature through `blueprintInstance.heightScale` and keep manual `limbPresenceOverrides` above the selected variant. Both branches use the same fifteen normalized joint quaternions. Follow-ups use `actor.height.set`, minimal `actor.pose.joints.set`, `actor.limb-presence.set`, or complete-action `actor.pose.set`. New and unfinished graybox entities use `lockMode: "none"`. Ordinary natural-language corrections use `preserveLock: true`.
 
 Capability contract version 2 now requires workspace routing version 1 and `bridge.thread-workspaces`. The normal parallel workflow is automatic:
 
@@ -157,7 +157,7 @@ These commands are not a natural-language route and carry no semantic-completene
 
 ## Reusable Actor Blueprints
 
-v0.6 can validate an explicitly supplied external JSON blueprint at the Host boundary:
+v0.7 can validate an explicitly supplied external JSON blueprint at the Host boundary:
 
 ```powershell
 node scripts/director.mjs blueprint validate --file <actor-blueprint.json>
@@ -165,9 +165,9 @@ node scripts/director.mjs blueprint validate --file <actor-blueprint.json>
 
 The result is a generic summary containing the blueprint ID, version, canonical content SHA-256, module count, and variant count. The source path and raw file never enter SceneSpec, ScenePatch, history, diagnostics, logs, screenshots, or PNG metadata.
 
-A SceneSpec embeds one path-free canonical snapshot and may contain multiple independent actor instances that reference it. Equal SHA-256 content reuses that snapshot. A reused ID with different content is rejected rather than overwritten. Snapshots persist across save/load without the source file, are never automatically garbage-collected, and have no removal operation in v0.6.
+A SceneSpec embeds one path-free canonical snapshot and may contain multiple independent actor instances that reference it. Equal SHA-256 content reuses that snapshot. A reused ID with different content is rejected rather than overwritten. Snapshots persist across save/load without the source file, are never automatically garbage-collected, and have no removal operation in v0.7.
 
-Blueprint modules are combinations of box, sphere, and cylinder primitives mounted at supported shoulder, elbow, wrist, hip, and knee frames. Variants contain only limb-presence and module-visibility deltas. The existing Inspector shows a read-only summary and selects only variants already in the snapshot; it is not a blueprint editor.
+Blueprint modules are combinations of box, sphere, and cylinder primitives mounted at supported shoulder, elbow, wrist, hip, and knee frames. Effective limb presence layers immutable base state, selected variant deltas, then instance `limbPresenceOverrides`; switching variants preserves manual overrides. The Inspector shows a read-only snapshot summary and selects only existing variants; it is not a blueprint editor.
 
 ## Copy-paste Codex example
 
@@ -235,11 +235,11 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Verified platform
 
-Verified on Windows 11 Pro, 64-bit (build 26200). The v0.6.0 schema, Skill, and automated repository checks use Windows PowerShell 5.1, Node.js 24.16.0, and pnpm 11.9.0. This is the only operating system verified for v0.6.0. macOS and Linux have not yet been verified for v0.6.0.
+The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.7.0 automated verification evidence is recorded in [`docs/releases/v0.7.0.md`](docs/releases/v0.7.0.md). Final v0.7 real-browser and PNG-export acceptance remains a separate release gate; macOS and Linux are not claimed as verified for v0.7.0.
 
 ## Origin & Maintainer
 
-Originally developed during the production of the visual novel “売り札の塔”.
+Originally developed through iterative product work on editable graybox camera previs.
 
 Created and maintained by Shubi, an AI collaborator working alongside her human partner.
 

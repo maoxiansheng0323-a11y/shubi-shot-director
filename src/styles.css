@@ -805,6 +805,182 @@ button {
   white-space: nowrap;
 }
 
+.actor-stature-controls,
+.actor-joint-controls,
+.stature-input-row,
+.joint-axis-grid,
+.joint-axis-control {
+  min-width: 0;
+}
+
+.stature-input-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #778493;
+  font-size: 9px;
+}
+
+.stature-number-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #333b45;
+  border-radius: 6px;
+  background: #11151a;
+}
+
+.stature-number-field input,
+.joint-axis-control input[type="number"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  outline: 0;
+  color: #cfd6de;
+  background: transparent;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  text-align: right;
+}
+
+.stature-number-field span {
+  color: #667483;
+  font-size: 8px;
+}
+
+.stature-range-field {
+  display: block;
+  margin-top: 9px;
+}
+
+.stature-range-field input,
+.joint-axis-control input[type="range"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  accent-color: #82a7c8;
+}
+
+.stature-number-field:focus-within,
+.joint-selector-field select:focus-visible,
+.joint-axis-control:focus-within {
+  border-color: #7697b8;
+  box-shadow: 0 0 0 2px rgb(118 151 184 / 18%);
+}
+
+.stature-number-field input[aria-invalid="true"],
+.joint-axis-control input[aria-invalid="true"] {
+  background: rgb(117 50 47 / 24%);
+}
+
+.actor-stature-controls input:disabled,
+.actor-joint-controls input:disabled,
+.actor-joint-controls select:disabled,
+.actor-joint-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.joint-selector-field {
+  display: grid;
+  gap: 5px;
+  color: #778493;
+  font-size: 9px;
+}
+
+.joint-selector-field select {
+  width: 100%;
+  min-width: 0;
+  height: 29px;
+  padding: 0 7px;
+  border: 1px solid #333b45;
+  border-radius: 6px;
+  outline: 0;
+  color: #cbd3dc;
+  background: #11151a;
+  font-size: 9px;
+}
+
+.joint-axis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.joint-axis-control {
+  display: grid;
+  gap: 4px;
+  overflow: hidden;
+  padding: 5px;
+  border: 1px solid #333b45;
+  border-radius: 6px;
+  background: #11151a;
+}
+
+.joint-axis-control label {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.joint-axis-control label,
+.joint-axis-control .axis {
+  width: 100%;
+}
+
+.joint-axis-control .axis {
+  height: 19px;
+  border-radius: 4px;
+}
+
+.joint-axis-meaning {
+  overflow: hidden;
+  color: #7f8c99;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.joint-axis-control input[type="number"] {
+  height: 25px;
+  padding: 0 2px;
+  text-align: center;
+}
+
+.joint-reset-button {
+  width: 100%;
+  height: 29px;
+  margin-top: 9px;
+  border: 1px solid #40566b;
+  border-radius: 6px;
+  outline: 0;
+  color: #cbd9e7;
+  background: #253341;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.joint-reset-button:hover:not(:disabled) {
+  border-color: #58748e;
+  background: #2b3d4d;
+}
+
+.joint-reset-button:focus-visible {
+  border-color: #7697b8;
+  box-shadow: 0 0 0 2px rgb(118 151 184 / 18%);
+}
+
 .limb-control-groups {
   display: grid;
   gap: 10px;
@@ -1248,6 +1424,10 @@ button {
   .workspace-grid[data-compact-pane="scene"] > .outliner,
   .workspace-grid[data-compact-pane="inspector"] > .inspector {
     border: 0;
+  }
+
+  .stature-input-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .topbar {

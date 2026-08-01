@@ -95,6 +95,9 @@ const REQUIRED_FEATURE_IDS = Object.freeze([
   "composition.segmented-report",
   "bridge.safe-shutdown",
   "actor.limb-presence",
+  "actor.height",
+  "actor.pose-joints",
+  "actor.blueprint-instance-limb-overrides",
 ]);
 const ENTITY_LOCK_MODES = Object.freeze(["none", "workflow", "user"]);
 const PATCH_POLICY_FIELDS = Object.freeze(["preserveLock"]);
@@ -124,6 +127,24 @@ const ACTOR_LIMB_PRESENCE_MODES = Object.freeze([
 const ACTOR_LIMB_ERROR_CODES = Object.freeze([
   "LIMB_HIERARCHY_CONFLICT",
 ]);
+const ACTOR_PUPPET = Object.freeze({
+  heightLimitsM: Object.freeze({ min: 1, max: 2.4 }),
+  jointIds: Object.freeze([
+    "pelvis", "spine", "neck", "upper_arm_l", "forearm_l", "hand_l",
+    "upper_arm_r", "forearm_r", "hand_r", "upper_leg_l", "lower_leg_l",
+    "foot_l", "upper_leg_r", "lower_leg_r", "foot_r",
+  ]),
+  operationIds: Object.freeze([
+    "actor.height.set",
+    "actor.pose.joints.set",
+  ]),
+  errorCodes: Object.freeze([
+    "ACTOR_HEIGHT_TARGET_INVALID",
+    "ACTOR_HEIGHT_RANGE_INVALID",
+    "ACTOR_JOINT_TARGET_INVALID",
+    "ACTOR_JOINT_ID_INVALID",
+  ]),
+});
 const REMOVED_COMMAND_IDS = new Set([
   "shot.create",
   "shot.modify",
@@ -292,6 +313,38 @@ const actorBlueprintsEqual = (left, right) =>
     right?.variantDeltaFields,
   ) &&
   stringSetsEqual(left?.errorCodes, right?.errorCodes);
+const actorPuppetSnapshot = (value) => {
+  const record = plainOwnRecord(value);
+  const heightLimitsM = plainOwnRecord(record?.heightLimitsM);
+  if (
+    record === undefined ||
+    Object.keys(record).length !== 4 ||
+    heightLimitsM === undefined ||
+    Object.keys(heightLimitsM).length !== 2 ||
+    heightLimitsM.min !== ACTOR_PUPPET.heightLimitsM.min ||
+    heightLimitsM.max !== ACTOR_PUPPET.heightLimitsM.max ||
+    !isNonEmptyUniqueStringArray(record.jointIds) ||
+    !isNonEmptyUniqueStringArray(record.operationIds) ||
+    !isNonEmptyUniqueStringArray(record.errorCodes) ||
+    !stringSetsEqual(record.jointIds, ACTOR_PUPPET.jointIds) ||
+    !stringSetsEqual(record.operationIds, ACTOR_PUPPET.operationIds) ||
+    !stringSetsEqual(record.errorCodes, ACTOR_PUPPET.errorCodes)
+  ) {
+    return undefined;
+  }
+  return {
+    heightLimitsM: { ...heightLimitsM },
+    jointIds: [...record.jointIds],
+    operationIds: [...record.operationIds],
+    errorCodes: [...record.errorCodes],
+  };
+};
+const actorPuppetsEqual = (left, right) =>
+  left?.heightLimitsM?.min === right?.heightLimitsM?.min &&
+  left?.heightLimitsM?.max === right?.heightLimitsM?.max &&
+  stringSetsEqual(left?.jointIds, right?.jointIds) &&
+  stringSetsEqual(left?.operationIds, right?.operationIds) &&
+  stringSetsEqual(left?.errorCodes, right?.errorCodes);
 
 const MANIFEST_ROOT_KEYS = new Set([
   "service",
@@ -315,6 +368,7 @@ const MANIFEST_ROOT_KEYS = new Set([
   "actorLimbPartIds",
   "actorLimbPresenceModes",
   "actorLimbErrorCodes",
+  "actorPuppet",
   "actorBlueprint",
 ]);
 const MANIFEST_REQUIRED_FIELDS = Object.freeze([
@@ -547,6 +601,7 @@ const validateCapabilitiesSnapshot = (input) => {
     const actorBlueprint = actorBlueprintSnapshot(
       record.actorBlueprint,
     );
+    const actorPuppet = actorPuppetSnapshot(record.actorPuppet);
     if (
       !MANIFEST_REQUIRED_FIELDS.every((field) =>
         hasOwnDataProperty(record, field),
@@ -562,6 +617,7 @@ const validateCapabilitiesSnapshot = (input) => {
       !isNonEmptyUniqueStringArray(record.actorLimbPartIds) ||
       !isNonEmptyUniqueStringArray(record.actorLimbPresenceModes) ||
       !isNonEmptyUniqueStringArray(record.actorLimbErrorCodes) ||
+      actorPuppet === undefined ||
       actorBlueprint === undefined
     ) {
       return invalid("CAPABILITIES_INVALID");
@@ -585,6 +641,7 @@ const validateCapabilitiesSnapshot = (input) => {
         actorLimbPartIds: [...record.actorLimbPartIds],
         actorLimbPresenceModes: [...record.actorLimbPresenceModes],
         actorLimbErrorCodes: [...record.actorLimbErrorCodes],
+        actorPuppet,
         actorBlueprint,
       },
     };
@@ -659,6 +716,7 @@ const compareLiveManifest = (
       offline.actorLimbPresenceModes,
     ) ||
     !stringSetsEqual(live.actorLimbErrorCodes, offline.actorLimbErrorCodes) ||
+    !actorPuppetsEqual(live.actorPuppet, offline.actorPuppet) ||
     !actorBlueprintsEqual(
       live.actorBlueprint,
       offline.actorBlueprint,
@@ -789,6 +847,7 @@ export const buildCompatibilityPlan = (input) => {
     !isNonEmptyUniqueStringArray(input.skillActorLimbPartIds) ||
     !isNonEmptyUniqueStringArray(input.skillActorLimbPresenceModes) ||
     !isNonEmptyUniqueStringArray(input.skillActorLimbErrorCodes) ||
+    !actorPuppetsEqual(input.skillActorPuppet, ACTOR_PUPPET) ||
     !stringSetsEqual(input.skillEntityLockModes, ENTITY_LOCK_MODES) ||
     !stringSetsEqual(
       input.skillPatchPolicyFields,
@@ -874,6 +933,10 @@ export const buildCompatibilityPlan = (input) => {
       !stringSetsEqual(
         manifest.actorLimbErrorCodes,
         input.skillActorLimbErrorCodes,
+      ) ||
+      !actorPuppetsEqual(
+        manifest.actorPuppet,
+        input.skillActorPuppet,
       ) ||
       !actorBlueprintsEqual(
         manifest.actorBlueprint,

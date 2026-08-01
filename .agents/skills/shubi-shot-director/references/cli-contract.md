@@ -57,7 +57,7 @@ Stable workspace errors are:
 
 `patch submit --file` reads a strict `{ intentReport, patch }` envelope. The Patch applies atomically only when the scene ID, base revision, references, policy, and evidence are all valid. Success preserves `sceneId` and advances revision exactly once.
 
-Every canonical v5 Patch includes `preserveLock`. Ordinary natural-language corrections use `preserveLock: true`. Workflow locks never require user authorization: `WORKFLOW_LOCKED` means re-author with `preserveLock: true`, not ask the user. User locks require explicit confirmation, so `USER_LOCKED` is the stop-and-ask condition. After explicit user confirmation, use `preserveLock: false` with explicit lock-mode transition operations in the same atomic Patch as the protected change; there is no temporary separate unlock.
+Every canonical v6 Patch includes `preserveLock`. Ordinary natural-language corrections use `preserveLock: true`. Workflow locks never require user authorization: `WORKFLOW_LOCKED` means re-author with `preserveLock: true`, not ask the user. User locks require explicit confirmation, so `USER_LOCKED` is the stop-and-ask condition. After explicit user confirmation, use `preserveLock: false` with explicit lock-mode transition operations in the same atomic Patch as the protected change; there is no temporary separate unlock.
 
 `actor.limb-presence.set` targets a canonical actor ID and accepts one to twelve canonical part updates. `LIMB_HIERARCHY_CONFLICT` requires one consistent rewritten operation. `ACTOR_LIMB_TARGET_INVALID` requires a refreshed snapshot and corrected actor target; never fallback to another entity type. Replacement parts, prostheses, mechanical limbs, sockets, and custom meshes remain unsupported host semantics and never become runtime fields.
 
@@ -116,7 +116,7 @@ Failure:
 - An explicit user-facing save applies workflow locks to every `none` entity before serialization. `scene save` performs and validates that checkpoint, then writes the accepted revision.
 - `scene save` and `export png` refuse overwrite unless `--force` is explicit.
 - `scene load` validates before replacing the authoritative scene.
-- Actor Blueprint snapshots are embedded in SceneSpec. Saving, loading, undo, and redo never depend on the external source file, and no operation removes or automatically garbage-collects a snapshot in v0.6.
+- Actor Blueprint snapshots are embedded in SceneSpec. Saving, loading, undo, and redo never depend on the external source file, and no operation removes or automatically garbage-collects a snapshot in v0.7.
 - `undo` and `redo` create new authoritative revisions; never assume an old revision number returns.
 - `stop` stops only the current workspace. It preserves other conversations and their bridges.
 - `composition inspect --json` returns deterministic segmented checks.

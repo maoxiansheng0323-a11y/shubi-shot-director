@@ -51,10 +51,11 @@ Effective limb presence uses exactly this algorithm:
 
 1. Start from the complete base map.
 2. Apply only the selected variant's explicit overrides.
-3. An explicitly absent parent closes every descendant in its chain.
-4. Reject an explicitly present child whose effective ancestor is absent.
-5. Validate the resulting complete map.
-6. Never merge from the previously selected variant.
+3. Apply the instance's `limbPresenceOverrides` as the highest layer.
+4. An explicitly absent parent closes every descendant in its chain.
+5. Reject an explicitly present child whose effective ancestor is absent.
+6. Validate the resulting complete map.
+7. Never merge from the previously selected variant.
 
 Thus `upper_arm_r: "absent"` is enough to close the right forearm and hand. A repaired variant restores the right-arm chain from the complete base without duplicating body proportions. Unknown module IDs and duplicate variant IDs are invalid.
 
@@ -66,7 +67,7 @@ Thus `upper_arm_r: "absent"` is enough to close the right forearm and hand. A re
 - The same SHA-256 must reuse the existing snapshot.
 - The same blueprintId with a different SHA-256 is rejected as `ACTOR_BLUEPRINT_ID_CONFLICT`; a new generic ID must be explicit.
 - The same SHA-256 under another ID is rejected as `ACTOR_BLUEPRINT_HASH_DUPLICATE`.
-- There is no automatic garbage collection and v0.6 has no blueprint removal operation.
+- There is no automatic garbage collection and v0.7 has no blueprint removal operation.
 
 Register one snapshot with `actor.blueprint.register`, then add any number of instances through `entity.add`. Each instance needs a distinct legal actor `id` and a distinct existing generic slot such as `actor_female_1` and `actor_female_2`. Multiple instances reference the same snapshot through:
 
@@ -74,14 +75,24 @@ Register one snapshot with `actor.blueprint.register`, then add any number of in
 {
   "blueprintInstance": {
     "blueprintId": "actor_blueprint_1",
-    "variantId": "damaged"
+    "variantId": "damaged",
+    "heightScale": 1,
+    "limbPresenceOverrides": {}
   }
 }
 ```
 
-The actor union is mutually exclusive. A blueprint actor has `blueprintInstance`, pose, transform, color, and lock state, but no `rig`, `body`, instance-level `limbPresence`, proportions, skeleton, modules, or variants. A legacy actor has `rig` and `body` and no `blueprintInstance`. Mixed branches are rejected by strict equivalent one-of validation.
+The actor union is mutually exclusive. A Blueprint actor has `blueprintInstance`, pose, transform, color, and lock state, but no `rig`, `body`, proportions, skeleton, modules, or variants. A legacy actor has `rig` and `body` and no `blueprintInstance`. Mixed branches are rejected by strict equivalent one-of validation.
 
-Switch only among variants already in the referenced snapshot using one `actor.variant.set` operation. It never changes pose, rotation, scale, parent, color, lock, or user-authored horizontal placement. With contact enforcement inactive, the complete transform stays byte-for-byte unchanged. With contact enforcement active, only the contact-owned translation component may change; the same atomic revision owns that adjustment, and undo/redo restores it exactly.
+Resolved stature is `snapshot.body.heightM * blueprintInstance.heightScale` and must stay within 1.0-2.4 meters. Use `actor.height.set` to change actual stature; never edit the snapshot body or use transform scale as a substitute.
+
+Use `actor.limb-presence.set` to write the minimal `limbPresenceOverrides` delta for this instance. Snapshot base limb state, variant deltas, modules, proportions, skeleton, canonical JSON, and SHA-256 remain immutable. Switching among variants with one `actor.variant.set` operation never clears manual instance overrides and never changes pose, rotation, scale, parent, color, lock, or user-authored horizontal placement.
+
+Generated property schemas carry `x-shubi-resolved-stature` and `x-shubi-limb-hierarchy` as structural guidance only. Ajv cannot combine the immutable snapshot with an instance or close the effective limb hierarchy by itself; runtime Zod refinement is authoritative for final acceptance. Host Codex still authors a legal resolved stature and consistent override chain before submission.
+
+Blueprint actors use the same fifteen canonical pose joints and normalized quaternions as legacy actors. `hand_*` is the wrist terminal joint and `foot_*` is the ankle terminal joint. Use `actor.pose.joints.set` for local joint corrections and `actor.pose.set` only for a complete action.
+
+With contact enforcement inactive, non-contact transform components stay byte-for-byte unchanged. With contact enforcement active, height, limb, joint, action, and variant changes may adjust only the authoritative contact-owned translation component in the same atomic revision; undo/redo restores it exactly.
 
 ## Projection, Inspector, and verification
 
@@ -89,4 +100,4 @@ All consumers use one resolved actor projection for both legacy and blueprint ac
 
 For a blueprint actor, the existing Inspector shows a read-only blueprint ID/version/hash summary and a selector containing only variants already in the snapshot. Selection submits `actor.variant.set` through the existing Patch route. The Inspector does not import, author, edit, duplicate, rename, or delete blueprints, modules, proportions, or variants.
 
-After create, registration, instance addition, reload, or variant change, inspect Overview, each affected Local preview, Shot Preview, and the composition report. A PNG acceptance claim requires the browser-rendered final camera, returned scene ID and revision, exact dimensions, file SHA-256, warning codes, and human inspection of the intended modules and limb state.
+After create, registration, instance addition, reload, height change, limb override, joint change, action, or variant change, inspect Overview, each affected Local preview, Shot Preview, and the composition report. Confirm resolved stature, missing limb chains, wrist/ankle articulation, contact, save-load identity, and unchanged snapshot SHA-256. A PNG acceptance claim requires the browser-rendered final camera, returned scene ID and revision, exact dimensions, file SHA-256, warning codes, and human inspection of the intended modules and limb state.

@@ -4,12 +4,143 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v0.7.0 adjustable actor puppet gates
+
+Run the public-contract and actor-puppet automation before the full repository gate:
+
+```powershell
+pnpm schemas:generate
+pnpm exec vitest run tests/runtime-capabilities.test.ts tests/bridge-compatibility-cli.test.ts tests/skill-compatibility.test.ts tests/public-release-audit.test.ts
+pnpm exec vitest run tests/actor-puppet-schema.test.ts tests/actor-puppet-patch.test.ts tests/actor-puppet-projection.test.ts tests/actor-puppet-controls.test.ts tests/actor-puppet-black-box.test.ts
+pnpm typecheck
+pnpm test
+pnpm lint
+pnpm build
+pnpm audit:public
+```
+
+Require application 0.7.0, capability contract 2, workspace routing 1, SceneSpec/ScenePatch/IntentReport version 6, and features `actor.height`, `actor.pose-joints`, and `actor.blueprint-instance-limb-overrides`. The deterministic manifest must publish exactly fifteen canonical joint IDs, resolved stature limits 1.0-2.4 meters, the two incremental operations, and the four height/joint recovery codes.
+
+Require every canonical v6 actor pose, public starter scene, and create submission to store exactly the fifteen canonical joints. Empty, sparse, and extra-key maps must fail in both runtime Zod and generated Ajv validation. Direct v1-v5 migration of a complete SceneSpec, an actor `entity.add`, and a complete-action `actor.pose.set` Patch must apply only the known historical pose-joint aliases, prefer a canonical value when its alias coexists, fill missing canonical joints with identity quaternions, discard every other unknown pose key, and leave current invalid v6 input rejected rather than auto-repaired.
+
+For a complete v5 SceneSpec containing a Blueprint actor with enabled ground contact, verify migration under `none`, `workflow`, and `user` locks. It must preserve the original lock mode and revision, modify only contact-owned Y plus required v6 instance/joint defaults, and make subsequent SceneSession replacement and persisted-scene load idempotent. Also verify that a v5 Patch may newly add a `workflow`- or `user`-locked Blueprint actor plus its enabled ground contact in one revision while rebasing only contact-owned Y. The equivalent native v6 Patch must remain subject to ordinary lock enforcement, return `WORKFLOW_LOCKED` or `USER_LOCKED`, and leave the scene unchanged.
+
+### v0.7.0 Patch source-integrity gate
+
+Run this bounded focused gate for the current v0.7 Patch source boundary:
+
+```powershell
+pnpm exec vitest run tests/actor-puppet-patch.test.ts tests/scene-session.test.ts tests/structured-submission.test.ts tests/structured-submission-cli.test.ts tests/server-api-health.test.ts
+```
+
+| Contract | Required result |
+| --- | --- |
+| `v1-v4` | CLI `patch apply --file` and `patch submit --file` strictly normalize v1-v4 input to one canonical v6 Patch and forward that canonical Patch directly. |
+| `v5` | The same commands normalize v5 input to canonical v6, rebuild only v5 as a sanitized v5 compatibility payload, reparse it, and require canonical equivalence. |
+| `forwarding` | Raw legacy subtrees, unknown markers, and input paths are never forwarded. |
+| `stable-source` | Raw Session, API, and direct apply validation derive canonical structure and source-schema provenance from the same stable Patch snapshot. |
+| `carrier-boundary` | The internal transient carrier never appears in public JSON Schema, SceneSpec, history, or persistence. |
+
+For both legacy and Blueprint actors, verify stature, limb overrides, complete actions, minimal joint edits, contact correction, exact one-revision Patch acceptance, undo/redo, save/load, and Blueprint SHA stability. Skill authoring must use exact snapshot `sceneId`/`baseRevision`, `preserveLock: true` for workflow corrections, stop on user locks, and keep profile data and source paths out of runtime artifacts.
+
+### Latest fresh evidence — 2026-08-01
+
+The 2026-08-01 integrated repository gate ran `pnpm verify`. Schema generation,
+type checking, all 79 test files and 1,809 tests, full ESLint, and the production
+build passed. The public audit scanned 242 files with zero findings and reported
+only Apache-2.0, BSD-3-Clause, ISC, and MIT dependency license names.
+
+The focused source-integrity gate above passed all 5 files and 190 tests. A
+direct 2026-08-01 line count found 165 lines in `SKILL.md`.
+
+Automated verification does not replace the final v0.7 browser gate. The
+2026-08-01 follow-up completed that gate in the real in-app browser against
+application 0.7.0, capability contract 2, workspace routing 1, and schema v6.
+
+A fresh black-box Host agent was given only the current Skill and a generic
+revision-7 Blueprint snapshot. Its Walking modification passed the generated
+JSON Schema, runtime Zod refinement, and IntentReport coverage checks, then
+applied atomically from revision 7 to 8. The Patch used the canonical actor ID,
+the `actor.pose.set` `entityId` exception, `preserveLock: true`, all fifteen
+joints, and `contactOffsetM: 0.8748`; workflow lock, Blueprint SHA, and entity
+scale were preserved.
+
+The final legacy checkpoint is `scene_humanoid_legacy_acceptance` revision 50.
+The saved file records revision 49, and reload advanced the authoritative
+session to 50 without changing the scene state. The actor is 1.92 m tall with
+right forearm and right hand absent, Standing neutral pose, contact Y 1.0896,
+and `transform.scale: [1, 1, 1]`. The browser also verified Crouching to
+Standing neutral, undo at revision 46, redo at 47, a three-quarter camera at
+48, explicit save at 49, reload at 50, and workflow locks on every entity.
+Overview and Shot Preview showed a human-readable head, neck, tapered torso,
+pelvis, thighs, and lower legs. The ignored saved scene is
+`.shubi-shot/acceptance/v0.7.0/legacy-neutral-three-quarter.scene.json`.
+
+The reusable Blueprint checkpoint is
+`scene_actor_puppet_blueprint_acceptance` revision 63. Its accepted sequence
+was:
+
+```text
+51       create the embedded Blueprint scene
+52       resolved stature 1.62 -> 1.86 m
+53       right forearm and right hand absent
+54 -> 55 damaged variant, then repaired; instance overrides preserved
+56 -> 57 restore right forearm, then right hand
+58       right wrist X bend 30 degrees; pose becomes pose.custom-v1
+59       complete Walking action with all fifteen joints
+60 -> 61 final three-quarter camera and composition correction
+62 -> 63 explicit save, then reload
+```
+
+The embedded snapshot SHA-256 remained
+`1bf75cbad12e92dc867ea7f45164ab0b4a8a63ee28e969b7b678632a652da30d`.
+Resolved stature is exactly 1.86 m through
+`heightScale: 1.1481481481481481`; entity scale remains `[1, 1, 1]`. The final
+variant is `repaired`, all twelve limb chains resolve present through instance
+overrides, Walking stores all fifteen joints and `contactOffsetM: 1.0044`, and
+all entities remain workflow locked. The saved revision-62 scene reloaded to
+revision 63 without the external Blueprint source file. The ignored saved
+scene is
+`.shubi-shot/acceptance/v0.7.0/blueprint-walking-three-quarter.scene.json`.
+
+Composition at revision 63 returned `report.status: safe` with anchor,
+framing, caption/UI, occlusion, topology, and camera collision all passing and
+no issues. `overallStatus` remains honestly `check` because framing,
+caption/UI, and occlusion use approximate proxy checks; the real final-camera
+view was therefore inspected separately.
+
+That visual review found the human profile and Walking action correct, but it
+also exposed a pre-existing BasicShadowMap stair-step artifact that could look
+like broken limbs. A regression test was first observed failing, then the
+browser renderer was changed to filtered PCF shadows with a 2048 x 2048 map
+and radius 3. Re-exporting the unchanged revision 63 removed the binary shadow
+steps without mutating SceneSpec. The connected Shot Preview produced
+`.shubi-shot/acceptance/v0.7.0/blueprint-walking-three-quarter.png` with:
+
+- scene ID `scene_actor_puppet_blueprint_acceptance`, revision 63;
+- 1920 x 1080 IHDR dimensions and PNG signature `89504e470d0a1a0a`;
+- 235,756 bytes;
+- SHA-256
+  `30b2970307b1847470cdb82eb89ca92e041dddabf0b4dc600e05af038acce0f1`;
+- no export warnings.
+
+The byte-derived SHA matched the CLI result. All saved scenes and PNGs use
+only generic data under ignored `.shubi-shot` storage; no acceptance artifact
+is tracked, and the external reference images were never copied into the
+repository.
+
+### Historical evidence — 2026-07-31
+
+The 2026-07-31 adjustable-puppet gate remains an earlier checkpoint only. Its
+automated totals and scene revisions are superseded by the dated 2026-08-01
+evidence above and are not used as current release claims.
+
 ## v0.6.0 Actor Blueprint gates
 
 Run the focused reusable-blueprint contract before the full gate:
 
 ```powershell
-pnpm exec vitest run tests/actor-blueprint.test.ts tests/actor-blueprint-import.test.ts tests/actor-blueprint-scene.test.ts tests/actor-blueprint-patch.test.ts tests/actor-projection.test.ts tests/actor-blueprint-consumers.test.ts tests/actor-blueprint-controls.test.ts tests/persistence.test.ts tests/privacy-boundary.test.ts
+pnpm exec vitest run tests/actor-blueprint-schema.test.ts tests/actor-blueprint-host-boundary.test.ts tests/actor-blueprint-scene.test.ts tests/actor-blueprint-patch.test.ts tests/actor-projection.test.ts tests/actor-blueprint-black-box.test.ts tests/actor-blueprint-controls.test.ts tests/scene-persistence.test.ts tests/scene-session.test.ts tests/public-release-audit.test.ts
 node .agents/skills/shubi-shot-director/scripts/director.mjs blueprint validate --file <external-actor-blueprint.json>
 ```
 
@@ -21,7 +152,7 @@ Require all of the following:
 - two legal actor IDs with distinct actor slots can independently reference one snapshot while retaining independent transform, pose, color, lock, and selected variant;
 - damaged and repaired variants resolve from the complete base rather than each other, and module visibility uses only the selected delta over `module.visible`;
 - render, bounds, contact, composition, and software diagnostics consume one resolved actor projection;
-- v0.1-v0.4 legacy scenes migrate to v5 and preserve primitive ID, type, and visibility exactly, with size and transform differences no greater than `1e-9`;
+- v0.1-v0.5 legacy scenes migrate to canonical v6 and preserve primitive ID, type, and visibility exactly, with size and transform differences no greater than `1e-9`;
 - save/load, source-file deletion, restart, undo, and redo preserve snapshots and actor structure; removing the last actor does not garbage-collect the snapshot;
 - the Inspector exposes only a read-only blueprint summary and selection among variants already in the snapshot.
 

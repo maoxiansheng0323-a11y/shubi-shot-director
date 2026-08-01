@@ -107,4 +107,18 @@ describe("ActorBlueprintControls", () => {
       ),
     ).toBe(false);
   });
+
+  it("disables the variant selector without its authoritative callback", () => {
+    const { scene, actor } = blueprintFixture();
+    const markup = renderToStaticMarkup(
+      createElement(ActorBlueprintControls, {
+        scene,
+        actor,
+        disabled: false,
+      }),
+    );
+
+    expect(markup).toContain('aria-label="Actor blueprint variant"');
+    expect(markup).toContain('disabled=""');
+  });
 });

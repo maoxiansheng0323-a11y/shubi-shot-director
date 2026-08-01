@@ -52,6 +52,24 @@ const bundledActorLimbPresenceModes = Object.freeze([
 const bundledActorLimbErrorCodes = Object.freeze([
   "LIMB_HIERARCHY_CONFLICT",
 ]);
+const bundledActorPuppet = Object.freeze({
+  heightLimitsM: Object.freeze({ min: 1, max: 2.4 }),
+  jointIds: Object.freeze([
+    "pelvis", "spine", "neck", "upper_arm_l", "forearm_l", "hand_l",
+    "upper_arm_r", "forearm_r", "hand_r", "upper_leg_l", "lower_leg_l",
+    "foot_l", "upper_leg_r", "lower_leg_r", "foot_r",
+  ]),
+  operationIds: Object.freeze([
+    "actor.height.set",
+    "actor.pose.joints.set",
+  ]),
+  errorCodes: Object.freeze([
+    "ACTOR_HEIGHT_TARGET_INVALID",
+    "ACTOR_HEIGHT_RANGE_INVALID",
+    "ACTOR_JOINT_TARGET_INVALID",
+    "ACTOR_JOINT_ID_INVALID",
+  ]),
+});
 const bundledActorBlueprint = Object.freeze({
   schemaVersion: 1,
   mounts: Object.freeze([
@@ -75,7 +93,7 @@ const bundledActorBlueprint = Object.freeze({
   ]),
 });
 const expectedIntentReportSchemaDigest =
-  "be40666d595a8d675b28a0b55d039ce27eed977f46c3f64f64b37684b1e887a7";
+  "cb84ecb22395a8382eb20f5d8cc8f741062256f46174a6b11c52f5877e245ec2";
 const runtimeTimeoutMs = 30_000;
 const runtimeMaxBufferBytes = 1024 * 1024;
 const actorBlueprintMaxInputBytes = 1024 * 1024;
@@ -246,6 +264,14 @@ const WRAPPER_ERROR_MESSAGES = Object.freeze({
     "The requested limb presence conflicts with the actor hierarchy.",
   ACTOR_LIMB_TARGET_INVALID:
     "The requested limb target is not an editable actor.",
+  ACTOR_HEIGHT_TARGET_INVALID:
+    "The requested actor height target is invalid.",
+  ACTOR_HEIGHT_RANGE_INVALID:
+    "Actor stature must be between 1.0 and 2.4 meters.",
+  ACTOR_JOINT_TARGET_INVALID:
+    "The requested actor joint target is invalid.",
+  ACTOR_JOINT_ID_INVALID:
+    "The requested actor joint ID is unsupported.",
   ACTOR_BLUEPRINT_FILE_READ_FAILED:
     "The Actor Blueprint file could not be read.",
   ACTOR_BLUEPRINT_FILE_INVALID:
@@ -293,6 +319,10 @@ const stableRuntimeErrorCodes = new Set([
   "CONTACT_CONSTRAINT_ACTIVE",
   "LIMB_HIERARCHY_CONFLICT",
   "ACTOR_LIMB_TARGET_INVALID",
+  "ACTOR_HEIGHT_TARGET_INVALID",
+  "ACTOR_HEIGHT_RANGE_INVALID",
+  "ACTOR_JOINT_TARGET_INVALID",
+  "ACTOR_JOINT_ID_INVALID",
   "ACTOR_BLUEPRINT_FILE_READ_FAILED",
   "ACTOR_BLUEPRINT_FILE_INVALID",
   "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
@@ -691,6 +721,26 @@ const cloneActorBlueprintCapability = (value) => ({
   variantDeltaFields: [...value.variantDeltaFields],
   errorCodes: [...value.errorCodes],
 });
+const actorPuppetEqual = (value, expected) =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === 4 &&
+  typeof value.heightLimitsM === "object" &&
+  value.heightLimitsM !== null &&
+  !Array.isArray(value.heightLimitsM) &&
+  Object.keys(value.heightLimitsM).length === 2 &&
+  value.heightLimitsM.min === expected.heightLimitsM.min &&
+  value.heightLimitsM.max === expected.heightLimitsM.max &&
+  stringSetsEqual(value.jointIds, expected.jointIds) &&
+  stringSetsEqual(value.operationIds, expected.operationIds) &&
+  stringSetsEqual(value.errorCodes, expected.errorCodes);
+const cloneActorPuppetCapability = (value) => ({
+  heightLimitsM: { ...value.heightLimitsM },
+  jointIds: [...value.jointIds],
+  operationIds: [...value.operationIds],
+  errorCodes: [...value.errorCodes],
+});
 
 const readBundledContractVersions = async () => {
   try {
@@ -716,9 +766,9 @@ const readBundledContractVersions = async () => {
       metadata?.modelIntegration !== "none" ||
       metadata?.credentialPolicy !== "forbidden" ||
       metadata?.networkPolicy !== "loopback-only" ||
-      metadata?.sceneSchemaVersion !== 5 ||
-      metadata?.patchSchemaVersion !== 5 ||
-      metadata?.intentReportSchemaVersion !== 5 ||
+      metadata?.sceneSchemaVersion !== 6 ||
+      metadata?.patchSchemaVersion !== 6 ||
+      metadata?.intentReportSchemaVersion !== 6 ||
       !stringSetsEqual(
         metadata?.entityLockModes,
         bundledEntityLockModes,
@@ -743,6 +793,10 @@ const readBundledContractVersions = async () => {
         metadata?.actorLimbErrorCodes,
         bundledActorLimbErrorCodes,
       ) ||
+      !actorPuppetEqual(
+        metadata?.actorPuppet,
+        bundledActorPuppet,
+      ) ||
       !actorBlueprintEqual(
         metadata?.actorBlueprint,
         bundledActorBlueprint,
@@ -763,6 +817,7 @@ const readBundledContractVersions = async () => {
       skillActorLimbPartIds: [...metadata.actorLimbPartIds],
       skillActorLimbPresenceModes: [...metadata.actorLimbPresenceModes],
       skillActorLimbErrorCodes: [...metadata.actorLimbErrorCodes],
+      skillActorPuppet: cloneActorPuppetCapability(metadata.actorPuppet),
       skillActorBlueprint: cloneActorBlueprintCapability(
         metadata.actorBlueprint,
       ),
@@ -1008,6 +1063,7 @@ const createPlan = async (
     skillActorLimbPartIds,
     skillActorLimbPresenceModes,
     skillActorLimbErrorCodes,
+    skillActorPuppet,
     skillActorBlueprint,
   },
   workspaceRoute,
@@ -1029,6 +1085,7 @@ const createPlan = async (
     skillActorLimbPartIds: [...skillActorLimbPartIds],
     skillActorLimbPresenceModes: [...skillActorLimbPresenceModes],
     skillActorLimbErrorCodes: [...skillActorLimbErrorCodes],
+    skillActorPuppet: cloneActorPuppetCapability(skillActorPuppet),
     skillActorBlueprint: cloneActorBlueprintCapability(
       skillActorBlueprint,
     ),

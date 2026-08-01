@@ -44,6 +44,24 @@ const BUNDLED_ACTOR_LIMB_PRESENCE_MODES = Object.freeze([
 const BUNDLED_ACTOR_LIMB_ERROR_CODES = Object.freeze([
   "LIMB_HIERARCHY_CONFLICT",
 ]);
+const BUNDLED_ACTOR_PUPPET = Object.freeze({
+  heightLimitsM: Object.freeze({ min: 1, max: 2.4 }),
+  jointIds: Object.freeze([
+    "pelvis", "spine", "neck", "upper_arm_l", "forearm_l", "hand_l",
+    "upper_arm_r", "forearm_r", "hand_r", "upper_leg_l", "lower_leg_l",
+    "foot_l", "upper_leg_r", "lower_leg_r", "foot_r",
+  ]),
+  operationIds: Object.freeze([
+    "actor.height.set",
+    "actor.pose.joints.set",
+  ]),
+  errorCodes: Object.freeze([
+    "ACTOR_HEIGHT_TARGET_INVALID",
+    "ACTOR_HEIGHT_RANGE_INVALID",
+    "ACTOR_JOINT_TARGET_INVALID",
+    "ACTOR_JOINT_ID_INVALID",
+  ]),
+});
 const BUNDLED_ACTOR_BLUEPRINT = Object.freeze({
   schemaVersion: 1,
   mounts: Object.freeze([
@@ -87,6 +105,7 @@ const RELEASE_METADATA_KEYS = new Set([
   "actorLimbPartIds",
   "actorLimbPresenceModes",
   "actorLimbErrorCodes",
+  "actorPuppet",
   "actorBlueprint",
 ]);
 const RUNTIME_NOT_FOUND_MESSAGE =
@@ -135,6 +154,20 @@ const actorBlueprintEqual = (value) =>
     value.errorCodes,
     BUNDLED_ACTOR_BLUEPRINT.errorCodes,
   );
+const actorPuppetEqual = (value) =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === 4 &&
+  typeof value.heightLimitsM === "object" &&
+  value.heightLimitsM !== null &&
+  !Array.isArray(value.heightLimitsM) &&
+  Object.keys(value.heightLimitsM).length === 2 &&
+  value.heightLimitsM.min === BUNDLED_ACTOR_PUPPET.heightLimitsM.min &&
+  value.heightLimitsM.max === BUNDLED_ACTOR_PUPPET.heightLimitsM.max &&
+  stringSetsEqual(value.jointIds, BUNDLED_ACTOR_PUPPET.jointIds) &&
+  stringSetsEqual(value.operationIds, BUNDLED_ACTOR_PUPPET.operationIds) &&
+  stringSetsEqual(value.errorCodes, BUNDLED_ACTOR_PUPPET.errorCodes);
 
 const isContainedPath = (root, candidate) => {
   const relative = path.relative(root, candidate);
@@ -244,9 +277,9 @@ const readReleaseMetadata = async (skillDirectory) => {
         BUNDLED_BRIDGE_PROTOCOL_VERSION ||
       metadata.workspaceRoutingVersion !==
         BUNDLED_WORKSPACE_ROUTING_VERSION ||
-      metadata.sceneSchemaVersion !== 5 ||
-      metadata.patchSchemaVersion !== 5 ||
-      metadata.intentReportSchemaVersion !== 5 ||
+      metadata.sceneSchemaVersion !== 6 ||
+      metadata.patchSchemaVersion !== 6 ||
+      metadata.intentReportSchemaVersion !== 6 ||
       metadata.semanticAuthority !== "host" ||
       metadata.inputContract !== "structured-only" ||
       metadata.modelIntegration !== "none" ||
@@ -276,6 +309,7 @@ const readReleaseMetadata = async (skillDirectory) => {
         metadata.actorLimbErrorCodes,
         BUNDLED_ACTOR_LIMB_ERROR_CODES,
       ) ||
+      !actorPuppetEqual(metadata.actorPuppet) ||
       !actorBlueprintEqual(metadata.actorBlueprint)
     ) {
       throw runtimeNotFound();

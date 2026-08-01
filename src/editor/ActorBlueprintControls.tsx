@@ -39,7 +39,8 @@ export const ActorBlueprintControls = ({
   const selectorDisabled =
     disabled ||
     actor.lockMode !== "none" ||
-    snapshot === undefined;
+    snapshot === undefined ||
+    !onSetVariant;
 
   return (
     <section
@@ -70,10 +71,11 @@ export const ActorBlueprintControls = ({
           <dd>{snapshot?.variants.length ?? 0}</dd>
         </div>
       </dl>
-      <label className="inspector-control-row">
+      <label className="control-field">
         <span>Variant</span>
         <select
           aria-label="Actor blueprint variant"
+          data-actor-edit
           disabled={selectorDisabled}
           value={actor.blueprintInstance.variantId}
           onChange={(event) => {
