@@ -143,7 +143,7 @@ selection adds a subtle cool tint without replacing the base material.
 
 - Manifest parsing rejects missing assets, hash mismatches, missing mesh nodes,
   unexpected remote URLs, and unsupported material counts.
-- Mesh mapping covers all fourteen refined primitive IDs and their resolved
+- Mesh mapping covers all sixteen refined primitive IDs and their resolved
   primitive frames.
 - Height, Blueprint scaling, neutral pose, wrist/ankle corrections, complete
   action poses, and actor transforms do not mutate SceneSpec or snapshot hashes.

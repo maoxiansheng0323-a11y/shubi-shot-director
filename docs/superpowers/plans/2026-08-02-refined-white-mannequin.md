@@ -4,7 +4,7 @@
 
 **Goal:** Ship Shubi Shot Director v0.8.0 with a substantially more refined built-in white mannequin while preserving SceneSpec v6, the existing fifteen-joint pose controls, Actor Blueprint behavior, contact, composition, persistence, and browser PNG export.
 
-**Architecture:** Keep `resolveActorProjection` as the sole analytical actor representation. Add one audited built-in CC0 GLB whose fourteen normalized mesh sections replace the corresponding profile or ellipsoid geometry only in the Three.js renderer. The existing procedural actor remains the deterministic loading and validation fallback; joint indicators, face direction marker, and Blueprint modules stay procedural.
+**Architecture:** Keep `resolveActorProjection` as the sole analytical actor representation. Add one audited built-in CC0 GLB whose sixteen normalized mesh sections replace the corresponding profile or ellipsoid geometry only in the Three.js renderer. The existing procedural actor remains the deterministic loading and validation fallback; joint indicators, face direction marker, and Blueprint modules stay procedural.
 
 **Tech Stack:** Blender 4.2 LTS conversion script, glTF 2.0/GLB, TypeScript 6, React 19, React Three Fiber, Three.js, Vitest, Node.js 22, pnpm.
 
@@ -32,7 +32,7 @@ Existing files changed by responsibility:
 
 ## Fixed asset contract
 
-The GLB contains exactly these refined mesh nodes:
+The GLB contains exactly these sixteen refined mesh nodes:
 
 `pelvis`, `torso`, `neck`, `head`, left/right `upper_arm`, `forearm`, `hand`, `upper_leg`, `lower_leg`, and `foot`.
 
@@ -49,11 +49,11 @@ The converter normalizes every section into a centered unit box. Runtime maps th
 
 - [ ] **Step 1: Write the manifest and URL tests**
 
-Assert that the desired module exports one immutable relative URL, fourteen canonical node IDs, and a strict parser. Reject remote, protocol-relative, traversal, absolute filesystem, missing-node, duplicate-node, non-CC0, extra-material, invalid-hash, and over-2-MB manifests.
+Assert that the desired module exports one immutable relative URL, sixteen canonical node IDs, and a strict parser. Reject remote, protocol-relative, traversal, absolute filesystem, missing-node, duplicate-node, non-CC0, extra-material, invalid-hash, and over-2-MB manifests.
 
 - [ ] **Step 2: Write primitive mapping tests**
 
-Use neutral, rotated, short, tall, and incomplete-limb projections. Assert that `refinedSectionForPrimitive` maps only the fourteen body primitives, maps left/right IDs exactly, does not map face markers, joint indicators, or Blueprint modules, and omits absent projection sections naturally.
+Use neutral, rotated, short, tall, and incomplete-limb projections. Assert that `refinedSectionForPrimitive` maps only the sixteen body primitives, maps left/right IDs exactly, does not map face markers, joint indicators, or Blueprint modules, and omits absent projection sections naturally.
 
 - [ ] **Step 3: Write transform tests**
 
@@ -91,7 +91,7 @@ Commit: `feat: define built-in refined mannequin contract`
 
 - [ ] **Step 1: Write the converter contract test**
 
-Assert that the script declares the exact source collection names and fourteen output nodes, excludes the female breast object, joins fingers/toes to terminal sections, uses one subdivision level, applies transforms, removes unused authoring objects, and exports GLB without animations, cameras, lights, or custom properties.
+Assert that the script declares the exact source collection names and sixteen output nodes, excludes the female breast object, joins fingers/toes to terminal sections, uses one subdivision level, applies transforms, removes unused authoring objects, and exports GLB without animations, cameras, lights, or custom properties.
 
 - [ ] **Step 2: Confirm the test fails**
 
