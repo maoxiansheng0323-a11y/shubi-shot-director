@@ -7,7 +7,12 @@ import { getRuntimeCapabilityManifest } from "../cli/runtime-capabilities";
 import { createApiApp } from "../server/api";
 import { SceneSession } from "../server/scene-session";
 import { createDefaultScene } from "../src/domain/default-scene";
+import { normalizePatchSubmissionInput } from "../src/domain/scene-submission";
 import {
+  createLegacyV5BlueprintGroundContactPatch,
+} from "./helpers/actor-blueprint-fixtures";
+import {
+  createPatchIntentReport,
   createPatchSubmission,
   createSceneSubmission,
   createStructuredScene,
@@ -214,6 +219,8 @@ describe("structured submission API", () => {
     const initial = createStructuredScene();
     const session = new SceneSession(initial);
     const listener = vi.fn();
+    const submitRawPatch = vi.spyOn(session, "submitPatch");
+    const submitParsedPatch = vi.spyOn(session, "submitParsedPatch");
     session.subscribe(listener);
     const submission = createPatchSubmission(initial);
     const { server, port } = await createTestServer(session);
@@ -239,12 +246,65 @@ describe("structured submission API", () => {
           },
         },
       });
+      expect(submitRawPatch).not.toHaveBeenCalled();
+      expect(submitParsedPatch).toHaveBeenCalledTimes(1);
       expect(listener).toHaveBeenCalledTimes(1);
       expect(session.undo()).toMatchObject({
         sceneId: initial.sceneId,
         revision: initial.revision + 2,
         title: initial.title,
         output: initial.output,
+      });
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects a raw parsed-wrapper provenance spoof without mutating the scene", async () => {
+    const initial = createDefaultScene();
+    const session = new SceneSession(initial);
+    const fixture = createLegacyV5BlueprintGroundContactPatch(initial, "user");
+    const parsedV5 = normalizePatchSubmissionInput({
+      intentReport: createPatchIntentReport({ recognizedConstraints: [] }),
+      patch: fixture.patch,
+    });
+    const rawV6Submission = structuredClone(parsedV5.submission);
+    const spoofedWrapper = {
+      submission: rawV6Submission,
+      patchSourceSchemaVersion: 5,
+    };
+    const { server, port } = await createTestServer(session);
+    try {
+      const nativeResult = await postJson(
+        port,
+        "/api/v1/submissions/patch",
+        rawV6Submission,
+      );
+      expect(nativeResult).toMatchObject({
+        status: 400,
+        body: {
+          ok: false,
+          error: { code: "USER_LOCKED" },
+        },
+      });
+      expect(session.snapshot()).toEqual(initial);
+
+      const spoofedResult = await postJson(
+        port,
+        "/api/v1/submissions/patch",
+        spoofedWrapper,
+      );
+      expect(spoofedResult).toMatchObject({
+        status: 400,
+        body: {
+          ok: false,
+          error: { code: "SCHEMA_VALIDATION_FAILED" },
+        },
+      });
+      expect(session.snapshot()).toEqual(initial);
+      expect(session.historyStatus()).toEqual({
+        canUndo: false,
+        canRedo: false,
       });
     } finally {
       await closeServer(server);
@@ -463,6 +523,52 @@ describe("structured submission API", () => {
       400,
       "SCHEMA_VALIDATION_FAILED",
       "Scene data failed schema validation.",
+    ],
+    [
+      "actor height outside the public range",
+      "/api/v1/submissions/patch",
+      () => {
+        const submission = createPatchSubmission();
+        return {
+          ...submission,
+          patch: {
+            ...submission.patch,
+            operations: [
+              {
+                op: "actor.height.set",
+                actorId: "actor_generic_1",
+                heightM: 2.5,
+              },
+            ],
+          },
+        };
+      },
+      400,
+      "ACTOR_HEIGHT_RANGE_INVALID",
+      "Actor stature must be between 1.0 and 2.4 meters.",
+    ],
+    [
+      "unsupported actor joint ID",
+      "/api/v1/submissions/patch",
+      () => {
+        const submission = createPatchSubmission();
+        return {
+          ...submission,
+          patch: {
+            ...submission.patch,
+            operations: [
+              {
+                op: "actor.pose.joints.set",
+                actorId: "actor_generic_1",
+                updates: { unsupported_joint: [0, 0, 0, 1] },
+              },
+            ],
+          },
+        };
+      },
+      400,
+      "ACTOR_JOINT_ID_INVALID",
+      "The requested actor joint ID is unsupported.",
     ],
     [
       "unknown nested patch key",

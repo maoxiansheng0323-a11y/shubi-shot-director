@@ -1,6 +1,6 @@
 {
   "intentReport": {
-    "schemaVersion": 5,
+    "schemaVersion": 6,
     "operation": "create",
     "allowPartial": false,
     "recognizedConstraints": [
@@ -216,7 +216,7 @@
     "canApplySafely": true
   },
   "scene": {
-    "schemaVersion": 5,
+    "schemaVersion": 6,
     "sceneId": "scene_connected_regions_1",
     "revision": 0,
     "title": "Connected regions graybox",
@@ -286,7 +286,23 @@
               "contactOffsetM": 0.977
             }
           },
-          "joints": {}
+          "joints": {
+            "pelvis": [0, 0, 0, 1],
+            "spine": [0, 0, 0, 1],
+            "neck": [0, 0, 0, 1],
+            "upper_arm_l": [0, 0, 0, 1],
+            "forearm_l": [0, 0, 0, 1],
+            "hand_l": [0, 0, 0, 1],
+            "upper_arm_r": [0, 0, 0, 1],
+            "forearm_r": [0, 0, 0, 1],
+            "hand_r": [0, 0, 0, 1],
+            "upper_leg_l": [0, 0, 0, 1],
+            "lower_leg_l": [0, 0, 0, 1],
+            "foot_l": [0, 0, 0, 1],
+            "upper_leg_r": [0, 0, 0, 1],
+            "lower_leg_r": [0, 0, 0, 1],
+            "foot_r": [0, 0, 0, 1]
+          }
         },
         "color": "#c7ced8"
       },

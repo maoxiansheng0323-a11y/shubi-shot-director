@@ -4,7 +4,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 5
+      "const": 6
     },
     "operation": {
       "type": "string",
@@ -59,7 +59,8 @@
               "actor-limb-presence",
               "actor-blueprint-registration",
               "actor-blueprint-instance",
-              "actor-blueprint-variant"
+              "actor-blueprint-variant",
+              "actor-height"
             ]
           },
           "required": {
@@ -140,7 +141,9 @@
                         "entity.body.limbPresence.upper_leg_r",
                         "entity.body.limbPresence.lower_leg_r",
                         "entity.body.limbPresence.foot_r",
-                        "actor.blueprintInstance"
+                        "actor.blueprintInstance",
+                        "actor.body.heightM",
+                        "actor.blueprintInstance.heightScale"
                       ]
                     }
                   },

@@ -563,7 +563,7 @@ export const ViewportWorkspace = ({
         eventSource={eventSourceRef}
         eventPrefix="client"
         dpr={[1, 2]}
-        shadows="basic"
+        shadows="percentage"
         gl={{ antialias: true, alpha: true }}
       >
         <View.Port />

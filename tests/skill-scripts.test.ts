@@ -4,23 +4,19 @@ import {
   readFile,
   readdir,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
 import { getRuntimeCapabilityManifest } from "../cli/runtime-capabilities";
 import { applyScenePatch } from "../src/domain/apply-scene-patch";
 import { ACTOR_LIMB_PART_IDS } from "../src/domain/actor-anatomy";
 import { createDefaultScene } from "../src/domain/default-scene";
+import { INTENT_REPORT_SCHEMA_VERSION } from "../src/domain/intent-report";
 import {
-  INTENT_REPORT_SCHEMA_VERSION,
-  intentReportSchema,
-} from "../src/domain/intent-report";
-import {
-  scenePatchSchema,
   type ScenePatch,
 } from "../src/domain/scene-patch";
 import {
@@ -61,22 +57,53 @@ const generatedSchemaDirectory = path.join(
 );
 const temporaryDirectories: string[] = [];
 
-const GENERATED_SCHEMA_CASES: Array<{
-  fileName: string;
-  schema: z.ZodType;
-}> = [
-  { fileName: "scene-spec.schema.json", schema: sceneSpecSchema },
-  { fileName: "scene-patch.schema.json", schema: scenePatchSchema },
-  { fileName: "intent-report.schema.json", schema: intentReportSchema },
-  {
-    fileName: "scene-submission.schema.json",
-    schema: sceneSubmissionSchema,
-  },
-  {
-    fileName: "patch-submission.schema.json",
-    schema: patchSubmissionSchema,
-  },
-];
+const extractVerificationTestReferences = (source: string): string[] =>
+  [
+    ...new Set(
+      (
+        source.match(
+          /(?<![A-Za-z0-9._/\\-])tests(?:[\\/][A-Za-z0-9._-]+)+\.test\.ts(?![A-Za-z0-9._/\\-])/gu,
+        ) ?? []
+      ).map((reference) => reference.replaceAll("\\", "/")),
+    ),
+  ].sort();
+
+const markdownSectionAfterHeading = (
+  source: string,
+  heading: string,
+): string => {
+  const marker = `### ${heading}`;
+  const headingIndex = source.indexOf(marker);
+  if (headingIndex < 0) {
+    return "";
+  }
+  const contentStart = source.indexOf("\n", headingIndex + marker.length);
+  if (contentStart < 0) {
+    return "";
+  }
+  const remaining = source.slice(contentStart + 1);
+  const nextHeadingIndex = remaining.search(/^#{1,3}\s+/mu);
+  return (nextHeadingIndex < 0
+    ? remaining
+    : remaining.slice(0, nextHeadingIndex)
+  ).trim();
+};
+
+const fencedCodeBlock = (source: string, language: string): string => {
+  const marker = "```" + language;
+  const openingIndex = source.indexOf(marker);
+  if (openingIndex < 0) {
+    return "";
+  }
+  const contentStart = source.indexOf("\n", openingIndex + marker.length);
+  if (contentStart < 0) {
+    return "";
+  }
+  const closingIndex = source.indexOf("```", contentStart + 1);
+  return closingIndex < 0
+    ? ""
+    : source.slice(contentStart + 1, closingIndex).trim();
+};
 
 type JsonSchemaNode = {
   additionalProperties?: boolean;
@@ -160,34 +187,6 @@ const objectSchemasWithProperties = (
     objectSchemasWithProperties(value, propertyNames, matches);
   }
   return matches;
-};
-
-const expectedGeneratedSchema = (
-  fileName: string,
-  schema: z.ZodType,
-): unknown => {
-  const generated = z.toJSONSchema(schema) as JsonSchemaNode;
-  if (
-    fileName === "scene-patch.schema.json" ||
-    fileName === "patch-submission.schema.json"
-  ) {
-    for (const operation of objectSchemasWithProperties(generated, [
-      "op",
-      "actorId",
-      "updates",
-    ])) {
-      if (
-        operation.properties?.op?.const === "actor.limb-presence.set"
-      ) {
-        const updates = operation.properties.updates;
-        if (updates !== undefined) {
-          updates.minProperties = 1;
-          updates.maxProperties = ACTOR_LIMB_PART_IDS.length;
-        }
-      }
-    }
-  }
-  return generated;
 };
 
 const fencedJsonAfterHeading = (
@@ -880,7 +879,161 @@ describe("Skill deterministic scripts", () => {
   });
 });
 
+describe("verification test reference extraction", () => {
+  it.each([
+    { label: "POSIX", reference: "tests/foo.test.ts" },
+    { label: "Windows", reference: String.raw`tests\foo.test.ts` },
+  ])("normalizes $label references", ({ reference }) => {
+    expect(extractVerificationTestReferences(reference)).toEqual([
+      "tests/foo.test.ts",
+    ]);
+  });
+
+  it("does not truncate longer path tokens into valid test references", () => {
+    const invalidReferences = [
+      "tests/foo.test.ts.bak",
+      "tests/foo.test.tsx",
+      "tests/foo.test.ts-backup",
+      "tests/foo.test.ts/notes",
+      "prefix-tests/foo.test.ts",
+    ].join("\n");
+
+    expect(extractVerificationTestReferences(invalidReferences)).toEqual([]);
+  });
+
+});
+
 describe("Skill host-semantic documentation", () => {
+  it("publishes one bounded executable v0.7 Patch source-integrity gate", async () => {
+    const [releaseNote, verificationGuide] = await Promise.all([
+      readFile(path.resolve("docs/releases/v0.7.0.md"), "utf8"),
+      readFile(path.resolve("docs/verification.md"), "utf8"),
+    ]);
+    const focusedGate = markdownSectionAfterHeading(
+      verificationGuide,
+      "v0.7.0 Patch source-integrity gate",
+    );
+    const command = fencedCodeBlock(focusedGate, "powershell");
+    const referencedTestFiles = extractVerificationTestReferences(command);
+    const expectedTestFiles = [
+      "tests/actor-puppet-patch.test.ts",
+      "tests/scene-session.test.ts",
+      "tests/server-api-health.test.ts",
+      "tests/structured-submission-cli.test.ts",
+      "tests/structured-submission.test.ts",
+    ];
+    const missingTestFiles = (
+      await Promise.all(
+        referencedTestFiles.map(async (filePath) => {
+          try {
+            return (await stat(path.resolve(filePath))).isFile()
+              ? undefined
+              : filePath;
+          } catch {
+            return filePath;
+          }
+        }),
+      )
+    ).filter((filePath): filePath is string => filePath !== undefined);
+    const checklistRows = new Map(
+      [...focusedGate.matchAll(/^\|\s*`([^`]+)`\s*\|\s*(.*?)\s*\|$/gmu)].map(
+        ([, key, value]) => [key, value],
+      ),
+    );
+
+    expect(focusedGate).not.toBe("");
+    expect(command).toMatch(/^pnpm exec vitest run /u);
+    expect(referencedTestFiles).toEqual(expectedTestFiles);
+    expect(
+      missingTestFiles,
+      `The v0.7 source-integrity gate references missing test files:\n${missingTestFiles.join("\n")}`,
+    ).toEqual([]);
+    expect([...checklistRows.keys()]).toEqual([
+      "v1-v4",
+      "v5",
+      "forwarding",
+      "stable-source",
+      "carrier-boundary",
+    ]);
+    const v1ToV4 = checklistRows.get("v1-v4") ?? "";
+    expect(v1ToV4).toContain("canonical v6 Patch");
+    expect(v1ToV4).toContain("directly");
+    expect(v1ToV4).not.toContain("sanitized v5 compatibility payload");
+    const v5 = checklistRows.get("v5") ?? "";
+    expect(v5).toContain("only v5");
+    expect(v5).toContain("sanitized v5 compatibility payload");
+    expect(v5).toContain("reparse");
+    expect(v5).toContain("canonical equivalence");
+    for (const phrase of [
+      "Raw legacy subtrees",
+      "unknown markers",
+      "input paths",
+      "never forwarded",
+    ]) {
+      expect(checklistRows.get("forwarding")).toContain(phrase);
+    }
+    for (const phrase of [
+      "Raw Session",
+      "API",
+      "direct apply",
+      "same stable Patch snapshot",
+    ]) {
+      expect(checklistRows.get("stable-source")).toContain(phrase);
+    }
+    for (const phrase of [
+      "transient carrier",
+      "public JSON Schema",
+      "SceneSpec",
+      "history",
+      "persistence",
+    ]) {
+      expect(checklistRows.get("carrier-boundary")).toContain(phrase);
+    }
+    const releaseLink =
+      "[v0.7.0 Patch source-integrity gate](../verification.md#v070-patch-source-integrity-gate)";
+    const releaseGateReference =
+      releaseNote
+        .split(/\r?\n/u)
+        .find((line) => line.includes(releaseLink)) ?? "";
+    expect(releaseGateReference).toContain(releaseLink);
+    for (const phrase of [
+      "v1-v4",
+      "canonical v6 Patch",
+      "directly",
+      "only v5",
+      "sanitized v5 compatibility payload",
+    ]) {
+      expect(releaseGateReference).toContain(phrase);
+    }
+  });
+
+  it("separates dated current and historical v0.7 evidence", async () => {
+    const sources = await Promise.all([
+      readFile(path.resolve("docs/releases/v0.7.0.md"), "utf8"),
+      readFile(path.resolve("docs/verification.md"), "utf8"),
+    ]);
+
+    for (const source of sources) {
+      const latest = markdownSectionAfterHeading(
+        source,
+        "Latest fresh evidence — 2026-08-01",
+      );
+      const historical = markdownSectionAfterHeading(
+        source,
+        "Historical evidence — 2026-07-31",
+      );
+
+      expect(latest).toContain("pnpm verify");
+      expect(latest).toContain("79 test files");
+      expect(latest).toContain("1,809 tests");
+      expect(latest).toContain("242 files");
+      expect(latest).toContain("zero findings");
+      expect(historical).not.toMatch(
+        /79 test files|1,809 tests|242 files|revision 63/iu,
+      );
+    }
+  });
+
   it("teaches the complete host-only Actor Blueprint workflow without persisting a file path", async () => {
     const [skill, blueprintReference, sceneAuthoring, patchAuthoring, visualQa] =
       await Promise.all([
@@ -902,7 +1055,13 @@ describe("Skill host-semantic documentation", () => {
     ].join("\n");
 
     expect(skill).toContain(
-      "SceneSpec, ScenePatch, and IntentReport schema version 5",
+      "SceneSpec, ScenePatch, and IntentReport schema version 6",
+    );
+    expect(skill).toContain(
+      "Use a slot, label, or alias only in Host Codex to locate the snapshot actor.",
+    );
+    expect(skill).toContain(
+      "Use `actor.pose.set { op, entityId, value }` as the sole actor-operation target-field exception.",
     );
     expect(guidance).toContain("blueprint validate --file");
     expect(guidance).toMatch(
@@ -962,6 +1121,35 @@ describe("Skill host-semantic documentation", () => {
     );
   });
 
+  it("documents generated schema annotations without weakening Host authority", async () => {
+    const [skill, sceneAuthoring, actorBlueprints, patchAuthoring] =
+      await Promise.all([
+        readFile(path.join(skillDirectory, "SKILL.md"), "utf8"),
+        readFile(path.join(referenceDirectory, "scene-authoring.md"), "utf8"),
+        readFile(path.join(referenceDirectory, "actor-blueprints.md"), "utf8"),
+        readFile(path.join(referenceDirectory, "patch-authoring.md"), "utf8"),
+      ]);
+    const guidance = [
+      skill,
+      sceneAuthoring,
+      actorBlueprints,
+      patchAuthoring,
+    ].join("\n");
+
+    expect(skill).toMatch(/generated JSON Schema[\s\S]*structural contract/iu);
+    expect(guidance).toContain("x-shubi-resolved-stature");
+    expect(guidance).toContain("x-shubi-limb-hierarchy");
+    expect(guidance).toMatch(
+      /Ajv[\s\S]*cannot[\s\S]*(?:cross-snapshot|resolved stature)[\s\S]*limb hierarchy/iu,
+    );
+    expect(guidance).toMatch(
+      /final acceptance[\s\S]*runtime Zod refinement/iu,
+    );
+    expect(guidance).toMatch(
+      /Host Codex[\s\S]*author[\s\S]*correctly[\s\S]*never rely[\s\S]*runtime[\s\S]*(?:infer|repair)/iu,
+    );
+  });
+
   it("resolves an explicit relative external profile before the Skill cwd switch", async () => {
     const [skill, externalProfiles] = await Promise.all([
       readFile(path.join(skillDirectory, "SKILL.md"), "utf8"),
@@ -1006,16 +1194,6 @@ describe("Skill host-semantic documentation", () => {
     }
   });
 
-  it.each(GENERATED_SCHEMA_CASES)(
-    "generates $fileName directly from the authoritative Zod schema",
-    async ({ fileName, schema }) => {
-      const generated = JSON.parse(
-        await readFile(path.join(generatedSchemaDirectory, fileName), "utf8"),
-      ) as unknown;
-      expect(generated).toEqual(expectedGeneratedSchema(fileName, schema));
-    },
-  );
-
   it("documents a canonical JSON digest tool matching the wrapper", async () => {
     const directory = await temporaryDirectory();
     const schemaFile = path.join(
@@ -1053,7 +1231,7 @@ describe("Skill host-semantic documentation", () => {
       )?.[1];
 
     expect(expectedDigest).toBe(
-      "be40666d595a8d675b28a0b55d039ce27eed977f46c3f64f64b37684b1e887a7",
+      "cb84ecb22395a8382eb20f5d8cc8f741062256f46174a6b11c52f5877e245ec2",
     );
     expect(generatedDigest.stdout.trim()).toBe(expectedDigest);
     expect(reformattedDigest.stdout.trim()).toBe(expectedDigest);
@@ -1135,7 +1313,7 @@ describe("Skill host-semantic documentation", () => {
     );
   });
 
-  it("publishes the canonical v5 SceneSpec lock and actor limb schema contract", async () => {
+  it("publishes the canonical v6 SceneSpec lock and actor puppet schema contract", async () => {
     const [sceneSource, patchSource, intentSource] = await Promise.all([
       readFile(
         path.join(generatedSchemaDirectory, "scene-spec.schema.json"),
@@ -1154,7 +1332,7 @@ describe("Skill host-semantic documentation", () => {
     const patchSchema = JSON.parse(patchSource) as JsonSchemaNode;
     const intentSchema = JSON.parse(intentSource) as JsonSchemaNode;
 
-    expect(nestedConst(sceneSchema, "schemaVersion")).toBe(5);
+    expect(nestedConst(sceneSchema, "schemaVersion")).toBe(6);
     expect(sceneSource).not.toMatch(/"locked"/u);
     const sceneLockModes = propertySchemas(sceneSchema, "lockMode");
     expect(sceneLockModes.length).toBeGreaterThan(0);
@@ -1171,7 +1349,7 @@ describe("Skill host-semantic documentation", () => {
       expect(entitySchema.required).toContain("lockMode");
     }
 
-    expect(nestedConst(patchSchema, "schemaVersion")).toBe(5);
+    expect(nestedConst(patchSchema, "schemaVersion")).toBe(6);
     expect(patchSchema.required).toContain("preserveLock");
     expect(patchSchema.properties?.operations?.maxItems).toBe(256);
     expect(patchSource).not.toMatch(/"locked"/u);
@@ -1181,7 +1359,7 @@ describe("Skill host-semantic documentation", () => {
       expect(lockMode.enum).toEqual(["none", "workflow", "user"]);
     }
 
-    expect(nestedConst(intentSchema, "schemaVersion")).toBe(5);
+    expect(nestedConst(intentSchema, "schemaVersion")).toBe(6);
     expect(intentSource).toContain('"entity.lockMode"');
     expect(intentSource).not.toContain('"entity.locked"');
     expect(
@@ -1260,6 +1438,7 @@ describe("Skill host-semantic documentation", () => {
       /separate Codex conversations[\s\S]*separate workspaces/iu,
     );
     expect(skill).toContain("workspace current");
+    expect(skill).not.toContain("Require application version 0.7.0");
     expect(guidance).toContain("workspace list");
     expect(guidance).toContain("workspace attach --id");
     expect(guidance).toMatch(/raw thread ID[\s\S]*never[\s\S]*runtime/iu);
@@ -1297,6 +1476,10 @@ describe("Skill host-semantic documentation", () => {
     const creationGuidance = [skill, sceneAuthoring, readme].join("\n");
 
     expect(lockGuidance).toContain("preserveLock: true");
+    expect(cliContract).toContain(
+      "Every canonical v6 Patch includes `preserveLock`",
+    );
+    expect(cliContract).not.toContain("in v0.6");
     expect(lockGuidance).toMatch(
       /workflow locks never require user authorization/iu,
     );
@@ -1327,7 +1510,7 @@ describe("Skill host-semantic documentation", () => {
       /explicit user-facing save[\s\S]*workflow locks[\s\S]*before serialization/iu,
     );
 
-    expect(intentReport).toMatch(/schemaVersion[\s\S]*literal `5`/iu);
+    expect(intentReport).toMatch(/schemaVersion[\s\S]*literal `6`/iu);
     expect(intentReport).toContain("entity.lockMode");
     expect(intentReport).not.toContain("entity.locked");
   });
@@ -1350,7 +1533,7 @@ describe("Skill host-semantic documentation", () => {
     expect(skill).toMatch(/user locks[\s\S]*stop/iu);
   });
 
-  it("teaches canonical v4 actor limb presence authoring and visual QA", async () => {
+  it("teaches canonical v6 actor limb presence authoring and visual QA", async () => {
     const [
       skill,
       sceneAuthoring,
@@ -1376,7 +1559,7 @@ describe("Skill host-semantic documentation", () => {
     ].join("\n");
 
     expect(skill).toContain(
-      "SceneSpec, ScenePatch, and IntentReport schema version 5",
+      "SceneSpec, ScenePatch, and IntentReport schema version 6",
     );
     expect(guidance).toContain("actor.limb-presence.set");
     expect(guidance).toContain("actor-limb-presence");
@@ -1421,7 +1604,107 @@ describe("Skill host-semantic documentation", () => {
     );
   });
 
-  it("publishes generic v5 SceneSpec limb-presence create and v4 modify examples", async () => {
+  it("teaches the exact target field for every public actor operation", async () => {
+    const sources = await Promise.all([
+      readFile(path.join(skillDirectory, "SKILL.md"), "utf8"),
+      readFile(path.join(referenceDirectory, "patch-authoring.md"), "utf8"),
+      readFile(path.join(referenceDirectory, "external-profiles.md"), "utf8"),
+    ]);
+
+    for (const source of sources) {
+      expect(source).toContain("actor.pose.set { op, entityId, value }");
+      expect(source).toMatch(
+        /actor\.height\.set[\s\S]*actor\.pose\.joints\.set[\s\S]*actor\.limb-presence\.set[\s\S]*actor\.variant\.set[\s\S]*use `actorId`/iu,
+      );
+      expect(source).not.toMatch(
+        /every actor operation `actorId`|every actor operation[\s\S]{0,40}`actorId`/iu,
+      );
+    }
+  });
+
+  it("publishes all eight immutable complete-action recipes", async () => {
+    const [skill, sceneAuthoring, patchAuthoring] = await Promise.all([
+      readFile(path.join(skillDirectory, "SKILL.md"), "utf8"),
+      readFile(path.join(referenceDirectory, "scene-authoring.md"), "utf8"),
+      readFile(path.join(referenceDirectory, "patch-authoring.md"), "utf8"),
+    ]);
+    const expectedPoseIds = [
+      "pose.standing-neutral-v1",
+      "pose.kneeling-lean-v1",
+      "pose.seated-v1",
+      "pose.lying-supine-v1",
+      "pose.leaning-forward-v1",
+      "pose.reaching-right-v1",
+      "pose.walking-step-v1",
+      "pose.crouching-v1",
+    ];
+
+    for (const poseId of expectedPoseIds) {
+      expect(sceneAuthoring).toContain(poseId);
+    }
+    for (const source of [skill, sceneAuthoring, patchAuthoring]) {
+      expect(source).toContain("references/generated/pose-presets.json");
+      expect(source).toContain(
+        '{ op: "actor.pose.set", entityId, value: { preset: { registry: "builtin", id, version, parameters: { contactOffsetM } }, joints } }',
+      );
+      expect(source).toContain(
+        "round(resolvedHeightM * contactOffsetHeightRatio, 5)",
+      );
+      expect(source).toContain(
+        "Take `id`, `version`, `joints`, and `contactOffsetHeightRatio` from the generated recipe.",
+      );
+      expect(source).toContain(
+        "Use the ratio only to calculate `contactOffsetM`; do not include `contactOffsetHeightRatio` in the PoseSpec.",
+      );
+      expect(source).toMatch(/copy[\s\S]*exact immutable[\s\S]*id[\s\S]*version[\s\S]*joints/iu);
+      expect(source).toMatch(/never[\s\S]*(?:sparse action|guess quaternions?|invent a preset)/iu);
+    }
+  });
+
+  it("uses Blueprint instance evidence for required create limb presence", async () => {
+    const [sceneAuthoring, intentReport] = await Promise.all([
+      readFile(path.join(referenceDirectory, "scene-authoring.md"), "utf8"),
+      readFile(path.join(referenceDirectory, "intent-report.md"), "utf8"),
+    ]);
+
+    expect(intentReport).toMatch(
+      /`actor\.blueprintInstance` \| `actor-blueprint-instance`, `actor-blueprint-variant`, `actor-limb-presence`/u,
+    );
+    expect(sceneAuthoring).toMatch(
+      /required Blueprint limb-presence[\s\S]*actor\.blueprintInstance[\s\S]*evidence/iu,
+    );
+    expect(sceneAuthoring).toMatch(
+      /never invent[\s\S]*nested[\s\S]*override[\s\S]*evidence path/iu,
+    );
+  });
+
+  it("lists deterministic companion changes without granting host-side extras", async () => {
+    const sources = await Promise.all([
+      readFile(path.join(skillDirectory, "SKILL.md"), "utf8"),
+      readFile(path.join(referenceDirectory, "patch-authoring.md"), "utf8"),
+    ]);
+
+    for (const source of sources) {
+      expect(source).toMatch(/requested changes[\s\S]*deterministic companion changes/iu);
+      expect(source).toMatch(
+        /actor\.pose\.joints\.set[\s\S]*merge[\s\S]*specified joints[\s\S]*pose\.custom-v1[\s\S]*preserv(?:e|es|ing)[\s\S]*preset/iu,
+      );
+      expect(source).toMatch(
+        /actor\.height\.set[\s\S]*actual stature[\s\S]*shoulderWidthM[\s\S]*same (?:height )?ratio[\s\S]*clamp[\s\S]*0\.25[\s\S]*0\.8[\s\S]*contactOffsetM[\s\S]*same ratio/iu,
+      );
+      expect(source).toMatch(
+        /contact (?:is )?active[\s\S]*contact-owned translation/iu,
+      );
+      expect(source).toMatch(
+        /complete action[\s\S]*limb[\s\S]*variant[\s\S]*contact-owned translation/iu,
+      );
+      expect(source).toMatch(
+        /deterministic companion changes[\s\S]*not[\s\S]*Host[\s\S]*additional fields/iu,
+      );
+    }
+  });
+
+  it("publishes generic v6 SceneSpec limb-presence create and modify examples", async () => {
     const intentReport = await readFile(
       path.join(referenceDirectory, "intent-report.md"),
       "utf8",
@@ -1460,7 +1743,7 @@ describe("Skill host-semantic documentation", () => {
       })),
     );
     expect(modifySubmission.patch).toMatchObject({
-      schemaVersion: 5,
+      schemaVersion: 6,
       preserveLock: true,
       operations: [
         {

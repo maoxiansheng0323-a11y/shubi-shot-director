@@ -5,7 +5,7 @@ import {
 } from "./actor-anatomy";
 import { entityIdSchema } from "./shared-schemas";
 
-export const INTENT_REPORT_SCHEMA_VERSION = 5 as const;
+export const INTENT_REPORT_SCHEMA_VERSION = 6 as const;
 
 export const INTENT_CONSTRAINT_KINDS_V1 = [
   "environment",
@@ -55,6 +55,11 @@ export const INTENT_CONSTRAINT_KINDS_V5 = [
   "actor-blueprint-variant",
 ] as const;
 
+export const INTENT_CONSTRAINT_KINDS_V6 = [
+  ...INTENT_CONSTRAINT_KINDS_V5,
+  "actor-height",
+] as const;
+
 export const INTENT_ISSUE_CODES_V1 = [
   "UNSUPPORTED_CONSTRAINT",
   "UNRESOLVED_RELATION",
@@ -65,6 +70,7 @@ export const INTENT_ISSUE_CODES_V2 = INTENT_ISSUE_CODES_V1;
 export const INTENT_ISSUE_CODES_V3 = INTENT_ISSUE_CODES_V2;
 export const INTENT_ISSUE_CODES_V4 = INTENT_ISSUE_CODES_V3;
 export const INTENT_ISSUE_CODES_V5 = INTENT_ISSUE_CODES_V4;
+export const INTENT_ISSUE_CODES_V6 = INTENT_ISSUE_CODES_V5;
 
 export const INTENT_WARNING_CODES_V1 = [
   "PARTIAL_APPLICATION",
@@ -75,6 +81,7 @@ export const INTENT_WARNING_CODES_V2 = INTENT_WARNING_CODES_V1;
 export const INTENT_WARNING_CODES_V3 = INTENT_WARNING_CODES_V2;
 export const INTENT_WARNING_CODES_V4 = INTENT_WARNING_CODES_V3;
 export const INTENT_WARNING_CODES_V5 = INTENT_WARNING_CODES_V4;
+export const INTENT_WARNING_CODES_V6 = INTENT_WARNING_CODES_V5;
 
 export const ENTITY_EVIDENCE_PATHS_V1 = [
   "entity.kind",
@@ -140,6 +147,12 @@ export const ENTITY_EVIDENCE_PATHS_V5 = [
   "actor.blueprintInstance",
 ] as const;
 
+export const ENTITY_EVIDENCE_PATHS_V6 = [
+  ...ENTITY_EVIDENCE_PATHS_V5,
+  "actor.body.heightM",
+  "actor.blueprintInstance.heightScale",
+] as const;
+
 export const SCENE_EVIDENCE_PATHS_V1 = [
   "scene.activeCameraId",
   "scene.output",
@@ -165,6 +178,7 @@ export const SCENE_EVIDENCE_PATHS_V5 = [
   ...SCENE_EVIDENCE_PATHS_V4,
   "scene.actorBlueprints",
 ] as const;
+export const SCENE_EVIDENCE_PATHS_V6 = SCENE_EVIDENCE_PATHS_V5;
 
 const uniqueIds = (values: string[]): boolean =>
   new Set(values).size === values.length;
@@ -185,13 +199,13 @@ const intentEvidenceSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("entity-property"),
       entityId: entityIdSchema,
-      path: z.enum(ENTITY_EVIDENCE_PATHS_V5),
+      path: z.enum(ENTITY_EVIDENCE_PATHS_V6),
     })
     .strict(),
   z
     .object({
       type: z.literal("scene-property"),
-      path: z.enum(SCENE_EVIDENCE_PATHS_V5),
+      path: z.enum(SCENE_EVIDENCE_PATHS_V6),
     })
     .strict(),
   z
@@ -211,7 +225,7 @@ const intentEvidenceSchema = z.discriminatedUnion("type", [
 const intentConstraintSchema = z
   .object({
     id: entityIdSchema,
-    kind: z.enum(INTENT_CONSTRAINT_KINDS_V5),
+    kind: z.enum(INTENT_CONSTRAINT_KINDS_V6),
     required: z.boolean(),
     targets: genericIdArraySchema,
     evidence: z.array(intentEvidenceSchema).max(64),
@@ -220,14 +234,14 @@ const intentConstraintSchema = z
 
 const intentIssueSchema = z
   .object({
-    code: z.enum(INTENT_ISSUE_CODES_V5),
+    code: z.enum(INTENT_ISSUE_CODES_V6),
     targetIds: genericIdArraySchema.optional(),
   })
   .strict();
 
 const intentWarningSchema = z
   .object({
-    code: z.enum(INTENT_WARNING_CODES_V5),
+    code: z.enum(INTENT_WARNING_CODES_V6),
     targetIds: genericIdArraySchema.optional(),
   })
   .strict();

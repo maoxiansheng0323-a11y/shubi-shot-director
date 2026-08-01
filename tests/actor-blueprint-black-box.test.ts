@@ -280,7 +280,7 @@ describe("Actor Blueprint v0.6 black-box preparation", () => {
       variantId: "repaired",
     });
     second.transform.positionM = [1.4, 0.9, -0.4];
-    second.pose.joints.shoulder_l = [0, 0, 0, 1];
+    second.pose.joints.upper_arm_l = [0, 0, 0, 1];
     second.color = "#8994a2";
     second.lockMode = "workflow";
     multiInstance.entities.push(second);

@@ -1,8 +1,15 @@
 import { applyScenePatch } from "../../src/domain/apply-scene-patch";
+import {
+  mapCanonicalPuppetJoints,
+  type CanonicalPuppetJointId,
+} from "../../src/domain/actor-joints";
 import { createDefaultScene } from "../../src/domain/default-scene";
 import { actorAnchorWorldPoint } from "../../src/domain/actor-projection";
 import { buildRelationshipOperations } from "../../src/domain/presets";
-import { lookAtQuaternion } from "../../src/domain/scene-math";
+import {
+  lookAtQuaternion,
+  quaternionFromEulerDegrees,
+} from "../../src/domain/scene-math";
 import {
   INTENT_REPORT_SCHEMA_VERSION,
   type IntentReport,
@@ -15,11 +22,47 @@ import {
   sceneSpecSchema,
   type ActorEntity,
   type CameraEntity,
+  type PoseSpec,
   type SceneSpec,
+  type Vec3,
 } from "../../src/domain/scene-schema";
 import { PATCH_SCHEMA_VERSION } from "../../src/domain/schema-versions";
 
 export const createStructuredScene = (): SceneSpec => createDefaultScene();
+
+const explicitActionEulerDegrees: Partial<
+  Record<CanonicalPuppetJointId, Vec3>
+> = {
+  pelvis: [0, 8, 0],
+  spine: [4, -6, 0],
+  neck: [-3, 4, 0],
+  upper_arm_l: [24, 0, 8],
+  forearm_l: [-24, 0, 0],
+  hand_l: [0, 0, 6],
+  upper_arm_r: [-24, 0, -8],
+  forearm_r: [-32, 0, 0],
+  hand_r: [0, 0, -6],
+  upper_leg_l: [-30, 0, 4],
+  lower_leg_l: [18, 0, 0],
+  foot_l: [-10, 0, 0],
+  upper_leg_r: [24, 0, -4],
+  lower_leg_r: [44, 0, 0],
+  foot_r: [-20, 0, 0],
+};
+
+export const createExplicitPuppetActionPose = (): PoseSpec => ({
+  preset: {
+    registry: "builtin",
+    id: "pose.walking-step-v1",
+    version: 1,
+    parameters: { contactOffsetM: 0.92 },
+  },
+  joints: mapCanonicalPuppetJoints((jointId) =>
+    quaternionFromEulerDegrees(
+      explicitActionEulerDegrees[jointId] ?? [0, 0, 0],
+    ),
+  ),
+});
 
 const requireActor = (scene: SceneSpec, actorId: string): ActorEntity => {
   const actor = scene.entities.find(

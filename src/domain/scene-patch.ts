@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { actorLimbPresenceModeSchema } from "./actor-anatomy";
+import { actorLimbPresenceUpdatesSchema } from "./actor-anatomy";
+import {
+  canonicalPuppetJointIdSchema,
+  canonicalPuppetJointIds,
+} from "./actor-joints";
+import {
+  MAX_ACTOR_HEIGHT_M,
+  MIN_ACTOR_HEIGHT_M,
+} from "./actor-stature";
 import {
   actorBlueprintSlugSchema,
   actorBlueprintSnapshotSchema,
@@ -28,22 +36,8 @@ import {
   spatialRegionSchema,
 } from "./spatial-layout";
 
-export const actorLimbPresenceUpdatesSchema = z
-  .object({
-    upper_arm_l: actorLimbPresenceModeSchema.optional(),
-    forearm_l: actorLimbPresenceModeSchema.optional(),
-    hand_l: actorLimbPresenceModeSchema.optional(),
-    upper_arm_r: actorLimbPresenceModeSchema.optional(),
-    forearm_r: actorLimbPresenceModeSchema.optional(),
-    hand_r: actorLimbPresenceModeSchema.optional(),
-    upper_leg_l: actorLimbPresenceModeSchema.optional(),
-    lower_leg_l: actorLimbPresenceModeSchema.optional(),
-    foot_l: actorLimbPresenceModeSchema.optional(),
-    upper_leg_r: actorLimbPresenceModeSchema.optional(),
-    lower_leg_r: actorLimbPresenceModeSchema.optional(),
-    foot_r: actorLimbPresenceModeSchema.optional(),
-  })
-  .strict()
+export const actorLimbPresenceOperationUpdatesSchema =
+  actorLimbPresenceUpdatesSchema
   .refine(
     (updates) => Object.keys(updates).length > 0,
     "Actor limb presence updates must contain at least one part.",
@@ -55,6 +49,84 @@ export const actorLimbPresenceUpdatesSchema = z
       ),
     "Actor limb presence updates cannot contain undefined modes.",
   );
+
+export const ACTOR_HEIGHT_RANGE_ERROR_CODE =
+  "ACTOR_HEIGHT_RANGE_INVALID" as const;
+export const ACTOR_JOINT_ID_ERROR_CODE = "ACTOR_JOINT_ID_INVALID" as const;
+
+export type ActorPuppetInputErrorCode =
+  | typeof ACTOR_HEIGHT_RANGE_ERROR_CODE
+  | typeof ACTOR_JOINT_ID_ERROR_CODE;
+
+const containsValidationMessage = (value: unknown, message: string): boolean => {
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsValidationMessage(entry, message));
+  }
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (record.message === message) return true;
+  return Object.values(record).some((entry) =>
+    containsValidationMessage(entry, message),
+  );
+};
+
+const recordValue = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+const operationForIssue = (
+  input: unknown,
+  operationIndex: number,
+): Record<string, unknown> | undefined => {
+  const envelope = recordValue(input);
+  const patch = recordValue(envelope?.patch) ?? envelope;
+  const operations = patch?.operations;
+  return Array.isArray(operations)
+    ? recordValue(operations[operationIndex])
+    : undefined;
+};
+
+export const actorPuppetInputErrorCode = (
+  error: unknown,
+  input: unknown,
+): ActorPuppetInputErrorCode | undefined => {
+  if (!(error instanceof z.ZodError) || error.issues.length !== 1) {
+    return undefined;
+  }
+  const [issue] = error.issues;
+  const [operationsKey, operationIndex, propertyKey, nestedKey] = issue.path;
+  if (operationsKey !== "operations" || typeof operationIndex !== "number") {
+    return undefined;
+  }
+  const operation = operationForIssue(input, operationIndex);
+  if (
+    issue.path.length === 3 &&
+    propertyKey === "heightM" &&
+    operation?.op === "actor.height.set" &&
+    issue.message === ACTOR_HEIGHT_RANGE_ERROR_CODE
+  ) {
+    return ACTOR_HEIGHT_RANGE_ERROR_CODE;
+  }
+  if (
+    issue.path.length === 4 &&
+    propertyKey === "updates" &&
+    typeof nestedKey === "string" &&
+    operation?.op === "actor.pose.joints.set" &&
+    containsValidationMessage(issue, ACTOR_JOINT_ID_ERROR_CODE)
+  ) {
+    return ACTOR_JOINT_ID_ERROR_CODE;
+  }
+  return undefined;
+};
+
+const actorPuppetJointUpdateIdSchema = z.enum(canonicalPuppetJointIds, {
+  error: ACTOR_JOINT_ID_ERROR_CODE,
+});
+
+const completeActionPoseSchema = poseSchema.extend({
+  joints: z.record(canonicalPuppetJointIdSchema, quaternionSchema),
+});
 
 const operationSchemas = [
   z
@@ -124,14 +196,37 @@ const operationSchemas = [
     .object({
       op: z.literal("actor.pose.set"),
       entityId: entityIdSchema,
-      value: poseSchema,
+      value: completeActionPoseSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("actor.height.set"),
+      actorId: entityIdSchema,
+      heightM: z
+        .number()
+        .finite()
+        .min(MIN_ACTOR_HEIGHT_M, ACTOR_HEIGHT_RANGE_ERROR_CODE)
+        .max(MAX_ACTOR_HEIGHT_M, ACTOR_HEIGHT_RANGE_ERROR_CODE),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("actor.pose.joints.set"),
+      actorId: entityIdSchema,
+      updates: z
+        .partialRecord(actorPuppetJointUpdateIdSchema, quaternionSchema)
+        .refine(
+          (updates) => Object.keys(updates).length > 0,
+          "Actor joint updates must contain at least one joint.",
+        ),
     })
     .strict(),
   z
     .object({
       op: z.literal("actor.limb-presence.set"),
       actorId: entityIdSchema,
-      updates: actorLimbPresenceUpdatesSchema,
+      updates: actorLimbPresenceOperationUpdatesSchema,
     })
     .strict(),
   z

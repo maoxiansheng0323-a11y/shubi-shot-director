@@ -1,10 +1,13 @@
 import { z } from "zod";
 import {
   ACTOR_LIMB_CHAINS,
+  ACTOR_LIMB_PART_IDS,
   actorLimbPresenceModeSchema,
   actorLimbPresenceSchema,
+  resolveActorLimbPresenceUpdates,
   type ActorLimbPartId,
   type ActorLimbPresence,
+  type ActorLimbPresenceUpdates,
 } from "./actor-anatomy";
 import { canonicalJsonSha256 } from "./canonical-json-sha256";
 
@@ -423,6 +426,34 @@ export const resolveActorBlueprintVariant = (
       ]),
     ),
   };
+};
+
+export const resolveActorBlueprintInstance = (
+  snapshot: ActorBlueprintSnapshot,
+  variantId: string,
+  overrides: ActorLimbPresenceUpdates,
+): ResolvedActorBlueprintVariant => {
+  const variant = resolveActorBlueprintVariant(snapshot, variantId);
+  return {
+    ...variant,
+    limbPresence: resolveActorLimbPresenceUpdates(
+      variant.limbPresence,
+      overrides,
+    ),
+  };
+};
+
+export const actorBlueprintLimbPresenceOverrides = (
+  variantBase: ActorLimbPresence,
+  desired: ActorLimbPresence,
+): ActorLimbPresenceUpdates => {
+  const overrides: ActorLimbPresenceUpdates = {};
+  for (const partId of ACTOR_LIMB_PART_IDS) {
+    if (desired[partId] !== variantBase[partId]) {
+      overrides[partId] = desired[partId];
+    }
+  }
+  return overrides;
 };
 
 export type ActorBlueprintModule = ActorBlueprintDocument["modules"][number];

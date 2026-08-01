@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { renderSceneToPng } from "../server/software-png";
 import { createDefaultScene } from "../src/domain/default-scene";
-import { sceneSpecSchema } from "../src/domain/scene-schema";
+import {
+  isLegacyActorEntity,
+  sceneSpecSchema,
+} from "../src/domain/scene-schema";
 
 const createSpatialScene = () => {
   const base = createDefaultScene();
@@ -47,6 +50,19 @@ const createSpatialScene = () => {
 };
 
 describe("software PNG spatial projection", () => {
+  it("reports zero accepted actor draw operations when every primitive is clipped", () => {
+    const scene = createDefaultScene();
+    const actor = scene.entities.find(isLegacyActorEntity);
+    if (!actor) throw new Error("Actor fixture is missing.");
+    actor.transform.positionM = [10_000, 10_000, 10_000];
+
+    const counts = renderSceneToPng(scene, 320, 180)
+      .diagnostics.actorPrimitiveDrawCounts[actor.id];
+
+    expect(counts).toBeDefined();
+    expect(Object.values(counts ?? {}).every((count) => count === 0)).toBe(true);
+  });
+
   it("includes generic region boundaries in the exported perspective", () => {
     const visibleScene = createSpatialScene();
     const hiddenScene = sceneSpecSchema.parse({

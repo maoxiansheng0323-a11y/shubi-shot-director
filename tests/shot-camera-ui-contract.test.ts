@@ -106,6 +106,17 @@ describe("shot camera navigation UI contract", () => {
     );
   });
 
+  it("uses filtered high-resolution shadows in the browser-rendered shot", () => {
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
+    const world = readSource("src/three/SceneWorld.tsx");
+
+    expect(workspace).toContain('shadows="percentage"');
+    expect(workspace).not.toContain('shadows="basic"');
+    expect(world).toContain("shadow-mapSize-width={2048}");
+    expect(world).toContain("shadow-mapSize-height={2048}");
+    expect(world).toContain("shadow-radius={3}");
+  });
+
   it("shares the effective final-camera transform with shot wall visibility", () => {
     const workspace = readSource("src/editor/ViewportWorkspace.tsx");
     const world = readSource("src/three/SceneWorld.tsx");

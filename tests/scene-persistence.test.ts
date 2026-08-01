@@ -17,6 +17,7 @@ import {
 import { resolveActorLimbPresenceUpdates } from "../src/domain/actor-anatomy";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
+import { snapTransformToContact } from "../src/domain/contact-constraints";
 import {
   parseSceneFile,
   serializeSceneFile,
@@ -26,9 +27,11 @@ import {
   sceneSpecSchema,
   type SceneSpec,
 } from "../src/domain/scene-schema";
+import { SCENE_SCHEMA_VERSION } from "../src/domain/schema-versions";
 import {
   createBlueprintActor,
   createGenericActorBlueprintDocument,
+  createLegacyV5BlueprintGroundContactScene,
 } from "./helpers/actor-blueprint-fixtures";
 
 const temporaryDirectories: string[] = [];
@@ -74,7 +77,7 @@ describe("ScenePersistence", () => {
       variantId: "repaired",
     });
     second.transform.positionM = [1.25, 0.92, -0.5];
-    second.pose.joints.shoulder_l = [0, 0, 0, 1];
+    second.pose.joints.upper_arm_l = [0, 0, 0, 1];
     second.color = "#8894a2";
     second.lockMode = "workflow";
     scene.entities.push(first, second);
@@ -92,7 +95,7 @@ describe("ScenePersistence", () => {
     expect(JSON.stringify(reloaded)).not.toContain(externalFile);
   });
 
-  it("serializes and reparses the exact canonical v5 legacy limb map", async () => {
+  it("serializes and reparses the exact canonical v6 legacy limb map", async () => {
     const scene = createDefaultScene();
     const actor = scene.entities.find((entity) => entity.kind === "actor");
     if (!actor || actor.kind !== "actor") {
@@ -110,7 +113,9 @@ describe("ScenePersistence", () => {
       (entity) => entity.kind === "actor",
     );
 
-    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: 5 });
+    expect(JSON.parse(serialized)).toMatchObject({
+      schemaVersion: SCENE_SCHEMA_VERSION,
+    });
     expect(reparsedActor).toMatchObject({
       body: { limbPresence: expectedPresence },
     });
@@ -207,4 +212,43 @@ describe("ScenePersistence", () => {
       corruptSource,
     );
   });
+
+  it.each(["none", "workflow", "user"] as const)(
+    "loads and rebases a persisted v5 Blueprint ground-contact scene with a %s lock",
+    async (lockMode) => {
+      const runtimeDirectory = await createRuntimeDirectory();
+      const currentFile = path.join(
+        runtimeDirectory,
+        "current.scene.json",
+      );
+      await mkdir(runtimeDirectory, { recursive: true });
+      await writeFile(
+        currentFile,
+        JSON.stringify(
+          createLegacyV5BlueprintGroundContactScene(lockMode),
+        ),
+        "utf8",
+      );
+
+      const restored = await new ScenePersistence(runtimeDirectory).load();
+      const actor = restored.entities.find(
+        (entity) => entity.id === "actor_entity_blueprint_1",
+      );
+
+      expect(actor).toMatchObject({
+        kind: "actor",
+        lockMode,
+        transform: {
+          positionM: [0, expect.any(Number), 0],
+        },
+      });
+      if (!actor || actor.kind !== "actor") {
+        throw new Error("Migrated Blueprint actor is missing.");
+      }
+      expect(actor.transform.positionM[1]).not.toBeCloseTo(0.4536, 4);
+      expect(actor.transform).toEqual(
+        snapTransformToContact(restored, actor.id, actor.transform),
+      );
+    },
+  );
 });

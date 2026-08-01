@@ -6,6 +6,7 @@ import {
 import { createDefaultScene } from "../src/domain/default-scene";
 import {
   resolveLegacyActorProjection as deriveActorRigProjection,
+  type ActorRigFrame,
   type ActorRigPrimitive,
 } from "../src/domain/actor-projection";
 import {
@@ -17,7 +18,11 @@ import {
   listPosePresets,
   materializePose,
 } from "../src/domain/presets/pose-presets";
-import type { ActorEntity, SceneSpec } from "../src/domain/scene-schema";
+import type {
+  ActorEntity,
+  QuaternionTuple,
+  SceneSpec,
+} from "../src/domain/scene-schema";
 
 const actorIn = (scene: SceneSpec): ActorEntity => {
   const actor = scene.entities.find(
@@ -43,6 +48,16 @@ const primitiveCenter = (primitive: ActorRigPrimitive): readonly number[] => {
   );
   return primitive.frame.position.map(
     (component, axis) => component + rotatedCenter[axis],
+  );
+};
+
+const framePoint = (
+  frame: ActorRigFrame,
+  point: readonly [number, number, number],
+): readonly number[] => {
+  const rotated = rotateVector([...point], frame.rotation);
+  return frame.position.map(
+    (component, axis) => component + rotated[axis],
   );
 };
 
@@ -147,8 +162,12 @@ describe("shared actor rig projection", () => {
       const actor = actorIn(createDefaultScene());
       const middleId = `forearm_${side}` as const;
       const elbowId = `elbow_${side}` as const;
-      delete actor.pose.joints[middleId];
-      actor.pose.joints[elbowId] = quaternionFromEulerDegrees([-29, 11, 43]);
+      const legacyJoints = actor.pose.joints as unknown as Record<
+        string,
+        QuaternionTuple | undefined
+      >;
+      delete legacyJoints[middleId];
+      legacyJoints[elbowId] = quaternionFromEulerDegrees([-29, 11, 43]);
 
       const projection = deriveActorRigProjection(actor);
       const elbow = primitiveById(projection.primitives, elbowId);
@@ -164,8 +183,12 @@ describe("shared actor rig projection", () => {
       const actor = actorIn(createDefaultScene());
       const middleId = `lower_leg_${side}` as const;
       const kneeId = `knee_${side}` as const;
-      delete actor.pose.joints[middleId];
-      actor.pose.joints[kneeId] = quaternionFromEulerDegrees([-41, 7, 22]);
+      const legacyJoints = actor.pose.joints as unknown as Record<
+        string,
+        QuaternionTuple | undefined
+      >;
+      delete legacyJoints[middleId];
+      legacyJoints[kneeId] = quaternionFromEulerDegrees([-41, 7, 22]);
 
       const projection = deriveActorRigProjection(actor);
       const knee = primitiveById(projection.primitives, kneeId);
@@ -175,33 +198,155 @@ describe("shared actor rig projection", () => {
     },
   );
 
-  it("shares non-unit parent frames and geometry for a shoulder-to-hand chain", () => {
+  it("keeps the neck planted in the torso while the head rotates at the neck top", () => {
     const actor = actorIn(createDefaultScene());
-    delete actor.pose.joints.upper_arm_r;
-    delete actor.pose.joints.forearm_r;
-    actor.pose.joints.shoulder_r = quaternionFromEulerDegrees([17, -23, 31]);
-    actor.pose.joints.elbow_r = quaternionFromEulerDegrees([-29, 11, 43]);
+    const neutral = deriveActorRigProjection(actor);
+    actor.pose.joints.neck = quaternionFromEulerDegrees([0, 0, 90]);
+    const rotated = deriveActorRigProjection(actor);
+    const neutralTorso = primitiveById(neutral.primitives, "torso");
+    const neutralNeck = primitiveById(neutral.primitives, "neck");
+    const neutralHead = primitiveById(neutral.primitives, "head");
+    const rotatedNeck = primitiveById(rotated.primitives, "neck");
+    const rotatedHead = primitiveById(rotated.primitives, "head");
+    if (
+      neutralTorso.kind !== "profile" ||
+      neutralNeck.kind !== "profile" ||
+      rotatedNeck.kind !== "profile"
+    ) {
+      throw new Error("Expected torso and neck profiles.");
+    }
+    const torsoTop = framePoint(neutralTorso.frame, [
+      neutralTorso.center[0],
+      neutralTorso.center[1] + (neutralTorso.points.at(-1)?.y ?? 0),
+      neutralTorso.center[2],
+    ]);
+    const neutralBase = framePoint(neutralNeck.frame, [
+      neutralNeck.center[0],
+      neutralNeck.center[1] + (neutralNeck.points[0]?.y ?? 0),
+      neutralNeck.center[2],
+    ]);
+    const rotatedBase = framePoint(rotatedNeck.frame, [
+      rotatedNeck.center[0],
+      rotatedNeck.center[1] + (rotatedNeck.points[0]?.y ?? 0),
+      rotatedNeck.center[2],
+    ]);
+    const neutralTop = framePoint(neutralNeck.frame, [
+      neutralNeck.center[0],
+      neutralNeck.center[1] + (neutralNeck.points.at(-1)?.y ?? 0),
+      neutralNeck.center[2],
+    ]);
+    const rotatedTop = framePoint(rotatedNeck.frame, [
+      rotatedNeck.center[0],
+      rotatedNeck.center[1] + (rotatedNeck.points.at(-1)?.y ?? 0),
+      rotatedNeck.center[2],
+    ]);
+
+    expect(neutralBase).toEqual(rotatedBase);
+    expect(neutralTop).toEqual(rotatedTop);
+    expect(neutralBase[1]).toBeLessThanOrEqual(torsoTop[1]);
+    expect(neutralTop).toEqual(neutralHead.frame.position);
+    expect(rotatedTop).toEqual(rotatedHead.frame.position);
+    expect(rotatedHead.frame.position).toEqual(neutralHead.frame.position);
+    expect(rotatedHead.frame.rotation).not.toEqual(neutralHead.frame.rotation);
+  });
+
+  it("keeps all joint indicators subordinate to adjacent profile endpoints", () => {
+    const projection = deriveActorRigProjection(actorIn(createDefaultScene()));
+
+    for (const side of ["l", "r"] as const) {
+      const shoulder = primitiveById(projection.primitives, `shoulder_${side}`);
+      const upperArm = primitiveById(projection.primitives, `upper_arm_${side}`);
+      const forearm = primitiveById(projection.primitives, `forearm_${side}`);
+      const elbow = primitiveById(projection.primitives, `elbow_${side}`);
+      const hip = primitiveById(projection.primitives, `hip_${side}`);
+      const upperLeg = primitiveById(projection.primitives, `upper_leg_${side}`);
+      const lowerLeg = primitiveById(projection.primitives, `lower_leg_${side}`);
+      const knee = primitiveById(projection.primitives, `knee_${side}`);
+      if (
+        shoulder.kind !== "sphere" ||
+        upperArm.kind !== "profile" ||
+        forearm.kind !== "profile" ||
+        elbow.kind !== "sphere" ||
+        hip.kind !== "sphere" ||
+        upperLeg.kind !== "profile" ||
+        lowerLeg.kind !== "profile" ||
+        knee.kind !== "sphere"
+      ) {
+        throw new Error("Expected profile limbs with sphere joint indicators.");
+      }
+      const elbowEndpointRadius = Math.max(
+        upperArm.points[0]?.radius ?? 0,
+        forearm.points.at(-1)?.radius ?? 0,
+      );
+      const kneeEndpointRadius = Math.max(
+        upperLeg.points[0]?.radius ?? 0,
+        lowerLeg.points.at(-1)?.radius ?? 0,
+      );
+      const shoulderEndpointRadius = upperArm.points.at(-1)?.radius ?? 0;
+      const hipEndpointRadius = upperLeg.points.at(-1)?.radius ?? 0;
+
+      expect(shoulder.radius).toBeGreaterThan(0);
+      expect(shoulder.radius).toBeLessThanOrEqual(shoulderEndpointRadius * 0.95);
+      expect(hip.radius).toBeGreaterThan(0);
+      expect(hip.radius).toBeLessThanOrEqual(hipEndpointRadius * 0.92);
+      expect(elbow.radius).toBeGreaterThan(0);
+      expect(elbow.radius).toBeLessThanOrEqual(elbowEndpointRadius * 0.88);
+      expect(knee.radius).toBeGreaterThan(0);
+      expect(knee.radius).toBeLessThanOrEqual(kneeEndpointRadius * 0.85);
+    }
+  });
+
+  it("shares non-unit parent frames and humanoid masses for a shoulder-to-hand chain", () => {
+    const actor = actorIn(createDefaultScene());
+    const legacyJoints = actor.pose.joints as unknown as Record<
+      string,
+      QuaternionTuple | undefined
+    >;
+    delete legacyJoints.upper_arm_r;
+    delete legacyJoints.forearm_r;
+    legacyJoints.shoulder_r = quaternionFromEulerDegrees([17, -23, 31]);
+    legacyJoints.elbow_r = quaternionFromEulerDegrees([-29, 11, 43]);
     const projection = deriveActorRigProjection(actor);
     const dimensions = deriveActorAnatomyDimensions(actor.body);
     const upper = primitiveById(projection.primitives, "upper_arm_r");
+    const neck = primitiveById(projection.primitives, "neck");
+    const torso = primitiveById(projection.primitives, "torso");
+    const pelvis = primitiveById(projection.primitives, "pelvis");
     const head = primitiveById(projection.primitives, "head");
     const elbow = primitiveById(projection.primitives, "elbow_r");
     const middle = primitiveById(projection.primitives, "forearm_r");
     const hand = primitiveById(projection.primitives, "hand_r");
 
-    if (upper.kind !== "capsule") throw new Error("Upper arm is not a capsule.");
-    expect(upper.length).toBe(dimensions.upperArmLength);
-    expect(upper.radius).toBe(dimensions.armRadius);
-    expect(upper.capSegments).toBe(6);
+    if (upper.kind !== "profile") throw new Error("Upper arm is not a profile.");
+    expect(upper.points[0]?.y).toBe(-dimensions.upperArmLength);
+    expect(upper.points.at(-1)?.y).toBe(0);
+    expect(upper.points.at(-1)?.radius).toBeGreaterThan(
+      upper.points[0]?.radius ?? Number.POSITIVE_INFINITY,
+    );
     expect(upper.radialSegments).toBe(12);
-    if (head.kind !== "sphere") throw new Error("Head is not a sphere.");
-    expect(head.widthSegments).toBe(20);
-    expect(head.heightSegments).toBe(14);
+    expect(neck.kind).toBe("profile");
+    if (torso.kind !== "profile" || pelvis.kind !== "profile") {
+      throw new Error("Core body masses are not profiles.");
+    }
+    const torsoRadii = torso.points.map(({ radius }) => radius);
+    expect(Math.max(...torsoRadii)).toBeGreaterThan(Math.min(...torsoRadii));
+    expect(torso.depthScale).toBeLessThan(1);
+    const pelvisRadii = pelvis.points.map(({ radius }) => radius);
+    expect(Math.max(...pelvisRadii)).toBeGreaterThan(pelvisRadii.at(-1) ?? 0);
+    if (head.kind !== "profile") throw new Error("Head is not a profile.");
+    const headRadii = head.points.map(({ radius }) => radius);
+    expect(head.points[0]?.radius).toBeLessThan(Math.max(...headRadii));
+    expect(head.points.at(-1)?.radius).toBeLessThan(Math.max(...headRadii));
+    expect(head.points.length).toBeGreaterThanOrEqual(5);
+    expect(head.radialSegments).toBeGreaterThanOrEqual(20);
     expect(elbow.frame.position).not.toEqual([0, 0, 0]);
     expect(middle.frame.rotation).toEqual(
-      multiplyQuaternions(upper.frame.rotation, actor.pose.joints.elbow_r),
+      multiplyQuaternions(
+        upper.frame.rotation,
+        legacyJoints.elbow_r as QuaternionTuple,
+      ),
     );
-    if (hand.kind !== "box") throw new Error("Hand is not a box.");
-    expect(hand.size).toEqual(dimensions.handSize);
+    if (hand.kind !== "ellipsoid") throw new Error("Hand is not an ellipsoid.");
+    expect(hand.radii).toEqual(dimensions.handSize.map((value) => value / 2));
   });
 });

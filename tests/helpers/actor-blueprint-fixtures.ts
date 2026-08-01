@@ -1,8 +1,15 @@
-import type { ActorBlueprintDocument } from "../../src/domain/actor-blueprint";
+import {
+  createActorBlueprintSnapshot,
+  type ActorBlueprintDocument,
+} from "../../src/domain/actor-blueprint";
+import { createDefaultScene } from "../../src/domain/default-scene";
+import type { EntityLockMode } from "../../src/domain/entity-lock";
+import { createIdentityPuppetJointMap } from "../../src/domain/actor-joints";
 import { identityQuaternion } from "../../src/domain/scene-schema";
 import type {
   ActorSlot,
   BlueprintActorEntity,
+  SceneSpec,
 } from "../../src/domain/scene-schema";
 
 const localTransform = (
@@ -215,6 +222,8 @@ export const createBlueprintActor = ({
   blueprintInstance: {
     blueprintId,
     variantId,
+    heightScale: 1,
+    limbPresenceOverrides: {},
   },
   pose: {
     preset: {
@@ -225,7 +234,122 @@ export const createBlueprintActor = ({
         contactOffsetM: 0.81,
       },
     },
-    joints: {},
+    joints: createIdentityPuppetJointMap(),
   },
   color: "#c7ced8",
 });
+
+export const createLegacyV5BlueprintGroundContactScene = (
+  lockMode: EntityLockMode = "none",
+): Record<string, unknown> => {
+  const scene = structuredClone(createDefaultScene()) as unknown as Record<
+    string,
+    unknown
+  >;
+  const actor = createBlueprintActor();
+  actor.lockMode = lockMode;
+  actor.transform.positionM[1] = 0.4536;
+  actor.pose.preset.parameters.contactOffsetM = 0.4536;
+
+  const legacyActor = structuredClone(actor) as unknown as Record<
+    string,
+    unknown
+  >;
+  const instance = legacyActor.blueprintInstance as Record<string, unknown>;
+  delete instance.heightScale;
+  delete instance.limbPresenceOverrides;
+
+  scene.schemaVersion = 5;
+  scene.actorBlueprints = [
+    createActorBlueprintSnapshot(createGenericActorBlueprintDocument()),
+  ];
+  scene.entities = [
+    ...(scene.entities as Array<Record<string, unknown>>).filter(
+      (entity) => entity.kind !== "actor",
+    ),
+    legacyActor,
+  ];
+  scene.constraints = [
+    {
+      id: "constraint_ground_actor_blueprint_v5",
+      type: "ground-contact",
+      entityId: actor.id,
+      surfaceEntityId: "environment_room_1",
+      enabled: true,
+    },
+  ];
+  return scene;
+};
+
+export const createLegacyV5BlueprintGroundContactPatch = (
+  scene: SceneSpec,
+  lockMode: Exclude<EntityLockMode, "none">,
+) => {
+  const snapshot = createActorBlueprintSnapshot(
+    createGenericActorBlueprintDocument(),
+  );
+  const actor = createBlueprintActor({
+    id: `actor_entity_blueprint_v5_${lockMode}`,
+  });
+  actor.lockMode = lockMode;
+  actor.transform.positionM = [0.65, 0.4536, -0.35];
+  actor.pose.preset.parameters.contactOffsetM = 0.4536;
+
+  const legacyTransform = structuredClone(actor.transform);
+  const legacyActor = structuredClone(actor) as unknown as Record<
+    string,
+    unknown
+  >;
+  const instance = legacyActor.blueprintInstance as Record<string, unknown>;
+  delete instance.heightScale;
+  delete instance.limbPresenceOverrides;
+
+  return {
+    actorId: actor.id,
+    legacyTransform,
+    patch: {
+      schemaVersion: 5,
+      patchId: `patch_v5_blueprint_ground_contact_${lockMode}`,
+      sceneId: scene.sceneId,
+      baseRevision: scene.revision,
+      source: "manual",
+      preserveLock: false,
+      operations: [
+        { op: "actor.blueprint.register", snapshot },
+        { op: "entity.add", value: legacyActor },
+        {
+          op: "constraint.set",
+          value: {
+            id: `constraint_ground_actor_blueprint_v5_${lockMode}`,
+            type: "ground-contact",
+            entityId: actor.id,
+            surfaceEntityId: "environment_room_1",
+            enabled: true,
+          },
+        },
+      ],
+    },
+  };
+};
+
+export const createLegacyV5NonBlueprintGroundContactScene = (
+  lockMode: Exclude<EntityLockMode, "none">,
+): Record<string, unknown> => {
+  const scene = structuredClone(createDefaultScene()) as unknown as Record<
+    string,
+    unknown
+  >;
+  scene.schemaVersion = 5;
+  const actor = (scene.entities as Array<Record<string, unknown>>).find(
+    (entity) => entity.kind === "actor",
+  );
+  if (actor === undefined) {
+    throw new Error("Legacy actor fixture is missing.");
+  }
+  actor.lockMode = lockMode;
+  const transform = actor.transform as {
+    positionM: [number, number, number];
+  };
+  transform.positionM[1] = 0.1234;
+  return scene;
+};

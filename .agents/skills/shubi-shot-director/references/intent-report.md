@@ -1,14 +1,14 @@
-# IntentReport v5 and submission envelopes
+# IntentReport v6 and submission envelopes
 
 Author `IntentReport` only in Host Codex. Keep it generic and ephemeral. Never add source wording, aliases, profile paths or contents, project identifiers, credentials, model settings, or free-form explanation fields.
 
-Author all new submissions as v5. The runtime may migrate valid v1 through v4
+Author all new submissions as v6. The runtime may migrate valid v1 through v5
 submissions at the compatibility boundary, but new authoring must use the
-canonical v5 shapes below.
+canonical v6 shapes below.
 
 ## Contents
 
-- [Exact v5 report shape](#exact-v5-report-shape)
+- [Exact v6 report shape](#exact-v6-report-shape)
 - [Exact enums](#exact-enums)
 - [Exact evidence union](#exact-evidence-union)
 - [Policy and coverage](#policy-rules)
@@ -16,13 +16,13 @@ canonical v5 shapes below.
 - [Generic scene submission](#generic-scene-submission-pattern)
 - [Generic limb-presence modify submission](#generic-limb-presence-modify-pattern)
 
-## Exact v5 report shape
+## Exact v6 report shape
 
 The object is strict; extra keys fail validation.
 
-| Field | Exact v5 type |
+| Field | Exact v6 type |
 | --- | --- |
-| `schemaVersion` | literal `5` |
+| `schemaVersion` | literal `6` |
 | `operation` | `"create"` or `"modify"` |
 | `allowPartial` | boolean |
 | `recognizedConstraints` | up to 128 strict constraint objects with unique `id` values |
@@ -36,7 +36,7 @@ A constraint is exactly:
 ```text
 {
   id: GenericId,
-  kind: IntentConstraintKindV5,
+  kind: IntentConstraintKindV6,
   required: boolean,
   targets: GenericId[],
   evidence: IntentEvidenceV5[]
@@ -56,6 +56,7 @@ environment
 entity-presence
 entity-removal
 actor-slot
+actor-height
 actor-limb-presence
 actor-blueprint-registration
 actor-blueprint-instance
@@ -106,8 +107,8 @@ Use only these strict shapes:
 
 ```text
 { type: "entity", entityId: GenericId }
-{ type: "entity-property", entityId: GenericId, path: EntityEvidencePathV5 }
-{ type: "scene-property", path: SceneEvidencePathV5 }
+{ type: "entity-property", entityId: GenericId, path: EntityEvidencePathV6 }
+{ type: "scene-property", path: SceneEvidencePathV6 }
 { type: "scene-constraint", constraintId: GenericId }
 { type: "patch-operation", operationIndex: integer from 0 through 255 }
 ```
@@ -125,7 +126,9 @@ Entity property paths and compatible constraint kinds:
 | `entity.lockMode` | `lock-protection` |
 | `actor.slot` | `actor-slot` |
 | `actor.pose` | `pose`, `relationship` |
-| `actor.blueprintInstance` | `actor-blueprint-instance`, `actor-blueprint-variant` |
+| `actor.blueprintInstance` | `actor-blueprint-instance`, `actor-blueprint-variant`, `actor-limb-presence` |
+| `actor.body.heightM` | `actor-height` for a legacy actor |
+| `actor.blueprintInstance.heightScale` | `actor-height` for a Blueprint actor |
 | `entity.body.limbPresence.upper_arm_l` | `actor-limb-presence` |
 | `entity.body.limbPresence.forearm_l` | `actor-limb-presence` |
 | `entity.body.limbPresence.hand_l` | `actor-limb-presence` |
@@ -144,7 +147,7 @@ Entity property paths and compatible constraint kinds:
 
 Actor-only paths require an actor. Camera-only paths require a camera. Rotation is primary `camera-target` evidence only when the entity is a camera.
 
-For a v5 create, use all twelve exact `entity.body.limbPresence.*` paths when `actor-limb-presence` is required. For a modify, map the minimal `actor.limb-presence.set` operation to `actor-limb-presence` with its exact `patch-operation` index. Legacy limb presence does not author replacement geometry; use a validated Actor Blueprint for supported primitive modules. Arbitrary custom meshes remain unsupported.
+For a v6 create, use `actor.body.heightM` or `actor.blueprintInstance.heightScale` for required `actor-height`, `actor.pose` for pose, and all twelve exact `entity.body.limbPresence.*` paths when legacy `actor-limb-presence` is required. Use the actual `actor.blueprintInstance` path for required Blueprint instance, variant, or limb-presence evidence; do not invent nested evidence paths for `limbPresenceOverrides`. For a modify, map minimal `actor.height.set` to `actor-height`, `actor.pose.joints.set` to `pose`, and `actor.limb-presence.set` on either branch to `actor-limb-presence`, each with its exact `patch-operation` index. Limb presence does not authorize arbitrary replacement geometry or custom meshes.
 
 Scene property paths and compatible kinds:
 
@@ -191,8 +194,9 @@ lock transition may use `entity.lockMode` evidence or the matching
 
 ## Target validation
 
+- After Host Codex locates an actor by slot, label, or alias, use that snapshot actor's SceneSpec `entity.id` in `targets`. Never place the slot, label, or alias in `targets`.
 - Empty targets are valid only for `output` and `composition-safety`.
-- `actor-slot`, `actor-limb-presence`, and `pose` targets must all be actors.
+- `actor-slot`, `actor-height`, `actor-limb-presence`, and `pose` targets must all be actors.
 - `actor-blueprint-registration` targets must resolve to snapshot IDs in `scene.actorBlueprints`.
 - `actor-blueprint-instance` and `actor-blueprint-variant` targets must all be blueprint actors.
 - `camera-height`, `camera-angle`, and `focal-length` targets must all be cameras.
@@ -239,7 +243,9 @@ The referenced operation index must exist in the submitted Patch. It provides pr
 | `entity.flags.set` | `visibility` only when `visible` is present; `lock-protection` only when `lockMode` is present |
 | `entity.preset.parameters.set` | `environment` for an environment |
 | `actor.pose.set` | `pose`, `relationship` for an actor |
-| `actor.limb-presence.set` | `actor-limb-presence` for the targeted actor |
+| `actor.height.set` | `actor-height` for the targeted actor |
+| `actor.pose.joints.set` | `pose` for the targeted actor |
+| `actor.limb-presence.set` | `actor-limb-presence` for the targeted legacy or Blueprint actor |
 | `actor.variant.set` | `actor-blueprint-variant` for the targeted blueprint actor |
 | `camera.lens.set` | `focal-length` for a camera |
 | `camera.look-at` | `camera-angle`, `camera-target` for a camera; an entity-anchor target also covers the subject entity |
@@ -247,7 +253,7 @@ The referenced operation index must exist in the submitted Patch. It provides pr
 | `scene.active-camera.set` | `composition-safety` for a valid camera |
 | `scene.output.set` | `output` |
 | `scene.composition-goals.set` | `framing`, `composition-safety` |
-| `scene.title.set` | no IntentReport kind in v5 |
+| `scene.title.set` | no IntentReport kind in v6 |
 | `spatial.region.upsert`, `spatial.region.remove` | `spatial-region` |
 | `spatial.region.visibility.set` | `region-visibility` |
 | `spatial.boundary.upsert`, `spatial.boundary.visibility.set`, `spatial.boundary.remove` | `spatial-boundary` |
@@ -262,7 +268,7 @@ This is a complete generic envelope shape. Replace values only with schema-valid
 ```json
 {
   "intentReport": {
-    "schemaVersion": 5,
+    "schemaVersion": 6,
     "operation": "create",
     "allowPartial": false,
     "recognizedConstraints": [
@@ -305,7 +311,7 @@ This is a complete generic envelope shape. Replace values only with schema-valid
     "canApplySafely": true
   },
   "scene": {
-    "schemaVersion": 5,
+    "schemaVersion": 6,
     "sceneId": "scene_generic_1",
     "revision": 0,
     "title": "Generic camera study",
@@ -392,7 +398,23 @@ This is a complete generic envelope shape. Replace values only with schema-valid
             "version": 1,
             "parameters": { "contactOffsetM": 0.977 }
           },
-          "joints": {}
+          "joints": {
+            "pelvis": [0, 0, 0, 1],
+            "spine": [0, 0, 0, 1],
+            "neck": [0, 0, 0, 1],
+            "upper_arm_l": [0, 0, 0, 1],
+            "forearm_l": [0, 0, 0, 1],
+            "hand_l": [0, 0, 0, 1],
+            "upper_arm_r": [0, 0, 0, 1],
+            "forearm_r": [0, 0, 0, 1],
+            "hand_r": [0, 0, 0, 1],
+            "upper_leg_l": [0, 0, 0, 1],
+            "lower_leg_l": [0, 0, 0, 1],
+            "foot_l": [0, 0, 0, 1],
+            "upper_leg_r": [0, 0, 0, 1],
+            "lower_leg_r": [0, 0, 0, 1],
+            "foot_r": [0, 0, 0, 1]
+          }
         },
         "color": "#c7ced8"
       },
@@ -430,7 +452,7 @@ Take `sceneId` and `baseRevision` from the immediately preceding snapshot.
 ```json
 {
   "intentReport": {
-    "schemaVersion": 5,
+    "schemaVersion": 6,
     "operation": "modify",
     "allowPartial": false,
     "recognizedConstraints": [
@@ -453,7 +475,7 @@ Take `sceneId` and `baseRevision` from the immediately preceding snapshot.
     "canApplySafely": true
   },
   "patch": {
-    "schemaVersion": 5,
+    "schemaVersion": 6,
     "patchId": "patch_limb_presence_1",
     "sceneId": "scene_generic_1",
     "baseRevision": 3,

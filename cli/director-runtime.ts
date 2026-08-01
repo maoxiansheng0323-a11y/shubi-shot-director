@@ -13,7 +13,11 @@ import {
 } from "../src/domain/actor-blueprint";
 import { analyzeComposition } from "../src/domain/composition-safety";
 import {
-  parseScenePatchInput,
+  actorPuppetInputErrorCode,
+} from "../src/domain/scene-patch";
+import {
+  createScenePatchCompatibilityPayload,
+  parseScenePatchInputWithProvenance,
   parseSceneSpecInput,
 } from "../src/domain/scene-migrations";
 import {
@@ -85,6 +89,21 @@ const output = (value: JsonEnvelope | CliErrorEnvelope): void => {
   process.stdout.write(`${JSON.stringify(value)}\n`);
 };
 
+const actorPuppetErrorMessage = (code: string): string | undefined => {
+  switch (code) {
+    case "ACTOR_HEIGHT_TARGET_INVALID":
+      return "The requested actor height target is invalid.";
+    case "ACTOR_HEIGHT_RANGE_INVALID":
+      return "Actor stature must be between 1.0 and 2.4 meters.";
+    case "ACTOR_JOINT_TARGET_INVALID":
+      return "The requested actor joint target is invalid.";
+    case "ACTOR_JOINT_ID_INVALID":
+      return "The requested actor joint ID is unsupported.";
+    default:
+      return undefined;
+  }
+};
+
 const readSceneFromEnvelope = (envelope: JsonEnvelope): SceneSpec => {
   const data = envelope.data;
   if (
@@ -121,9 +140,21 @@ const readValidatedSceneFile = async (
 };
 
 const readValidatedPatchFile = async (filePath: string) => {
+  const input = await readBoundedJsonFile(filePath);
   try {
-    return parseScenePatchInput(await readBoundedJsonFile(filePath));
-  } catch {
+    const parsed = parseScenePatchInputWithProvenance(input);
+    return createScenePatchCompatibilityPayload(
+      parsed.patch,
+      parsed.sourceSchemaVersion,
+    );
+  } catch (error) {
+    const actorPuppetCode = actorPuppetInputErrorCode(error, input);
+    if (actorPuppetCode !== undefined) {
+      throw new CliCommandError(
+        actorPuppetCode,
+        actorPuppetErrorMessage(actorPuppetCode) ?? "The actor request is invalid.",
+      );
+    }
     throw new CliCommandError(
       "PATCH_FILE_INVALID",
       "The supplied file is not a valid ScenePatch.",
@@ -147,11 +178,28 @@ const readValidatedSceneSubmissionFile = async (
 
 const readValidatedPatchSubmissionFile = async (
   filePath: string,
-): Promise<PatchSubmission> => {
+): Promise<{ payload: unknown; normalized: PatchSubmission }> => {
   const input = await readBoundedJsonFile(filePath);
   try {
-    return normalizePatchSubmissionInput(input);
-  } catch {
+    const parsed = normalizePatchSubmissionInput(input);
+    return {
+      payload: {
+        intentReport: parsed.submission.intentReport,
+        patch: createScenePatchCompatibilityPayload(
+          parsed.submission.patch,
+          parsed.patchSourceSchemaVersion,
+        ),
+      },
+      normalized: parsed.submission,
+    };
+  } catch (error) {
+    const actorPuppetCode = actorPuppetInputErrorCode(error, input);
+    if (actorPuppetCode !== undefined) {
+      throw new CliCommandError(
+        actorPuppetCode,
+        actorPuppetErrorMessage(actorPuppetCode) ?? "The actor request is invalid.",
+      );
+    }
     throw new CliCommandError(
       "PATCH_SUBMISSION_FILE_INVALID",
       "The supplied file is not a valid patch submission.",
@@ -541,14 +589,15 @@ const runDirectorCommand = async (
 
   if (command === "patch" && args[1] === "submit") {
     const options = parseFileCommandOptions(args.slice(2));
-    const submission = await readValidatedPatchSubmissionFile(options.file);
+    const { payload, normalized } =
+      await readValidatedPatchSubmissionFile(options.file);
     await requireBridgeHealth(configuration);
     const response = await requestBridge(
       configuration,
       "/api/v1/submissions/patch",
       {
         method: "POST",
-        body: JSON.stringify(submission),
+        body: JSON.stringify(payload),
       },
     );
     const accepted = readSubmissionResponse(response);
@@ -559,7 +608,7 @@ const runDirectorCommand = async (
         kind: "patch",
         sceneId: accepted.scene.sceneId,
         revision: accepted.scene.revision,
-        operationCount: submission.patch.operations.length,
+        operationCount: normalized.patch.operations.length,
         history: accepted.history,
         intentSummary: accepted.intentSummary,
       },
@@ -713,7 +762,7 @@ export const runDirector = async (
       error instanceof BridgeError
     ) {
       code = error.code;
-      message = error.message;
+      message = actorPuppetErrorMessage(error.code) ?? error.message;
     } else if (error instanceof ZodError) {
       code = "SCHEMA_VALIDATION_FAILED";
       message = "Generated scene data failed schema validation.";

@@ -9,12 +9,19 @@ import {
   resolveActorLimbPresenceUpdates,
 } from "./actor-anatomy";
 import {
+  actorBlueprintLimbPresenceOverrides,
+  resolveActorBlueprintInstance,
+  resolveActorBlueprintVariant,
+} from "./actor-blueprint";
+import { CUSTOM_POSE_PRESET_ID } from "./actor-joints";
+import {
   actorAnchorWorldPoint,
   type ActorAnchor,
 } from "./actor-projection";
 import {
   ContactConstraintError,
   enforceGroundContacts,
+  snapTransformToContact,
 } from "./contact-constraints";
 import {
   isLocked,
@@ -26,7 +33,12 @@ import {
   type SceneOperation,
   type ScenePatch,
 } from "./scene-patch";
-import { parseScenePatchInput } from "./scene-migrations";
+import {
+  assertParsedScenePatchInput,
+  parseScenePatchInputWithProvenance,
+  stabilizeScenePatchInput,
+  type ParsedScenePatchInput,
+} from "./scene-migrations";
 import {
   isBlueprintActorEntity,
   isLegacyActorEntity,
@@ -46,6 +58,42 @@ export class SceneDomainError extends Error {
     this.code = code;
   }
 }
+
+interface ApplyScenePatchOptions {
+  readonly provenance?: ParsedScenePatchInput;
+}
+
+const resolveTrustedPatchProvenance = (
+  patchInput: unknown,
+  options: ApplyScenePatchOptions,
+): ParsedScenePatchInput | undefined => {
+  const optionKeys = Reflect.ownKeys(options);
+  if (optionKeys.length === 0) {
+    return undefined;
+  }
+  if (optionKeys.length !== 1 || optionKeys[0] !== "provenance") {
+    throw new SceneDomainError(
+      "PATCH_SOURCE_SCHEMA_INVALID",
+      "Patch source schema provenance is invalid.",
+    );
+  }
+  const provenance = options.provenance;
+  try {
+    assertParsedScenePatchInput(provenance);
+  } catch {
+    throw new SceneDomainError(
+      "PATCH_SOURCE_SCHEMA_INVALID",
+      "Patch source schema provenance is invalid.",
+    );
+  }
+  if (provenance.patch !== patchInput) {
+    throw new SceneDomainError(
+      "PATCH_SOURCE_SCHEMA_MISMATCH",
+      "Patch source schema provenance does not match the supplied Patch.",
+    );
+  }
+  return provenance;
+};
 
 const findEntity = (scene: SceneSpec, entityId: string): SceneEntity => {
   const entity = scene.entities.find((candidate) => candidate.id === entityId);
@@ -384,7 +432,9 @@ const contactAffectedEntityIds = (
     case "entity.preset.parameters.set":
     case "actor.pose.set":
       return new Set([operation.entityId]);
+    case "actor.height.set":
     case "actor.limb-presence.set":
+    case "actor.pose.joints.set":
     case "actor.variant.set":
       return new Set([operation.actorId]);
     case "constraint.set":
@@ -407,12 +457,44 @@ const enforceContactsForOperation = (
   scene: SceneSpec,
   operation: SceneOperation,
   preserveLock: boolean,
+  pendingV5BlueprintContactRebases?: Set<string>,
 ): SceneSpec => {
+  if (
+    pendingV5BlueprintContactRebases !== undefined &&
+    operation.op === "entity.add" &&
+    isBlueprintActorEntity(operation.value)
+  ) {
+    pendingV5BlueprintContactRebases.add(operation.value.id);
+  }
+  if (
+    pendingV5BlueprintContactRebases !== undefined &&
+    operation.op === "entity.remove"
+  ) {
+    pendingV5BlueprintContactRebases.delete(operation.entityId);
+  }
   const affectedIds = contactAffectedEntityIds(operation);
   if (affectedIds.size === 0) {
     return scene;
   }
   try {
+    if (
+      pendingV5BlueprintContactRebases !== undefined &&
+      operation.op === "constraint.set" &&
+      operation.value.type === "ground-contact" &&
+      operation.value.enabled &&
+      pendingV5BlueprintContactRebases.has(operation.value.entityId)
+    ) {
+      const actor = findEntity(scene, operation.value.entityId);
+      if (isBlueprintActorEntity(actor)) {
+        const snapped = snapTransformToContact(
+          scene,
+          actor.id,
+          actor.transform,
+        );
+        actor.transform.positionM[1] = snapped.positionM[1];
+        pendingV5BlueprintContactRebases.delete(actor.id);
+      }
+    }
     return enforceGroundContacts(scene, affectedIds, { preserveLock });
   } catch (error) {
     if (error instanceof ContactConstraintError) {
@@ -574,11 +656,94 @@ const applyOperation = (
       entity.pose = operation.value;
       return;
     }
+    case "actor.height.set": {
+      const entity = scene.entities.find(
+        (candidate) => candidate.id === operation.actorId,
+      );
+      if (entity?.kind !== "actor") {
+        throw new SceneDomainError(
+          "ACTOR_HEIGHT_TARGET_INVALID",
+          `Actor height target is not editable: ${operation.actorId}`,
+        );
+      }
+      requireMutable(entity, preserveLock);
+
+      let previousHeightM: number;
+      if (isLegacyActorEntity(entity)) {
+        previousHeightM = entity.body.heightM;
+        const heightRatio = operation.heightM / previousHeightM;
+        entity.body.heightM = operation.heightM;
+        entity.body.shoulderWidthM = Math.min(
+          0.8,
+          Math.max(0.25, entity.body.shoulderWidthM * heightRatio),
+        );
+      } else if (isBlueprintActorEntity(entity)) {
+        const snapshot = scene.actorBlueprints.find(
+          ({ blueprintId }) =>
+            blueprintId === entity.blueprintInstance.blueprintId,
+        );
+        if (
+          snapshot === undefined ||
+          !snapshot.variants.some(
+            ({ variantId }) =>
+              variantId === entity.blueprintInstance.variantId,
+          )
+        ) {
+          throw new SceneDomainError(
+            "ACTOR_HEIGHT_TARGET_INVALID",
+            `Actor height target has an invalid Blueprint reference: ${operation.actorId}`,
+          );
+        }
+        previousHeightM =
+          snapshot.body.heightM * entity.blueprintInstance.heightScale;
+        entity.blueprintInstance.heightScale =
+          operation.heightM / snapshot.body.heightM;
+      } else {
+        throw new SceneDomainError(
+          "ACTOR_HEIGHT_TARGET_INVALID",
+          `Actor height target is not editable: ${operation.actorId}`,
+        );
+      }
+
+      const contactOffsetM = entity.pose.preset.parameters.contactOffsetM;
+      if (
+        typeof contactOffsetM === "number" &&
+        Number.isFinite(contactOffsetM)
+      ) {
+        entity.pose.preset.parameters.contactOffsetM =
+          contactOffsetM * (operation.heightM / previousHeightM);
+      }
+
+      return;
+    }
+    case "actor.pose.joints.set": {
+      const entity = scene.entities.find(
+        (candidate) => candidate.id === operation.actorId,
+      );
+      if (entity?.kind !== "actor") {
+        throw new SceneDomainError(
+          "ACTOR_JOINT_TARGET_INVALID",
+          `Actor joint target is not editable: ${operation.actorId}`,
+        );
+      }
+      requireMutable(entity, preserveLock);
+      entity.pose = {
+        preset: {
+          ...entity.pose.preset,
+          id: CUSTOM_POSE_PRESET_ID,
+        },
+        joints: {
+          ...entity.pose.joints,
+          ...operation.updates,
+        },
+      };
+      return;
+    }
     case "actor.limb-presence.set": {
       const entity = scene.entities.find(
         (candidate) => candidate.id === operation.actorId,
       );
-      if (!entity || !isLegacyActorEntity(entity)) {
+      if (entity?.kind !== "actor") {
         throw new SceneDomainError(
           "ACTOR_LIMB_TARGET_INVALID",
           `Actor limb target is not editable: ${operation.actorId}`,
@@ -586,13 +751,55 @@ const applyOperation = (
       }
       requireMutable(entity, preserveLock);
       try {
-        entity.body.limbPresence = resolveActorLimbPresenceUpdates(
-          entity.body.limbPresence,
-          operation.updates,
-        );
+        if (isLegacyActorEntity(entity)) {
+          entity.body.limbPresence = resolveActorLimbPresenceUpdates(
+            entity.body.limbPresence,
+            operation.updates,
+          );
+        } else if (isBlueprintActorEntity(entity)) {
+          const snapshot = scene.actorBlueprints.find(
+            ({ blueprintId }) =>
+              blueprintId === entity.blueprintInstance.blueprintId,
+          );
+          if (snapshot === undefined) {
+            throw new SceneDomainError(
+              "ACTOR_LIMB_TARGET_INVALID",
+              `Actor limb target has an invalid Blueprint reference: ${operation.actorId}`,
+            );
+          }
+          const variantBase = resolveActorBlueprintVariant(
+            snapshot,
+            entity.blueprintInstance.variantId,
+          ).limbPresence;
+          const current = resolveActorBlueprintInstance(
+            snapshot,
+            entity.blueprintInstance.variantId,
+            entity.blueprintInstance.limbPresenceOverrides,
+          ).limbPresence;
+          const desired = resolveActorLimbPresenceUpdates(
+            current,
+            operation.updates,
+          );
+          entity.blueprintInstance.limbPresenceOverrides =
+            actorBlueprintLimbPresenceOverrides(variantBase, desired);
+        } else {
+          throw new SceneDomainError(
+            "ACTOR_LIMB_TARGET_INVALID",
+            `Actor limb target is not editable: ${operation.actorId}`,
+          );
+        }
       } catch (error) {
         if (error instanceof ActorLimbPresenceError) {
           throw new SceneDomainError(error.code, error.message);
+        }
+        if (error instanceof SceneDomainError) {
+          throw error;
+        }
+        if (isBlueprintActorEntity(entity)) {
+          throw new SceneDomainError(
+            "ACTOR_LIMB_TARGET_INVALID",
+            `Actor limb target has an invalid Blueprint reference: ${operation.actorId}`,
+          );
         }
         throw error;
       }
@@ -816,12 +1023,24 @@ export interface AppliedScenePatch {
 export const applyScenePatch = (
   currentInput: SceneSpec,
   patchInput: unknown,
+  options: ApplyScenePatchOptions = {},
 ): AppliedScenePatch => {
   const current = sceneSpecSchema.parse(currentInput);
-  const currentStructure = scenePatchStructureSchema.safeParse(patchInput);
-  const patch = currentStructure.success
-    ? currentStructure.data
-    : parseScenePatchInput(patchInput);
+  let parsedPatch = resolveTrustedPatchProvenance(patchInput, options);
+  const stablePatchInput =
+    parsedPatch === undefined
+      ? stabilizeScenePatchInput(patchInput)
+      : patchInput;
+  const currentStructure = scenePatchStructureSchema.safeParse(
+    stablePatchInput,
+  );
+  let patch: ScenePatch;
+  if (currentStructure.success) {
+    patch = currentStructure.data;
+  } else {
+    parsedPatch = parseScenePatchInputWithProvenance(stablePatchInput);
+    patch = parsedPatch.patch;
+  }
 
   if (patch.sceneId !== current.sceneId) {
     throw new SceneDomainError(
@@ -835,9 +1054,12 @@ export const applyScenePatch = (
       `Patch revision ${patch.baseRevision} does not match current revision ${current.revision}.`,
     );
   }
-  const canonicalPatch = currentStructure.success
-    ? parseScenePatchInput(patchInput)
-    : patch;
+  parsedPatch ??= parseScenePatchInputWithProvenance(stablePatchInput);
+  const canonicalPatch = parsedPatch.patch;
+  const pendingV5BlueprintContactRebases =
+    parsedPatch.sourceSchemaVersion === 5
+      ? new Set<string>()
+      : undefined;
 
   preflightBlueprintOperations(current, canonicalPatch);
   const originalLocks = preflightPreservedLocks(current, canonicalPatch);
@@ -856,6 +1078,7 @@ export const applyScenePatch = (
       next,
       operation,
       canonicalPatch.preserveLock,
+      pendingV5BlueprintContactRebases,
     );
     if (
       operation.op === "actor.variant.set" &&

@@ -118,6 +118,35 @@ const ANATOMY_CAPABILITIES = {
   actorLimbPresenceModes: ["present", "absent"],
   actorLimbErrorCodes: ["LIMB_HIERARCHY_CONFLICT"],
 } as const;
+const PUPPET_CAPABILITIES = {
+  actorPuppet: {
+    heightLimitsM: { min: 1, max: 2.4 },
+    jointIds: [
+      "pelvis",
+      "spine",
+      "neck",
+      "upper_arm_l",
+      "forearm_l",
+      "hand_l",
+      "upper_arm_r",
+      "forearm_r",
+      "hand_r",
+      "upper_leg_l",
+      "lower_leg_l",
+      "foot_l",
+      "upper_leg_r",
+      "lower_leg_r",
+      "foot_r",
+    ],
+    operationIds: ["actor.height.set", "actor.pose.joints.set"],
+    errorCodes: [
+      "ACTOR_HEIGHT_TARGET_INVALID",
+      "ACTOR_HEIGHT_RANGE_INVALID",
+      "ACTOR_JOINT_TARGET_INVALID",
+      "ACTOR_JOINT_ID_INVALID",
+    ],
+  },
+} as const;
 
 interface CliResult {
   exitCode: number | null;
@@ -577,6 +606,59 @@ describe("Director CLI bridge compatibility gate", () => {
       { actorLimbErrorCodes: ["UNKNOWN_LIMB_ERROR"] },
       "CAPABILITIES_INVALID",
       "scene",
+    ],
+    [
+      "missing actor puppet capability",
+      { actorPuppet: undefined },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "altered actor height limits",
+      {
+        actorPuppet: {
+          ...PUPPET_CAPABILITIES.actorPuppet,
+          heightLimitsM: { min: 0.5, max: 2.4 },
+        },
+      },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "altered actor joint ids",
+      {
+        actorPuppet: {
+          ...PUPPET_CAPABILITIES.actorPuppet,
+          jointIds: [
+            ...PUPPET_CAPABILITIES.actorPuppet.jointIds.slice(0, -1),
+            "toe_r",
+          ],
+        },
+      },
+      "CAPABILITIES_INVALID",
+      "patch",
+    ],
+    [
+      "altered actor puppet operation ids",
+      {
+        actorPuppet: {
+          ...PUPPET_CAPABILITIES.actorPuppet,
+          operationIds: ["actor.pose.set"],
+        },
+      },
+      "CAPABILITIES_INVALID",
+      "scene",
+    ],
+    [
+      "altered actor puppet error codes",
+      {
+        actorPuppet: {
+          ...PUPPET_CAPABILITIES.actorPuppet,
+          errorCodes: ["UNKNOWN_ACTOR_ERROR"],
+        },
+      },
+      "CAPABILITIES_INVALID",
+      "patch",
     ],
     ...FORBIDDEN_CONFIGURATION_KEYS.map((key, index) => [
       `forbidden ${key} field`,

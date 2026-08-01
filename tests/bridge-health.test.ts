@@ -319,6 +319,7 @@ describe("validateBridgeHealth", () => {
       actorLimbPartIds: [...ANATOMY_CAPABILITIES.actorLimbPartIds],
       actorLimbPresenceModes: [...ANATOMY_CAPABILITIES.actorLimbPresenceModes],
       actorLimbErrorCodes: [...ANATOMY_CAPABILITIES.actorLimbErrorCodes],
+      actorPuppet: getRuntimeCapabilityManifest().actorPuppet,
       actorBlueprint: getRuntimeCapabilityManifest().actorBlueprint,
       status: "ready",
       sceneId: "scene_generic_health",

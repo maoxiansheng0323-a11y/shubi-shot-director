@@ -4,10 +4,12 @@ import type {
 } from "../domain/scene-patch";
 import type {
   CameraEntity,
+  QuaternionTuple,
   SceneSpec,
   TransformSpec,
 } from "../domain/scene-schema";
 import type { ActorLimbPresenceUpdates } from "../domain/actor-anatomy";
+import type { CanonicalPuppetJointId } from "../domain/actor-joints";
 import type { EntityLockMode } from "../domain/entity-lock";
 import { PATCH_SCHEMA_VERSION } from "../domain/schema-versions";
 
@@ -124,6 +126,33 @@ export const createActorLimbPresencePatch = (
       op: "actor.limb-presence.set",
       actorId,
       updates,
+    },
+  ]);
+
+export const createActorHeightPatch = (
+  scene: SceneSpec,
+  actorId: string,
+  heightM: number,
+): ScenePatch =>
+  createOperationsPatch(scene, "actor_height", [
+    {
+      op: "actor.height.set",
+      actorId,
+      heightM,
+    },
+  ]);
+
+export const createActorJointPatch = (
+  scene: SceneSpec,
+  actorId: string,
+  jointId: CanonicalPuppetJointId,
+  rotation: QuaternionTuple,
+): ScenePatch =>
+  createOperationsPatch(scene, "actor_joint", [
+    {
+      op: "actor.pose.joints.set",
+      actorId,
+      updates: { [jointId]: rotation },
     },
   ]);
 

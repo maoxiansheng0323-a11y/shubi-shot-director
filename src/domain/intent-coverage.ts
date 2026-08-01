@@ -16,7 +16,10 @@ import type {
   SceneEntity,
   SceneSpec,
 } from "./scene-schema";
-import { isBlueprintActorEntity } from "./scene-schema";
+import {
+  isBlueprintActorEntity,
+  isLegacyActorEntity,
+} from "./scene-schema";
 
 export interface IntentCoverageContext {
   before?: SceneSpec;
@@ -95,7 +98,10 @@ const ENTITY_PROPERTY_KINDS: Record<
   "actor.blueprintInstance": [
     "actor-blueprint-instance",
     "actor-blueprint-variant",
+    "actor-limb-presence",
   ],
+  "actor.body.heightM": ["actor-height"],
+  "actor.blueprintInstance.heightScale": ["actor-height"],
   ...actorLimbPropertyKinds,
   "camera.heightM": ["camera-height"],
   "camera.lens.focalLengthMm": ["focal-length"],
@@ -160,7 +166,7 @@ const entityPropertyExists = (
   path: EntityEvidencePath,
 ): boolean => {
   if (isActorLimbEvidencePath(path)) {
-    return entity.kind === "actor";
+    return isLegacyActorEntity(entity);
   }
   switch (path) {
     case "entity.kind":
@@ -174,7 +180,10 @@ const entityPropertyExists = (
     case "actor.slot":
     case "actor.pose":
       return entity.kind === "actor";
+    case "actor.body.heightM":
+      return isLegacyActorEntity(entity);
     case "actor.blueprintInstance":
+    case "actor.blueprintInstance.heightScale":
       return isBlueprintActorEntity(entity);
     case "camera.heightM":
       return (
@@ -365,10 +374,10 @@ const entityKindsForAddedEntity = (
   if (entity.kind === "actor") {
     kinds.add("actor-slot");
     kinds.add("pose");
+    kinds.add("actor-height");
+    kinds.add("actor-limb-presence");
     if (isBlueprintActorEntity(entity)) {
       kinds.add("actor-blueprint-instance");
-    } else {
-      kinds.add("actor-limb-presence");
     }
   }
   if (entity.kind === "camera") {
@@ -474,6 +483,16 @@ const operationAssessment = (
       return (kind === "pose" || kind === "relationship") &&
         operationEntity(operation.entityId, report, context)?.kind === "actor"
         ? { primary: true, targetIds: new Set([operation.entityId]) }
+        : undefined;
+    case "actor.height.set":
+      return kind === "actor-height" &&
+        operationEntity(operation.actorId, report, context)?.kind === "actor"
+        ? { primary: true, targetIds: new Set([operation.actorId]) }
+        : undefined;
+    case "actor.pose.joints.set":
+      return kind === "pose" &&
+        operationEntity(operation.actorId, report, context)?.kind === "actor"
+        ? { primary: true, targetIds: new Set([operation.actorId]) }
         : undefined;
     case "actor.limb-presence.set":
       return kind === "actor-limb-presence" &&
@@ -691,6 +710,7 @@ const targetKindsAreValid = (
   switch (constraint.kind) {
     case "actor-slot":
     case "pose":
+    case "actor-height":
     case "actor-limb-presence":
       return (
         targetEntities.length > 0 &&

@@ -69,7 +69,7 @@ export const actorLimbPresenceSchema = z
 export type ActorLimbPresence = z.infer<typeof actorLimbPresenceSchema>;
 export type ActorLimbPresenceUpdates = Partial<ActorLimbPresence>;
 
-const actorLimbPresenceUpdatesSchema = z
+export const actorLimbPresenceUpdatesSchema = z
   .object(actorLimbPresenceShape)
   .partial()
   .strict();
@@ -236,6 +236,19 @@ const scaleVec3 = (
   ratios[1] * scalar,
   ratios[2] * scalar,
 ];
+
+export const scaleActorAnatomyDimensions = (
+  dimensions: ActorAnatomyDimensions,
+  scalar: number,
+): ActorAnatomyDimensions =>
+  Object.fromEntries(
+    Object.entries(dimensions).map(([key, value]) => [
+      key,
+      Array.isArray(value)
+        ? scaleVec3(value as unknown as Vec3Dimensions, scalar)
+        : value * scalar,
+    ]),
+  ) as unknown as ActorAnatomyDimensions;
 
 export const deriveActorAnatomyDimensions = (
   body: ActorBodyDimensionsInput,

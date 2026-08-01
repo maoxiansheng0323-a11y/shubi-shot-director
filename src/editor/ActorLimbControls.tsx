@@ -1,9 +1,15 @@
 import {
   ACTOR_LIMB_CHAINS,
+  createAllPresentLimbPresence,
   type ActorLimbPartId,
   type ActorLimbPresenceMode,
 } from "../domain/actor-anatomy";
-import type { ActorEntity } from "../domain/scene-schema";
+import { resolveActorBlueprintInstance } from "../domain/actor-blueprint";
+import {
+  isLegacyActorEntity,
+  type AnyActorEntity,
+  type SceneSpec,
+} from "../domain/scene-schema";
 
 const groupLabels: Record<keyof typeof ACTOR_LIMB_CHAINS, string> = {
   leftArm: "左臂",
@@ -28,7 +34,8 @@ const partLabels: Record<ActorLimbPartId, string> = {
 };
 
 export interface ActorLimbControlsProps {
-  actor: ActorEntity;
+  scene: SceneSpec;
+  actor: AnyActorEntity;
   disabled: boolean;
   onSetLimbPresence?: (
     actorId: string,
@@ -38,7 +45,7 @@ export interface ActorLimbControlsProps {
 }
 
 export const dispatchActorLimbPresenceChange = (
-  actor: ActorEntity,
+  actor: AnyActorEntity,
   partId: ActorLimbPartId,
   mode: ActorLimbPresenceMode,
   onSetLimbPresence?: ActorLimbControlsProps["onSetLimbPresence"],
@@ -49,10 +56,26 @@ export const dispatchActorLimbPresenceChange = (
 };
 
 export const ActorLimbControls = ({
+  scene,
   actor,
   disabled,
   onSetLimbPresence,
 }: ActorLimbControlsProps) => {
+  const limbPresence = isLegacyActorEntity(actor)
+    ? actor.body.limbPresence
+    : (() => {
+        const snapshot = scene.actorBlueprints.find(
+          ({ blueprintId }) =>
+            blueprintId === actor.blueprintInstance.blueprintId,
+        );
+        return snapshot
+          ? resolveActorBlueprintInstance(
+              snapshot,
+              actor.blueprintInstance.variantId,
+              actor.blueprintInstance.limbPresenceOverrides,
+            ).limbPresence
+          : createAllPresentLimbPresence();
+      })();
   const chains = Object.entries(ACTOR_LIMB_CHAINS) as Array<
     [keyof typeof ACTOR_LIMB_CHAINS, readonly ActorLimbPartId[]]
   >;
@@ -72,7 +95,7 @@ export const ActorLimbControls = ({
                 .slice(0, partIndex)
                 .find(
                   (ancestorId) =>
-                    actor.body.limbPresence[ancestorId] === "absent",
+                    limbPresence[ancestorId] === "absent",
                 );
               const reason = disabled
                 ? "编辑器当前不可用"
@@ -93,10 +116,11 @@ export const ActorLimbControls = ({
                   <select
                     aria-describedby={reason ? reasonId : undefined}
                     aria-label={`${partLabels[partId]} presence`}
+                    data-actor-edit
                     data-limb-part={partId}
                     disabled={reason !== undefined}
                     title={reason}
-                    value={actor.body.limbPresence[partId]}
+                    value={limbPresence[partId]}
                     onChange={(event) =>
                       dispatchActorLimbPresenceChange(
                         actor,
@@ -106,8 +130,8 @@ export const ActorLimbControls = ({
                       )
                     }
                   >
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
+                    <option value="present">存在</option>
+                    <option value="absent">缺失</option>
                   </select>
                   {reason ? (
                     <span className="limb-control-reason" id={reasonId}>

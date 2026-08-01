@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +13,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getRuntimeCapabilityManifest } from "../cli/runtime-capabilities";
 import { createApiApp } from "../server/api";
 import { SceneSession } from "../server/scene-session";
+import { canonicalPuppetJointIds } from "../src/domain/actor-joints";
+import { snapTransformToContact } from "../src/domain/contact-constraints";
+import { parseScenePatchInput } from "../src/domain/scene-migrations";
+import { isBlueprintActorEntity } from "../src/domain/scene-schema";
 import {
   createPatchIntentReport,
   createPatchSubmission,
@@ -16,6 +24,7 @@ import {
   createStructuredPatch,
   createStructuredScene,
 } from "./helpers/structured-fixtures";
+import { createLegacyV5BlueprintGroundContactPatch } from "./helpers/actor-blueprint-fixtures";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const directorScript = fileURLToPath(
@@ -109,6 +118,19 @@ const parseSingleJsonLine = (stdout: string): unknown => {
   return JSON.parse(lines[0] ?? "") as unknown;
 };
 
+const collectJsonStringValues = (value: unknown): string[] => {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(collectJsonStringValues);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value).flatMap(collectJsonStringValues);
+  }
+  return [];
+};
+
 const startApi = async (session: SceneSession) => {
   const requests: Array<{ method: string; pathname: string }> = [];
   const app = createApiApp(session, {
@@ -126,6 +148,107 @@ const startApi = async (session: SceneSession) => {
   const port = await listenOnLoopback(server);
   const bridgeUrl = `http://127.0.0.1:${port}`;
   return { server, bridgeUrl, requests };
+};
+
+const readRequestJson = async (request: IncomingMessage): Promise<unknown> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+};
+
+const startCapturingPatchBridge = async (
+  scene: ReturnType<typeof createStructuredScene>,
+) => {
+  const requests: Array<{ method: string; pathname: string }> = [];
+  const postedBodies: Array<{ pathname: string; body: unknown }> = [];
+  let bridgeUrl = "";
+  const server = createServer((request, response) => {
+    void (async () => {
+      const pathname = request.url ?? "";
+      requests.push({
+        method: request.method ?? "",
+        pathname,
+      });
+      response.setHeader("Content-Type", "application/json");
+
+      if (request.method === "GET" && pathname === "/api/v1/health") {
+        response.end(
+          JSON.stringify({
+            ok: true,
+            data: {
+              ...getRuntimeCapabilityManifest(),
+              status: "ready",
+              sceneId: scene.sceneId,
+              revision: scene.revision,
+              uiUrl: bridgeUrl,
+              instanceId: "instance_0123456789abcdef0123456789abcdef",
+            },
+          }),
+        );
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        (pathname === "/api/v1/patches" ||
+          pathname === "/api/v1/submissions/patch")
+      ) {
+        postedBodies.push({ pathname, body: await readRequestJson(request) });
+        const acceptedScene = {
+          ...scene,
+          revision: scene.revision + 1,
+        };
+        response.end(
+          JSON.stringify({
+            ok: true,
+            data:
+              pathname === "/api/v1/submissions/patch"
+                ? {
+                    scene: acceptedScene,
+                    history: { canUndo: true, canRedo: false },
+                    intentSummary: {
+                      operation: "modify",
+                      allowPartial: false,
+                      recognizedConstraintCount: 0,
+                      unsupportedConstraintCount: 0,
+                      unresolvedRelationCount: 0,
+                      warningCount: 0,
+                      unsupportedConstraintCodes: [],
+                      unresolvedRelationCodes: [],
+                      warningCodes: [],
+                    },
+                  }
+                : {
+                    scene: acceptedScene,
+                    history: { canUndo: true, canRedo: false },
+                  },
+          }),
+        );
+        return;
+      }
+
+      response.statusCode = 500;
+      response.end(
+        JSON.stringify({
+          ok: false,
+          error: { code: "UNEXPECTED_REQUEST", message: "Rejected." },
+        }),
+      );
+    })().catch(() => {
+      response.statusCode = 500;
+      response.end(
+        JSON.stringify({
+          ok: false,
+          error: { code: "CAPTURE_BRIDGE_FAILURE", message: "Rejected." },
+        }),
+      );
+    });
+  });
+  const port = await listenOnLoopback(server);
+  bridgeUrl = `http://127.0.0.1:${port}`;
+  return { server, bridgeUrl, requests, postedBodies };
 };
 
 afterEach(async () => {
@@ -187,6 +310,443 @@ describe("Director CLI structured submissions", () => {
       await closeServer(server);
     }
   }, 20_000);
+
+  it.each([
+    {
+      command: "apply",
+      lockMode: "workflow",
+      pathname: "/api/v1/patches",
+    },
+    {
+      command: "apply",
+      lockMode: "user",
+      pathname: "/api/v1/patches",
+    },
+    {
+      command: "submit",
+      lockMode: "workflow",
+      pathname: "/api/v1/submissions/patch",
+    },
+    {
+      command: "submit",
+      lockMode: "user",
+      pathname: "/api/v1/submissions/patch",
+    },
+  ] as const)(
+    "preserves v5 Blueprint contact provenance through patch $command with a $lockMode lock",
+    async ({ command, lockMode, pathname }) => {
+      const directory = await temporaryDirectory();
+      const initial = createStructuredScene();
+      const fixture = createLegacyV5BlueprintGroundContactPatch(
+        initial,
+        lockMode,
+      );
+      const input =
+        command === "apply"
+          ? fixture.patch
+          : {
+              intentReport: createPatchIntentReport({
+                recognizedConstraints: [],
+              }),
+              patch: fixture.patch,
+            };
+      const file = path.join(
+        directory,
+        `v5-blueprint-contact-${command}-${lockMode}.json`,
+      );
+      await writeFile(file, JSON.stringify(input), "utf8");
+
+      const session = new SceneSession(initial);
+      const listener = vi.fn();
+      session.subscribe(listener);
+      const { server, bridgeUrl, requests } = await startApi(session);
+      try {
+        const result = await runDirector(
+          ["patch", command, "--file", file],
+          bridgeUrl,
+        );
+        const response = parseSingleJsonLine(result.stdout);
+        if (
+          typeof response !== "object" ||
+          response === null ||
+          !("ok" in response) ||
+          response.ok !== true
+        ) {
+          throw new Error(
+            `Expected the v5 ${command} entrypoint to succeed, received ${JSON.stringify(response)}.`,
+          );
+        }
+
+        if (command === "apply") {
+          expect(response).toMatchObject({
+            ok: true,
+            data: {
+              scene: {
+                sceneId: initial.sceneId,
+                revision: initial.revision + 1,
+              },
+              history: { canUndo: true, canRedo: false },
+            },
+          });
+        } else {
+          expect(response).toMatchObject({
+            ok: true,
+            data: {
+              action: "submit",
+              kind: "patch",
+              sceneId: initial.sceneId,
+              revision: initial.revision + 1,
+              operationCount: 3,
+              history: { canUndo: true, canRedo: false },
+            },
+          });
+        }
+        expect(result).toMatchObject({
+          exitCode: 0,
+          signal: null,
+          stderr: "",
+        });
+        expect(requests).toEqual([
+          { method: "GET", pathname: "/api/v1/health" },
+          { method: "POST", pathname },
+        ]);
+
+        const accepted = session.snapshot();
+        const actor = accepted.entities.find(
+          (entity) => entity.id === fixture.actorId,
+        );
+        expect(isBlueprintActorEntity(actor)).toBe(true);
+        if (!isBlueprintActorEntity(actor)) {
+          throw new Error("Migrated Blueprint actor is missing.");
+        }
+        expect(accepted.revision).toBe(initial.revision + 1);
+        expect(actor.lockMode).toBe(lockMode);
+        expect(actor.transform.positionM[1]).not.toBeCloseTo(
+          fixture.legacyTransform.positionM[1],
+          4,
+        );
+        expect(actor.transform).toEqual(
+          snapTransformToContact(accepted, actor.id, actor.transform),
+        );
+        expect(listener).toHaveBeenCalledTimes(1);
+      } finally {
+        await closeServer(server);
+      }
+    },
+    20_000,
+  );
+
+  it.each([
+    { command: "apply", markerLocation: "top-level" },
+    { command: "apply", markerLocation: "operation" },
+    { command: "apply", markerLocation: "entity" },
+    { command: "submit", markerLocation: "top-level" },
+    { command: "submit", markerLocation: "operation" },
+    { command: "submit", markerLocation: "entity" },
+  ] as const)(
+    "rejects a direct $markerLocation marker in a v5 patch $command before bridge access",
+    async ({ command, markerLocation }) => {
+      const directory = await temporaryDirectory();
+      const initial = createStructuredScene();
+      const fixture = createLegacyV5BlueprintGroundContactPatch(
+        initial,
+        "workflow",
+      );
+      const patch = structuredClone(fixture.patch) as Record<string, unknown>;
+      const marker = `marker_private_${command}_${markerLocation.replace("-", "_")}`;
+      const operations = patch.operations as Array<Record<string, unknown>>;
+      const entityAdd = operations.find(
+        (operation) => operation.op === "entity.add",
+      );
+      if (entityAdd === undefined) {
+        throw new Error("Legacy entity.add fixture is missing.");
+      }
+      if (markerLocation === "top-level") {
+        patch.prompt = marker;
+      } else if (markerLocation === "operation") {
+        entityAdd.projectProfile = marker;
+      } else {
+        (entityAdd.value as Record<string, unknown>).privateMarker = marker;
+      }
+      const input =
+        command === "apply"
+          ? patch
+          : {
+              intentReport: createPatchIntentReport({
+                recognizedConstraints: [],
+              }),
+              patch,
+            };
+      const file = path.join(
+        directory,
+        `invalid-v5-marker-${command}-${markerLocation}.json`,
+      );
+      await writeFile(file, JSON.stringify(input), "utf8");
+
+      const session = new SceneSession(initial);
+      const { server, bridgeUrl, requests } = await startApi(session);
+      try {
+        const result = await runDirector(
+          ["patch", command, "--file", file],
+          bridgeUrl,
+        );
+
+        const response = parseSingleJsonLine(result.stdout);
+        expect(response).toEqual({
+          ok: false,
+          error: {
+            code:
+              command === "apply"
+                ? "PATCH_FILE_INVALID"
+                : "PATCH_SUBMISSION_FILE_INVALID",
+            message:
+              command === "apply"
+                ? "The supplied file is not a valid ScenePatch."
+                : "The supplied file is not a valid patch submission.",
+          },
+        });
+        expect(result.exitCode).toBe(1);
+        for (const value of collectJsonStringValues(response)) {
+          expect(value).not.toContain(marker);
+          expect(value).not.toContain(directory);
+        }
+        expect(result.stderr).not.toContain(marker);
+        expect(result.stderr).not.toContain(directory);
+        expect(requests).toEqual([]);
+        expect(session.snapshot()).toEqual(initial);
+      } finally {
+        await closeServer(server);
+      }
+    },
+    20_000,
+  );
+
+  it.each(["apply", "submit"] as const)(
+    "sanitizes migrated v5 pose joints before patch %s crosses the bridge",
+    async (command) => {
+      const directory = await temporaryDirectory();
+      const initial = createStructuredScene();
+      const fixture = createLegacyV5BlueprintGroundContactPatch(
+        initial,
+        "workflow",
+      );
+      const patch = structuredClone(fixture.patch) as Record<string, unknown>;
+      const operations = patch.operations as Array<Record<string, unknown>>;
+      const entityAdd = operations.find(
+        (operation) => operation.op === "entity.add",
+      );
+      if (entityAdd === undefined) {
+        throw new Error("Legacy entity.add fixture is missing.");
+      }
+      const entity = entityAdd.value as Record<string, unknown>;
+      const pose = entity.pose as Record<string, unknown>;
+      const privateJointMarker = "private_pose_joint_marker";
+      pose.joints = {
+        root: [0.6, 0, 0, 0.8],
+        [privateJointMarker]: [0, 0, 0, 1],
+      };
+      const canonicalPatch = parseScenePatchInput(patch);
+      const legacyIntentReport = {
+        ...createPatchIntentReport({ recognizedConstraints: [] }),
+        schemaVersion: 5,
+      };
+      const input =
+        command === "apply"
+          ? patch
+          : { intentReport: legacyIntentReport, patch };
+      const file = path.join(
+        directory,
+        `v5-sanitized-pose-joints-${command}.json`,
+      );
+      await writeFile(file, JSON.stringify(input), "utf8");
+
+      const { server, bridgeUrl, requests, postedBodies } =
+        await startCapturingPatchBridge(initial);
+      try {
+        const result = await runDirector(
+          ["patch", command, "--file", file],
+          bridgeUrl,
+        );
+
+        expect(result).toMatchObject({
+          exitCode: 0,
+          signal: null,
+          stderr: "",
+        });
+        expect(requests).toEqual([
+          { method: "GET", pathname: "/api/v1/health" },
+          {
+            method: "POST",
+            pathname:
+              command === "apply"
+                ? "/api/v1/patches"
+                : "/api/v1/submissions/patch",
+          },
+        ]);
+        expect(postedBodies).toHaveLength(1);
+        const postedBody = postedBodies[0]?.body as Record<string, unknown>;
+        const postedPatch = (
+          command === "apply" ? postedBody : postedBody.patch
+        ) as Record<string, unknown>;
+        expect(postedPatch.schemaVersion).toBe(5);
+        const postedEntityAdd = (
+          postedPatch.operations as Array<Record<string, unknown>>
+        ).find((operation) => operation.op === "entity.add");
+        if (postedEntityAdd === undefined) {
+          throw new Error("Posted entity.add operation is missing.");
+        }
+        const postedEntity = postedEntityAdd.value as Record<string, unknown>;
+        const postedPose = postedEntity.pose as Record<string, unknown>;
+        const postedJoints = postedPose.joints as Record<string, unknown>;
+        expect(Object.keys(postedJoints)).toEqual([...canonicalPuppetJointIds]);
+        expect(postedJoints).not.toHaveProperty("root");
+        expect(postedJoints).not.toHaveProperty(privateJointMarker);
+        expect(parseScenePatchInput(postedPatch)).toEqual(canonicalPatch);
+
+        if (command === "submit") {
+          expect(
+            (postedBody.intentReport as Record<string, unknown>).schemaVersion,
+          ).toBe(6);
+        }
+      } finally {
+        await closeServer(server);
+      }
+    },
+    20_000,
+  );
+
+  it.each([
+    {
+      label: "height range",
+      command: "apply",
+      code: "ACTOR_HEIGHT_RANGE_INVALID",
+      message: "Actor stature must be between 1.0 and 2.4 meters.",
+    },
+    {
+      label: "joint ID",
+      command: "submit",
+      code: "ACTOR_JOINT_ID_INVALID",
+      message: "The requested actor joint ID is unsupported.",
+    },
+  ] as const)(
+    "preserves the stable actor puppet $label error before bridge access",
+    async ({ command, code, message }) => {
+      const directory = await temporaryDirectory();
+      const initial = createStructuredScene();
+      const patch = createStructuredPatch(initial) as unknown as Record<
+        string,
+        unknown
+      >;
+      patch.operations =
+        command === "apply"
+          ? [
+              {
+                op: "actor.height.set",
+                actorId: "actor_generic_1",
+                heightM: 2.5,
+              },
+            ]
+          : [
+              {
+                op: "actor.pose.joints.set",
+                actorId: "actor_generic_1",
+                updates: { unsupported_joint: [0, 0, 0, 1] },
+              },
+            ];
+      const input =
+        command === "apply"
+          ? patch
+          : { ...createPatchSubmission(initial), patch };
+      const file = path.join(directory, `invalid-actor-${command}.json`);
+      await writeFile(file, JSON.stringify(input), "utf8");
+
+      const session = new SceneSession(initial);
+      const { server, bridgeUrl, requests } = await startApi(session);
+      try {
+        const result = await runDirector(
+          ["patch", command, "--file", file],
+          bridgeUrl,
+        );
+        expect(parseSingleJsonLine(result.stdout)).toEqual({
+          ok: false,
+          error: { code, message },
+        });
+        expect(requests).toEqual([]);
+        expect(session.snapshot()).toEqual(initial);
+      } finally {
+        await closeServer(server);
+      }
+    },
+    20_000,
+  );
+
+  it.each([
+    {
+      label: "direct patch with a missing scene ID and invalid height",
+      command: "apply",
+      code: "PATCH_FILE_INVALID",
+      message: "The supplied file is not a valid ScenePatch.",
+    },
+    {
+      label: "patch submission with an unknown patch field and invalid joint",
+      command: "submit",
+      code: "PATCH_SUBMISSION_FILE_INVALID",
+      message: "The supplied file is not a valid patch submission.",
+    },
+  ] as const)(
+    "keeps mixed-invalid $label on the generic file error",
+    async ({ command, code, message }) => {
+      const directory = await temporaryDirectory();
+      const initial = createStructuredScene();
+      const patch = createStructuredPatch(initial) as unknown as Record<
+        string,
+        unknown
+      >;
+      if (command === "apply") {
+        delete patch.sceneId;
+        patch.operations = [
+          {
+            op: "actor.height.set",
+            actorId: "actor_generic_1",
+            heightM: 2.5,
+          },
+        ];
+      } else {
+        patch.unknownTopLevel = true;
+        patch.operations = [
+          {
+            op: "actor.pose.joints.set",
+            actorId: "actor_generic_1",
+            updates: { unsupported_joint: [0, 0, 0, 1] },
+          },
+        ];
+      }
+      const input =
+        command === "apply"
+          ? patch
+          : { ...createPatchSubmission(initial), patch };
+      const file = path.join(directory, `mixed-invalid-${command}.json`);
+      await writeFile(file, JSON.stringify(input), "utf8");
+
+      const session = new SceneSession(initial);
+      const { server, bridgeUrl, requests } = await startApi(session);
+      try {
+        const result = await runDirector(
+          ["patch", command, "--file", file],
+          bridgeUrl,
+        );
+        expect(parseSingleJsonLine(result.stdout)).toEqual({
+          ok: false,
+          error: { code, message },
+        });
+        expect(requests).toEqual([]);
+        expect(session.snapshot()).toEqual(initial);
+      } finally {
+        await closeServer(server);
+      }
+    },
+    20_000,
+  );
 
   it("submits a scene once and emits only the privacy-safe summary", async () => {
     const directory = await temporaryDirectory();
@@ -283,7 +843,7 @@ describe("Director CLI structured submissions", () => {
         },
       });
       expect(session.snapshot()).toMatchObject({
-        schemaVersion: 5,
+        schemaVersion: 6,
         sceneId: "scene_quickstart_1",
         spatialLayout: null,
       });
@@ -448,7 +1008,7 @@ describe("Director CLI structured submissions", () => {
           },
         });
         expect(session.snapshot()).toMatchObject({
-          schemaVersion: 5,
+          schemaVersion: 6,
           entities: expect.arrayContaining([
             expect.objectContaining({
               id: "actor_generic_1",

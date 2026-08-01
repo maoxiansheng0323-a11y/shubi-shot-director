@@ -35,6 +35,7 @@ export interface SoftwarePngResult {
   warnings: string[];
   diagnostics: {
     actorPrimitiveIds: Record<string, string[]>;
+    actorPrimitiveDrawCounts: Record<string, Record<string, number>>;
   };
 }
 
@@ -349,13 +350,16 @@ const addActorGeometry = (
     end: Vector3,
     color: readonly [number, number, number, number],
     thickness: number,
-  ) => void,
+  ) => boolean,
   addDisc: (
     center: Vector3,
     radiusM: number,
     color: readonly [number, number, number, number],
-  ) => void,
-): string[] => {
+  ) => boolean,
+): {
+  primitiveIds: string[];
+  primitiveDrawCounts: Record<string, number>;
+} => {
   const actorColor = hexColor(actor.color, 245);
   const actorScale = new Vector3();
   actorWorld.decompose(
@@ -369,6 +373,7 @@ const addActorGeometry = (
     Math.abs(actorScale.z),
   );
   const projection = resolveActorProjection(scene, actor);
+  const primitiveDrawCounts: Record<string, number> = {};
 
   const primitiveMatrix = (
     primitive: ActorProjectionPrimitive,
@@ -384,22 +389,26 @@ const addActorGeometry = (
 
   for (const primitive of projection.primitives) {
     const frame = primitiveMatrix(primitive);
+    primitiveDrawCounts[primitive.id] = 0;
+    const stroke = (start: Vector3, end: Vector3, thickness: number): void => {
+      if (addStroke(start, end, actorColor, thickness)) {
+        primitiveDrawCounts[primitive.id] += 1;
+      }
+    };
+    const disc = (center: Vector3, radius: number): void => {
+      if (addDisc(center, radius, actorColor)) {
+        primitiveDrawCounts[primitive.id] += 1;
+      }
+    };
     if (primitive.kind === "sphere") {
-      addDisc(
+      disc(
         pointFromMatrix(frame, primitive.center),
         primitive.radius * radialScale,
-        actorColor,
       );
       continue;
     }
-    if (
-      primitive.kind === "capsule" ||
-      primitive.kind === "cylinder"
-    ) {
-      const length =
-        primitive.kind === "capsule"
-          ? primitive.cylinderLength
-          : primitive.length;
+    if (primitive.kind === "capsule") {
+      const length = primitive.cylinderLength;
       const first: Vec3 = [
         primitive.center[0],
         primitive.center[1] - length / 2,
@@ -412,17 +421,100 @@ const addActorGeometry = (
       ];
       const firstWorld = pointFromMatrix(frame, first);
       const secondWorld = pointFromMatrix(frame, second);
-      addStroke(firstWorld, secondWorld, actorColor, 5);
-      addDisc(
+      stroke(firstWorld, secondWorld, 5);
+      disc(
         firstWorld,
         primitive.radius * radialScale,
-        actorColor,
       );
-      addDisc(
+      disc(
         secondWorld,
         primitive.radius * radialScale,
-        actorColor,
       );
+      continue;
+    }
+
+    if (primitive.kind === "cylinder") {
+      const ringPoints = [-primitive.length / 2, primitive.length / 2].map(
+        (y) =>
+          Array.from({ length: primitive.radialSegments }, (_, segment) => {
+            const angle =
+              (segment / primitive.radialSegments) * Math.PI * 2;
+            return pointFromMatrix(frame, [
+              primitive.center[0] + Math.sin(angle) * primitive.radius,
+              primitive.center[1] + y,
+              primitive.center[2] + Math.cos(angle) * primitive.radius,
+            ]);
+          }),
+      );
+      for (const ring of ringPoints) {
+        for (let segment = 0; segment < ring.length; segment += 1) {
+          stroke(ring[segment], ring[(segment + 1) % ring.length], 2.2);
+        }
+      }
+      const longitudeStep = Math.max(
+        1,
+        Math.floor(primitive.radialSegments / 4),
+      );
+      for (
+        let segment = 0;
+        segment < primitive.radialSegments;
+        segment += longitudeStep
+      ) {
+        stroke(ringPoints[0][segment], ringPoints[1][segment], 2.5);
+      }
+      continue;
+    }
+
+    if (primitive.kind === "profile") {
+      const ringPoints = primitive.points.map((ring) =>
+        Array.from({ length: primitive.radialSegments }, (_, segment) => {
+          const angle = (segment / primitive.radialSegments) * Math.PI * 2;
+          return pointFromMatrix(frame, [
+            primitive.center[0] + Math.cos(angle) * ring.radius,
+            primitive.center[1] + ring.y,
+            primitive.center[2] +
+              Math.sin(angle) * ring.radius * primitive.depthScale,
+          ]);
+        }),
+      );
+      for (const ring of ringPoints) {
+        for (let segment = 0; segment < ring.length; segment += 1) {
+          stroke(ring[segment], ring[(segment + 1) % ring.length], 2.2);
+        }
+      }
+      const longitudeStep = Math.max(1, Math.floor(primitive.radialSegments / 4));
+      for (
+        let segment = 0;
+        segment < primitive.radialSegments;
+        segment += longitudeStep
+      ) {
+        for (let ring = 0; ring < ringPoints.length - 1; ring += 1) {
+          stroke(ringPoints[ring][segment], ringPoints[ring + 1][segment], 2.5);
+        }
+      }
+      continue;
+    }
+
+    if (primitive.kind === "ellipsoid") {
+      const center = pointFromMatrix(frame, primitive.center);
+      for (let axis = 0; axis < 3; axis += 1) {
+        const offset: Vec3 = [0, 0, 0];
+        offset[axis] = primitive.radii[axis];
+        stroke(
+          pointFromMatrix(frame, [
+            primitive.center[0] - offset[0],
+            primitive.center[1] - offset[1],
+            primitive.center[2] - offset[2],
+          ]),
+          pointFromMatrix(frame, [
+            primitive.center[0] + offset[0],
+            primitive.center[1] + offset[1],
+            primitive.center[2] + offset[2],
+          ]),
+          2.5,
+        );
+      }
+      disc(center, Math.max(...primitive.radii) * radialScale);
       continue;
     }
 
@@ -433,11 +525,14 @@ const addActorGeometry = (
       corner.applyMatrix4(centerMatrix),
     );
     for (const [start, end] of boxEdges) {
-      addStroke(corners[start], corners[end], actorColor, 3);
+      stroke(corners[start], corners[end], 3);
     }
   }
 
-  return projection.primitives.map(({ id }) => id);
+  return {
+    primitiveIds: projection.primitives.map(({ id }) => id),
+    primitiveDrawCounts,
+  };
 };
 
 const crcTable = (() => {
@@ -561,6 +656,7 @@ export const renderSceneToPng = (
   const strokes: Stroke[] = [];
   const discs: Disc[] = [];
   const actorPrimitiveIds: Record<string, string[]> = {};
+  const actorPrimitiveDrawCounts: Record<string, Record<string, number>> = {};
   let clippedPrimitiveCount = 0;
 
   const addStroke = (
@@ -568,12 +664,12 @@ export const renderSceneToPng = (
     endWorld: Vector3,
     color: readonly [number, number, number, number],
     thickness: number,
-  ): void => {
+  ): boolean => {
     const start = project(startWorld);
     const end = project(endWorld);
     if (!start || !end) {
       clippedPrimitiveCount += 1;
-      return;
+      return false;
     }
     strokes.push({
       start,
@@ -581,19 +677,20 @@ export const renderSceneToPng = (
       color,
       thickness: Math.max(1, thickness * Math.sqrt(width / 1920)),
     });
+    return true;
   };
   const addDisc = (
     centerWorld: Vector3,
     radiusM: number,
     color: readonly [number, number, number, number],
-  ): void => {
+  ): boolean => {
     const center = project(centerWorld);
     const edge = project(
       centerWorld.clone().addScaledVector(cameraRight, radiusM),
     );
     if (!center || !edge) {
       clippedPrimitiveCount += 1;
-      return;
+      return false;
     }
     discs.push({
       center,
@@ -603,6 +700,7 @@ export const renderSceneToPng = (
       ),
       color,
     });
+    return true;
   };
 
   if (scene.spatialLayout !== null) {
@@ -740,13 +838,15 @@ export const renderSceneToPng = (
       continue;
     }
     if (entity.kind === "actor") {
-      actorPrimitiveIds[entity.id] = addActorGeometry(
+      const actorGeometry = addActorGeometry(
         scene,
         entity,
         world,
         addStroke,
         addDisc,
       );
+      actorPrimitiveIds[entity.id] = actorGeometry.primitiveIds;
+      actorPrimitiveDrawCounts[entity.id] = actorGeometry.primitiveDrawCounts;
     }
   }
 
@@ -774,6 +874,6 @@ export const renderSceneToPng = (
   return {
     png: encodePng(pixels, width, height),
     warnings,
-    diagnostics: { actorPrimitiveIds },
+    diagnostics: { actorPrimitiveIds, actorPrimitiveDrawCounts },
   };
 };

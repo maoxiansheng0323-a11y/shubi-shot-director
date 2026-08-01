@@ -1,6 +1,6 @@
 ---
 name: shubi-shot-director
-description: Use when staging or revising editable 3D graybox shots from natural language, including generic actor limb presence, connected regions, actor and prop blocking, camera composition, scene persistence, or perspective-reference export.
+description: Use when staging or revising editable 3D graybox shots from natural language, including generic actor stature, joint pose, limb presence, connected regions, blocking, camera composition, persistence, or perspective-reference export.
 ---
 
 # Shubi Shot Director
@@ -13,7 +13,7 @@ Before changing to this Skill directory, resolve any explicitly supplied relativ
 
 1. Change to this Skill directory.
 2. Run `node scripts/director.mjs doctor`.
-3. Require capability contract v2 with workspace routing version 1, `bridge.thread-workspaces`, canonical SceneSpec, ScenePatch, and IntentReport schema version 5, plus `semanticAuthority: "host"`, `inputContract: "structured-only"`, `modelIntegration: "none"`, `credentialPolicy: "forbidden"`, and `networkPolicy: "loopback-only"`.
+3. Require capability contract v2 with workspace routing version 1, `bridge.thread-workspaces`, `actor.height`, `actor.pose-joints`, `actor.blueprint-instance-limb-overrides`, canonical SceneSpec, ScenePatch, and IntentReport schema version 6, plus `semanticAuthority: "host"`, `inputContract: "structured-only"`, `modelIntegration: "none"`, `credentialPolicy: "forbidden"`, and `networkPolicy: "loopback-only"`. Treat application semver as diagnostic metadata, not a compatibility gate.
 4. Run `node scripts/director.mjs workspace current`. Retain the returned opaque workspace ID in host context.
 5. Run `node scripts/director.mjs ensure` only after `doctor` is compatible. Retain its loopback `uiUrl` with the workspace ID and open it in the integrated browser; use `open --system` only when necessary or requested.
 6. Route every later command in this Codex conversation automatically to that same workspace. Separate Codex conversations receive separate workspaces by default, so independent scenes can progress in parallel.
@@ -26,6 +26,7 @@ Portable or native relative `--file` paths are resolved against the directory wh
 
 - Perform the semantic `compile` in Host Codex: understand user language, resolve an explicitly supplied external profile in host memory, identify ambiguity and unsupported requirements, and author `IntentReport` plus `SceneSpec` or `ScenePatch`.
 - Let the runtime perform only a structured compile: strict schema parsing, deterministic normalization, intent-coverage checks, atomic session mutation, revision control, persistence, composition inspection, and export. Never ask it to infer missing meaning.
+- Treat generated JSON Schema as the structural contract. Vendor annotations `x-shubi-resolved-stature` and `x-shubi-limb-hierarchy` describe semantics that Ajv/JSON Schema cannot independently enforce across snapshot-resolved stature or the limb hierarchy. Final acceptance comes from the runtime Zod refinement. Host Codex must author these semantics correctly and must never rely on the runtime to infer or repair them.
 - Never pass a prompt, raw user wording, profile path, profile content, alias, credential, token, model, provider, or endpoint to the runtime.
 - Codex may run in account or KEY mode. Never inspect those host credentials and never pass them to Director commands, files, processes, logs, or artifacts.
 - Do not use lexical fallback, local language compilation, or retry-paraphrasing. If the schemas cannot express a required result, report the generic unsupported capability instead of submitting a partial result.
@@ -34,8 +35,8 @@ Portable or native relative `--file` paths are resolved against the directory wh
 
 1. Treat only an explicit new-shot request, or the absence of a usable scene, as permission to author a complete `SceneSpec`.
 2. Resolve any explicitly supplied external profile only by following [external-profiles.md](references/external-profiles.md).
-3. Read [intent-routing.md](references/intent-routing.md), [intent-report.md](references/intent-report.md), [scene-authoring.md](references/scene-authoring.md), and the generated SceneSpec and scene-submission schemas. Read [actor-blueprints.md](references/actor-blueprints.md) when an explicitly supplied external Actor Blueprint or an existing blueprint actor is involved. For multiple continuous regions, boundaries, or openings, also read [connected-environments.md](references/connected-environments.md).
-4. In Host Codex, author a generic v5 create `IntentReport` with `allowPartial: false` and a complete generic v5 `SceneSpec` covering every required constraint. A legacy actor carries its complete twelve-key `body.limbPresence` map; a blueprint actor carries only `blueprintInstance` and references one embedded canonical snapshot. New and unfinished graybox entities use `lockMode: "none"`.
+3. Read [intent-routing.md](references/intent-routing.md), [intent-report.md](references/intent-report.md), [scene-authoring.md](references/scene-authoring.md), the generated SceneSpec and scene-submission schemas, and `references/generated/pose-presets.json` when the shot requires an explicit action. Read [actor-blueprints.md](references/actor-blueprints.md) when an explicitly supplied external Actor Blueprint or an existing blueprint actor is involved. For multiple continuous regions, boundaries, or openings, also read [connected-environments.md](references/connected-environments.md).
+4. In Host Codex, author a generic v6 create `IntentReport` with `allowPartial: false` and a complete generic v6 `SceneSpec` covering every required constraint. A legacy actor stores actual stature in `body.heightM`; a Blueprint actor stores actual stature through `blueprintInstance.heightScale` relative to the immutable snapshot body height. Blueprint instances default to `heightScale: 1` and `limbPresenceOverrides: {}`. Both branches carry a complete normalized fifteen-joint `pose.joints` map for an explicit action. New and unfinished graybox entities use `lockMode: "none"`.
 5. Write `{ "intentReport": ..., "scene": ... }` to an ignored generic transient file under `.shubi-shot/submissions/`. Do not include source wording or profile data.
 6. Submit it:
 
@@ -49,8 +50,9 @@ Portable or native relative `--file` paths are resolved against the directory wh
 
 1. Run `snapshot` immediately before interpreting every follow-up. Treat its `sceneId` and revision as authoritative.
 2. Resolve any explicitly supplied aliases in host memory only.
+   Use a slot, label, or alias only in Host Codex to locate the snapshot actor. Once selected, copy that actor's SceneSpec `entity.id` into every IntentReport `targets` entry and operation target. Use `actor.pose.set { op, entityId, value }` as the sole actor-operation target-field exception. `actor.height.set`, `actor.pose.joints.set`, `actor.limb-presence.set`, and `actor.variant.set` use `actorId`. Never substitute the actor's `slot`, label, or alias.
 3. Read [intent-report.md](references/intent-report.md), [patch-authoring.md](references/patch-authoring.md), and the generated ScenePatch and patch-submission schemas.
-4. In Host Codex, author the smallest v5 `ScenePatch` that implements only the requested changes. Use the same `sceneId`, set `baseRevision` to the exact snapshot revision, and set `preserveLock: true` for ordinary natural-language corrections. For legacy actor limb-presence changes, use one minimal `actor.limb-presence.set` operation. For blueprint actors, use only the blueprint operations described in [actor-blueprints.md](references/actor-blueprints.md).
+4. In Host Codex, author the smallest v6 `ScenePatch` that implements only the requested changes. Use the same `sceneId`, set `baseRevision` to the exact snapshot revision, and set `preserveLock: true` for ordinary natural-language corrections. Use `actor.height.set` for stature, `actor.pose.joints.set` for one or a few joint corrections, and `actor.limb-presence.set` for either actor branch. For a complete action, read `references/generated/pose-presets.json`. Take `id`, `version`, `joints`, and `contactOffsetHeightRatio` from the generated recipe. Copy the exact immutable `id`, `version`, and fifteen-key `joints` into the only valid operation shape: `{ op: "actor.pose.set", entityId, value: { preset: { registry: "builtin", id, version, parameters: { contactOffsetM } }, joints } }`. Set `contactOffsetM` to `round(resolvedHeightM * contactOffsetHeightRatio, 5)`. Use the ratio only to calculate `contactOffsetM`; do not include `contactOffsetHeightRatio` in the PoseSpec. Never author a sparse action, guess quaternions, or invent a preset. For Blueprint actors, follow the immutable snapshot and instance-override layering in [actor-blueprints.md](references/actor-blueprints.md).
 5. Keep `allowPartial: false` unless the user explicitly accepts a partial modification. Even then, declare every unapplied item with a structured issue code and provide valid evidence for every applied required constraint.
 6. Write `{ "intentReport": ..., "patch": ... }` to an ignored generic transient file and submit it:
 
@@ -58,24 +60,40 @@ Portable or native relative `--file` paths are resolved against the directory wh
    node scripts/director.mjs patch submit --file <patch-submission.json>
    ```
 
-7. Run `snapshot` again. Require the same `sceneId`, revision exactly `baseRevision + 1`, and only requested field changes. For spatial edits, inspect Overview and affected Local previews; always inspect Shot Preview and the composition report before claiming visual success. Remove the transient file after successful verification.
+7. Run `snapshot` again. Require the same `sceneId`, revision exactly `baseRevision + 1`, and the requested changes plus only the deterministic companion changes listed below. For spatial edits, inspect Overview and affected Local previews; always inspect Shot Preview and the composition report before claiming visual success. Remove the transient file after successful verification.
 
 ## Author actor limb presence
 
 - Read [scene-authoring.md](references/scene-authoring.md), [patch-authoring.md](references/patch-authoring.md), and [intent-report.md](references/intent-report.md) before authoring limb presence.
 - Store all twelve canonical keys with only `present` or `absent`. Preserve chain order such as `upper_arm_r -> forearm_r -> hand_r`.
-- On create, author the complete map in Host Codex. On modify, author one minimal `actor.limb-presence.set` operation and map it to `actor-limb-presence` intent evidence.
+- On create, author the complete legacy map or Blueprint `limbPresenceOverrides` in Host Codex. On modify, author one minimal `actor.limb-presence.set` operation for either branch and map it to `actor-limb-presence` intent evidence.
 - Close an absent parent over all descendants as absent. Restore all required ancestors when an explicit child becomes present.
 - If one operation explicitly sets a parent absent and its descendant present, treat it as `LIMB_HIERARCHY_CONFLICT`; rewrite the single operation instead of splitting or retrying it.
 - Legacy actors do not gain replacement parts, prostheses, mechanical limbs, or sockets through limb-presence edits. Do not translate those requests into presence states, props, hidden geometry, zero scale, detached geometry, pose changes, or preset parameters. Blueprint actors may use only their already embedded box, sphere, and cylinder modules; arbitrary custom meshes remain unsupported.
 - On `ACTOR_LIMB_TARGET_INVALID`, refresh the snapshot and correct the target to a canonical actor ID. Never fallback to a generic entity operation.
+
+## Author adjustable actor puppets
+
+- Read [scene-authoring.md](references/scene-authoring.md), [patch-authoring.md](references/patch-authoring.md), and [intent-report.md](references/intent-report.md). Resolved stature is exactly 1.0-2.4 meters; never substitute `entity.transform.scale`.
+- The canonical joints are `pelvis`, `spine`, `neck`, left/right `upper_arm`, `forearm`, `hand`, `upper_leg`, `lower_leg`, and `foot`. `hand_*` is the wrist terminal joint; `foot_*` is the ankle terminal joint.
+- Host Codex must author every new v6 pose with exactly those fifteen canonical keys. Only v1-v5 migration may translate the known historical pose-joint aliases: `root -> pelvis`, `chest -> spine`, `head -> neck`, `shoulder_l/r -> upper_arm_l/r`, `elbow_l/r -> forearm_l/r`, `wrist_l/r -> hand_l/r`, `hip_l/r -> upper_leg_l/r`, `knee_l/r -> lower_leg_l/r`, and `ankle_l/r -> foot_l/r`.
+- When a legacy canonical key and its alias coexist, preserve the canonical value. Fill each missing canonical joint with identity `[0, 0, 0, 1]` and discard every other unknown pose key. This is pose-joint migration only: never reinterpret `root` or `chest` as actor anchors, or any alias as a Blueprint module mount.
+- Every stored joint quaternion is normalized. Inspector semantics are local right-handed XYZ: X bend, Y twist, Z side-bend. Host Codex resolves natural-language direction from actor-local and visible shot context. If direction is genuinely ambiguous, report it unresolved; never guess an arbitrary joint ID.
+- For a local correction, prefer `actor.pose.joints.set { actorId, updates }` for only the named joint or small set. Follow the complete-action contract in the create or modify workflow above.
+- Use `actor.pose.set { op, entityId, value }` as the sole actor-operation target-field exception. `actor.height.set`, `actor.pose.joints.set`, `actor.limb-presence.set`, and `actor.variant.set` use `actorId`.
+- Verify only the requested changes plus these deterministic companion changes. Do not treat them as permission for Host Codex to author additional fields.
+- `actor.pose.joints.set` merges the specified joints, changes `pose.preset.id` to `pose.custom-v1`, and preserves all remaining preset data. When contact is active, it may update contact-owned translation.
+- `actor.height.set` changes actual stature; multiply legacy `shoulderWidthM` by the same height ratio, then clamp it to 0.25-0.8 m. Scale an existing numeric `pose.preset.parameters.contactOffsetM` by the same ratio. When contact is active, it may update contact-owned translation.
+- A complete action, limb-presence edit, or variant edit may deterministically correct contact-owned translation in the same revision when contact is active.
+- Never degrade stature into transform scale, limb absence into hidden/zero-scale geometry, a joint correction into a whole-pose replacement, or a Blueprint instance edit into snapshot mutation.
 
 ## Use reusable Actor Blueprints
 
 - Read [actor-blueprints.md](references/actor-blueprints.md) before validating, registering, instancing, or switching a blueprint actor.
 - Keep the external `--file` source path at the Host-only import boundary. Only the canonical, path-free snapshot may enter SceneSpec, Patch submissions, history, diagnostics, logs, screenshots, or exports.
 - Reuse an existing scene snapshot for the same SHA-256. Reject the same `blueprintId` with a different SHA-256 as `ACTOR_BLUEPRINT_ID_CONFLICT`; never overwrite it.
-- Register a new snapshot with `actor.blueprint.register`, add each actor as a strict `blueprintInstance`, and switch only to an existing snapshot variant with `actor.variant.set`.
+- Register a new snapshot with `actor.blueprint.register`, add each actor as a strict `blueprintInstance` with `heightScale` and `limbPresenceOverrides`, and switch only to an existing snapshot variant with `actor.variant.set`.
+- Resolve limb presence in the fixed order base snapshot -> selected variant -> instance `limbPresenceOverrides`. A variant change never clears manual overrides. Snapshot content, SHA-256, modules, proportions, and skeleton remain immutable.
 - Use the existing Inspector only to read the blueprint summary and select an existing variant. Do not import, author, edit, duplicate, rename, or delete blueprints, modules, proportions, or variants in the UI.
 - Rendering, bounds, contact, composition, and diagnostics must consume the one resolved actor projection. Do not reinterpret blueprint data in any consumer.
 
@@ -127,6 +145,7 @@ The intermediate none state exists only on the Patch working clone; it is never 
 - On `UNSUPPORTED_DESCRIPTION`, stop unless the user explicitly authorizes a partial modification that the public schemas can represent.
 - On `INTENT_COVERAGE_INCOMPLETE`, correct targets or evidence; do not weaken a required constraint.
 - On `LIMB_HIERARCHY_CONFLICT`, rewrite one consistent `actor.limb-presence.set` operation. On `ACTOR_LIMB_TARGET_INVALID`, refresh and retarget the actor; never fallback to another entity type.
+- On `ACTOR_HEIGHT_TARGET_INVALID` or `ACTOR_JOINT_TARGET_INVALID`, refresh and retarget a canonical actor ID. On `ACTOR_HEIGHT_RANGE_INVALID`, use 1.0-2.4 meters. On `ACTOR_JOINT_ID_INVALID`, select one of the fifteen canonical joint IDs. Never retry by transform scale, whole-pose replacement, hidden geometry, or snapshot mutation.
 - On `ACTOR_BLUEPRINT_HASH_MISMATCH`, `ACTOR_BLUEPRINT_HASH_DUPLICATE`, or `ACTOR_BLUEPRINT_REFERENCE_INVALID`, correct the canonical SceneSpec or Patch before retrying. On `ACTOR_BLUEPRINT_ID_CONFLICT`, either reuse the existing identical snapshot or explicitly author a new generic ID; never overwrite.
 - On `USER_LOCKED`, stop and ask for explicit confirmation. On `WORKFLOW_LOCKED`, re-author the ordinary correction with `preserveLock: true` without asking the user. For other entity, lock, or contact errors, refresh the snapshot and follow [recovery-and-concurrency.md](references/recovery-and-concurrency.md).
 - On bridge failure, confirm `workspace current`, run `ensure`, then `health`, and retry the unchanged structured submission only after compatibility is restored.

@@ -24,18 +24,19 @@ export class PreviewExportError extends Error {
   }
 }
 
+type PreviewExportListener = (request: PreviewExportRequest) => void;
+
 interface PendingExport {
   request: PreviewExportRequest;
   resolve: (result: PreviewExportResult) => void;
   reject: (error: PreviewExportError) => void;
   timer: ReturnType<typeof setTimeout>;
+  remainingListeners: PreviewExportListener[];
 }
 
 export class PreviewExportBroker {
   private readonly timeoutMs: number;
-  private readonly listeners = new Set<
-    (request: PreviewExportRequest) => void
-  >();
+  private readonly listeners = new Set<PreviewExportListener>();
   private readonly pending = new Map<string, PendingExport>();
 
   constructor(options: { timeoutMs?: number } = {}) {
@@ -43,7 +44,7 @@ export class PreviewExportBroker {
   }
 
   subscribe(
-    listener: (request: PreviewExportRequest) => void,
+    listener: PreviewExportListener,
   ): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -52,7 +53,8 @@ export class PreviewExportBroker {
   request(
     input: Omit<PreviewExportRequest, "requestId">,
   ): Promise<PreviewExportResult> {
-    if (this.listeners.size === 0) {
+    const listeners = [...this.listeners];
+    if (listeners.length === 0) {
       return Promise.reject(
         new PreviewExportError(
           "EXPORT_PREVIEW_UNAVAILABLE",
@@ -80,16 +82,37 @@ export class PreviewExportBroker {
         resolve,
         reject,
         timer,
+        remainingListeners: listeners,
       });
-      for (const listener of this.listeners) {
-        try {
-          listener(request);
-        } catch {
-          // A stale browser listener must not prevent another preview from
-          // completing the same request.
-        }
-      }
+      this.dispatchNextRenderer(request.requestId);
     });
+  }
+
+  private dispatchNextRenderer(
+    requestId: string,
+    failureCode = "EXPORT_PREVIEW_FAILED",
+  ): void {
+    const pending = this.pending.get(requestId);
+    if (!pending) {
+      return;
+    }
+    const listener = pending.remainingListeners.pop();
+    if (!listener) {
+      clearTimeout(pending.timer);
+      this.pending.delete(requestId);
+      pending.reject(
+        new PreviewExportError(
+          failureCode,
+          "The browser Shot Preview could not export the PNG.",
+        ),
+      );
+      return;
+    }
+    try {
+      listener(pending.request);
+    } catch {
+      this.dispatchNextRenderer(requestId, failureCode);
+    }
   }
 
   complete(input: {
@@ -136,17 +159,6 @@ export class PreviewExportBroker {
   }
 
   fail(requestId: string, code = "EXPORT_PREVIEW_FAILED"): void {
-    const pending = this.pending.get(requestId);
-    if (!pending) {
-      return;
-    }
-    clearTimeout(pending.timer);
-    this.pending.delete(requestId);
-    pending.reject(
-      new PreviewExportError(
-        code,
-        "The browser Shot Preview could not export the PNG.",
-      ),
-    );
+    this.dispatchNextRenderer(requestId, code);
   }
 }

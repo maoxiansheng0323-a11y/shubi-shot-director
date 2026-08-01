@@ -5,6 +5,10 @@ import {
   deriveActorAnatomyDimensions,
   resolveActorLimbPresenceUpdates,
 } from "../src/domain/actor-anatomy";
+import {
+  resolveLegacyActorProjection,
+  type ActorProjectionPrimitive,
+} from "../src/domain/actor-projection";
 import { actorVisibleRigBounds } from "../src/domain/actor-visible-bounds";
 import {
   ContactConstraintError,
@@ -25,6 +29,7 @@ import {
   sceneSpecSchema,
   type SceneSpec,
   type TransformSpec,
+  type Vec3,
 } from "../src/domain/scene-schema";
 
 const actor = (scene: SceneSpec) => {
@@ -70,6 +75,63 @@ const removeLimbParts = (
     subject.body.limbPresence,
     updates,
   );
+};
+
+const sampledProjectionMinWorldY = (
+  subject: ReturnType<typeof actor>,
+  transform: TransformSpec,
+): number => {
+  let minimumY = Number.POSITIVE_INFINITY;
+  const sample = (
+    primitive: ActorProjectionPrimitive,
+    point: Vec3,
+  ): void => {
+    const rotated = rotateVector(point, primitive.frame.rotation);
+    const actorLocal: Vec3 = [
+      primitive.frame.position[0] + rotated[0],
+      primitive.frame.position[1] + rotated[1],
+      primitive.frame.position[2] + rotated[2],
+    ];
+    minimumY = Math.min(minimumY, transformPoint(transform, actorLocal)[1]);
+  };
+
+  for (const primitive of resolveLegacyActorProjection(subject).primitives) {
+    if (primitive.kind === "profile") {
+      for (const ring of primitive.points) {
+        for (let step = 0; step < 720; step += 1) {
+          const angle = (step / 720) * Math.PI * 2;
+          sample(primitive, [
+            primitive.center[0] + Math.cos(angle) * ring.radius,
+            primitive.center[1] + ring.y,
+            primitive.center[2] +
+              Math.sin(angle) * ring.radius * primitive.depthScale,
+          ]);
+        }
+      }
+      continue;
+    }
+    if (primitive.kind === "ellipsoid" || primitive.kind === "sphere") {
+      const radii: readonly [number, number, number] =
+        primitive.kind === "ellipsoid"
+          ? primitive.radii
+          : [primitive.radius, primitive.radius, primitive.radius];
+      for (let latitude = 0; latitude <= 180; latitude += 1) {
+        const polar = (latitude / 180) * Math.PI;
+        const ring = Math.sin(polar);
+        for (let longitude = 0; longitude < 360; longitude += 1) {
+          const azimuth = (longitude / 360) * Math.PI * 2;
+          sample(primitive, [
+            primitive.center[0] + radii[0] * ring * Math.cos(azimuth),
+            primitive.center[1] + radii[1] * Math.cos(polar),
+            primitive.center[2] + radii[2] * ring * Math.sin(azimuth),
+          ]);
+        }
+      }
+      continue;
+    }
+    throw new Error(`Unexpected legacy body primitive ${primitive.kind}.`);
+  }
+  return minimumY;
 };
 
 const withBoxSurface = (): SceneSpec => {
@@ -157,7 +219,7 @@ describe("contact constraints", () => {
     expect(snapped.positionM[1]).toBeCloseTo(expectedSupportM, 9);
   });
 
-  it("uses affine-safe sphere support under non-uniform scale and rotation", () => {
+  it("uses affine-safe humanoid profile support under non-uniform scale and rotation", () => {
     const scene = createDefaultScene();
     const subject = actor(scene);
     removeLimbParts(subject, {
@@ -166,36 +228,17 @@ describe("contact constraints", () => {
       lower_leg_l: "absent",
       upper_leg_r: "absent",
     });
-    const dimensions = deriveActorAnatomyDimensions(subject.body);
     const rotation = quaternionFromEulerDegrees([0, 0, -45]);
     const scale: TransformSpec["scale"] = [5, 1, 1];
-    const cylinderLength = Math.max(
-      0.01,
-      dimensions.upperLegLength - dimensions.legRadius * 2,
-    );
-    const bottomY =
-      -dimensions.upperLegLength / 2 - cylinderLength / 2;
-    const bottomCenterLocal: TransformSpec["positionM"] = [
-      dimensions.hipOffsetX,
-      dimensions.hipOriginY + bottomY,
-      0,
-    ];
     const zeroPositionTransform: TransformSpec = {
       positionM: [0, 0, 0],
       rotation,
       scale,
     };
-    const centerWorld = transformPoint(
+    const expectedSupportM = -sampledProjectionMinWorldY(
+      subject,
       zeroPositionTransform,
-      bottomCenterLocal,
     );
-    const columnX = rotateVector([scale[0], 0, 0], rotation);
-    const columnY = rotateVector([0, scale[1], 0], rotation);
-    const columnZ = rotateVector([0, 0, scale[2]], rotation);
-    const worldYRadius =
-      dimensions.legRadius *
-      Math.hypot(columnX[1], columnY[1], columnZ[1]);
-    const expectedSupportM = -(centerWorld[1] - worldYRadius);
     const candidate: TransformSpec = {
       positionM: [0, 9, 0],
       rotation,
@@ -204,10 +247,10 @@ describe("contact constraints", () => {
 
     const snapped = snapTransformToContact(scene, subject.id, candidate);
 
-    expect(snapped.positionM[1]).toBeCloseTo(expectedSupportM, 9);
-    expect(
-      actorVisibleRigBounds(subject, snapped).minWorld[1],
-    ).toBeCloseTo(0, 9);
+    expect(snapped.positionM[1]).toBeCloseTo(expectedSupportM, 3);
+    expect(Math.abs(sampledProjectionMinWorldY(subject, snapped))).toBeLessThan(
+      0.001,
+    );
   });
 
   it("uses the lowest remaining torso, pelvis, or arm geometry without leg chains", () => {

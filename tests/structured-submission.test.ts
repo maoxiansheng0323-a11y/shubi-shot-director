@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 import { SceneSession } from "../server/scene-session";
+import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
 import { validateIntentCoverage } from "../src/domain/intent-coverage";
 import { INTENT_REPORT_SCHEMA_VERSION } from "../src/domain/intent-report";
 import type { SceneOperation } from "../src/domain/scene-patch";
+import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 import {
   IntentSubmissionError,
   normalizePatchSubmissionInput,
@@ -19,6 +21,10 @@ import {
   createStructuredPatch,
   createStructuredScene,
 } from "./helpers/structured-fixtures";
+import {
+  createBlueprintActor,
+  createGenericActorBlueprintDocument,
+} from "./helpers/actor-blueprint-fixtures";
 
 const expectSubmissionCode = (
   action: () => unknown,
@@ -164,7 +170,30 @@ describe("structured scene submission policy", () => {
       ],
     });
 
-    expect(parsePatchSubmission(submission)).toEqual(submission);
+    const parsed = parsePatchSubmission(submission);
+    expect(parsed).toEqual({
+      submission,
+      patchSourceSchemaVersion: PATCH_SCHEMA_VERSION,
+    });
+  });
+
+  it("rejects parsed carrier wrappers on the public raw parsing surface", () => {
+    const parsed = parsePatchSubmission(createPatchSubmission());
+    const unbrandedClone = structuredClone(parsed);
+
+    expect(() => normalizePatchSubmissionInput(unbrandedClone)).toThrowError(
+      ZodError,
+    );
+    expect(() => parsePatchSubmission(unbrandedClone)).toThrowError(ZodError);
+  });
+
+  it("prevents parsed Patch provenance from being rewritten after parsing", () => {
+    const parsed = parsePatchSubmission(createPatchSubmission());
+
+    expect(
+      Reflect.set(parsed, "patchSourceSchemaVersion", 5),
+    ).toBe(false);
+    expect(parsed.patchSourceSchemaVersion).toBe(PATCH_SCHEMA_VERSION);
   });
 
   it.each([1, 2] as const)(
@@ -242,7 +271,9 @@ describe("structured scene submission policy", () => {
         },
       } as const;
 
-      const migrated = normalizePatchSubmissionInput(legacySubmission);
+      const normalized = normalizePatchSubmissionInput(legacySubmission);
+      const migrated = normalized.submission;
+      expect(normalized.patchSourceSchemaVersion).toBe(schemaVersion);
       const operationIndexes = migrated.intentReport.recognizedConstraints
         .flatMap(({ evidence }) => evidence)
         .filter(
@@ -282,6 +313,81 @@ describe("structured scene submission policy", () => {
 });
 
 describe("deterministic intent coverage", () => {
+  it.each(["legacy", "blueprint"] as const)(
+    "covers v6 actor height, Blueprint-safe limb presence, and joint pose for a %s actor",
+    (actorCase) => {
+      const scene = createStructuredScene();
+      const actorId = "actor_generic_1";
+      if (actorCase === "blueprint") {
+        scene.actorBlueprints = [
+          createActorBlueprintSnapshot(createGenericActorBlueprintDocument()),
+        ];
+        const actorIndex = scene.entities.findIndex(({ id }) => id === actorId);
+        scene.entities[actorIndex] = createBlueprintActor({
+          id: actorId,
+          slot: "actor_generic_1",
+          variantId: "repaired",
+        });
+      }
+      const session = new SceneSession(scene);
+      const before = session.snapshot();
+      const after = session.submitPatch({
+        intentReport: createPatchIntentReport({
+          recognizedConstraints: [
+            {
+              id: `intent_${actorCase}_height_1`,
+              kind: "actor-height",
+              required: true,
+              targets: [actorId],
+              evidence: [{ type: "patch-operation", operationIndex: 0 }],
+            },
+            {
+              id: `intent_${actorCase}_limb_1`,
+              kind: "actor-limb-presence",
+              required: true,
+              targets: [actorId],
+              evidence: [{ type: "patch-operation", operationIndex: 1 }],
+            },
+            {
+              id: `intent_${actorCase}_pose_1`,
+              kind: "pose",
+              required: true,
+              targets: [actorId],
+              evidence: [{ type: "patch-operation", operationIndex: 2 }],
+            },
+          ],
+        }),
+        patch: {
+          schemaVersion: PATCH_SCHEMA_VERSION,
+          patchId: `patch_${actorCase}_actor_puppet_coverage_1`,
+          sceneId: before.sceneId,
+          baseRevision: before.revision,
+          source: "natural-language",
+          preserveLock: false,
+          operations: [
+            { op: "actor.height.set", actorId, heightM: 1.84 },
+            {
+              op: "actor.limb-presence.set",
+              actorId,
+              updates: { hand_l: "absent" },
+            },
+            {
+              op: "actor.pose.joints.set",
+              actorId,
+              updates: { neck: [0, 0, 0, 1] },
+            },
+          ],
+        },
+      });
+
+      expect(after.revision).toBe(before.revision + 1);
+      expect(after.entities.find(({ id }) => id === actorId)).toMatchObject({
+        kind: "actor",
+        pose: { preset: { id: "pose.custom-v1" } },
+      });
+    },
+  );
+
   it("uses entity.flags.set visible only as visibility evidence", () => {
     const scene = createStructuredScene();
     const patch = {

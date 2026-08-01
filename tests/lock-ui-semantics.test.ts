@@ -117,4 +117,30 @@ describe("editor lock semantics", () => {
     expect(inspectorSource).toContain("onSetLimbPresence?:");
     expect(inspectorSource).toContain("<ActorLimbControls");
   });
+
+  it("routes stature and joint edits through fresh authoritative store snapshots", () => {
+    const appSource = readFileSync(
+      fileURLToPath(new URL("../src/App.tsx", import.meta.url)),
+      "utf8",
+    );
+    const inspectorSource = readFileSync(
+      fileURLToPath(new URL("../src/editor/Inspector.tsx", import.meta.url)),
+      "utf8",
+    );
+
+    expect(appSource).toContain("const setActorHeight = useCallback");
+    expect(appSource).toContain("const setActorJointRotation = useCallback");
+    expect(appSource).toContain("createActorHeightPatch(currentScene");
+    expect(appSource).toContain("createActorJointPatch(currentScene");
+    expect(appSource.match(/useEditorStore\.getState\(\)/gu)?.length)
+      .toBeGreaterThanOrEqual(2);
+    expect(appSource).toContain("onSetHeight={setActorHeight}");
+    expect(appSource).toContain(
+      "onSetJointRotation={setActorJointRotation}",
+    );
+    expect(inspectorSource).toContain("onSetHeight?:");
+    expect(inspectorSource).toContain("onSetJointRotation?:");
+    expect(inspectorSource).toContain("<ActorStatureControls");
+    expect(inspectorSource).toContain("<ActorJointControls");
+  });
 });

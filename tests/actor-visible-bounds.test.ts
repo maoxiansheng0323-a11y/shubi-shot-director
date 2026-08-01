@@ -8,9 +8,16 @@ import {
   actorVisibleRigBounds,
 } from "../src/domain/actor-visible-bounds";
 import { createDefaultScene } from "../src/domain/default-scene";
-import { actorAnchorWorldPoint } from "../src/domain/actor-projection";
 import {
+  actorAnchorWorldPoint,
+  resolveLegacyActorProjection,
+  type ActorProjectionPrimitive,
+  type ActorRigFrame,
+} from "../src/domain/actor-projection";
+import {
+  addVectors,
   quaternionFromEulerDegrees,
+  rotateVector,
   transformPoint,
 } from "../src/domain/scene-math";
 import { materializePose } from "../src/domain/presets/pose-presets";
@@ -59,6 +66,18 @@ const expectPointClose = (
   ).toBe(true);
 };
 
+const primitiveById = (
+  primitives: readonly ActorProjectionPrimitive[],
+  id: string,
+): ActorProjectionPrimitive => {
+  const primitive = primitives.find((candidate) => candidate.id === id);
+  if (!primitive) throw new Error(`Missing primitive ${id}.`);
+  return primitive;
+};
+
+const framePoint = (frame: ActorRigFrame, point: Vec3): Vec3 =>
+  addVectors(frame.position, rotateVector(point, frame.rotation));
+
 describe("actor visible rig bounds", () => {
   it("preserves standing support within one millimeter and includes both feet", () => {
     const actor = actorIn(createDefaultScene());
@@ -104,7 +123,7 @@ describe("actor visible rig bounds", () => {
     expect(bounds.supportOffsetM).toBeLessThan(0.977);
   });
 
-  it("matches neutral upper-leg capsule outer endpoints to the joint-to-end span", () => {
+  it("matches neutral upper-leg profile endpoints to the joint-to-end span", () => {
     const actor = actorIn(createDefaultScene());
     actor.body.limbPresence = resolveActorLimbPresenceUpdates(
       actor.body.limbPresence,
@@ -125,7 +144,7 @@ describe("actor visible rig bounds", () => {
     expect(bounds.minLocal[1]).toBeCloseTo(-expectedSupportM, 9);
   });
 
-  it("matches neutral lower-leg capsule outer endpoint when the foot is absent", () => {
+  it("matches neutral lower-leg profile endpoint when the foot is absent", () => {
     const actor = actorIn(createDefaultScene());
     actor.body.limbPresence = resolveActorLimbPresenceUpdates(
       actor.body.limbPresence,
@@ -148,7 +167,7 @@ describe("actor visible rig bounds", () => {
     expect(bounds.minLocal[1]).toBeCloseTo(-expectedSupportM, 9);
   });
 
-  it("expands rotated limb cap centers on actor-local sphere axes", () => {
+  it("includes exact actor-local extrema for every rotated limb profile ring", () => {
     const actor = actorIn(createDefaultScene());
     actor.body.limbPresence = resolveActorLimbPresenceUpdates(
       actor.body.limbPresence,
@@ -161,61 +180,38 @@ describe("actor visible rig bounds", () => {
     );
     const rotation = quaternionFromEulerDegrees([0, 0, 45]);
     actor.pose.joints.upper_arm_l = rotation;
-    const dimensions = deriveActorAnatomyDimensions(actor.body);
-    const cylinderLength = Math.max(
-      0.01,
-      dimensions.upperArmLength - dimensions.armRadius * 2,
+    const upper = primitiveById(
+      resolveLegacyActorProjection(actor).primitives,
+      "upper_arm_l",
     );
-    const topY =
-      -dimensions.upperArmLength / 2 + cylinderLength / 2;
-    const bottomY =
-      -dimensions.upperArmLength / 2 - cylinderLength / 2;
-    const rotatedTop = transformPoint(
-      {
-        positionM: [
-          dimensions.shoulderOffsetX,
-          dimensions.spineOriginY + dimensions.shoulderOriginY,
-          0,
-        ],
-        rotation,
-        scale: [1, 1, 1],
-      },
-      [0, topY, 0],
+    if (upper.kind !== "profile") throw new Error("Expected upper-arm profile.");
+    const ring = upper.points.reduce((widest, point) =>
+      point.radius > widest.radius ? point : widest,
     );
-    const radius = dimensions.armRadius;
-    const rotatedBottom = transformPoint(
-      {
-        positionM: [
-          dimensions.shoulderOffsetX,
-          dimensions.spineOriginY + dimensions.shoulderOriginY,
-          0,
-        ],
-        rotation,
-        scale: [1, 1, 1],
-      },
-      [0, bottomY, 0],
+    const basisX = rotateVector([1, 0, 0], upper.frame.rotation);
+    const basisZ = rotateVector([0, 0, 1], upper.frame.rotation);
+    const radiusZ = ring.radius * upper.depthScale;
+    const denominator = Math.hypot(
+      ring.radius * basisX[0],
+      radiusZ * basisZ[0],
     );
+    const ringOffset: Vec3 = [
+      (ring.radius * ring.radius * basisX[0]) / denominator,
+      0,
+      (radiusZ * radiusZ * basisZ[0]) / denominator,
+    ];
+    const expectedMaxX = framePoint(upper.frame, [
+      upper.center[0] + ringOffset[0],
+      upper.center[1] + ring.y,
+      upper.center[2] + ringOffset[2],
+    ]);
 
     const bounds = actorVisibleRigBounds(actor);
 
-    for (const offset of [
-      [radius, 0, 0],
-      [-radius, 0, 0],
-      [0, radius, 0],
-      [0, -radius, 0],
-      [0, 0, radius],
-      [0, 0, -radius],
-    ] as const) {
-      expectPointClose(bounds.localPoints, [
-        rotatedTop[0] + offset[0],
-        rotatedTop[1] + offset[1],
-        rotatedTop[2] + offset[2],
-      ]);
-    }
-    expect(bounds.maxLocal[0]).toBeCloseTo(rotatedBottom[0] + radius, 9);
+    expectPointClose(bounds.localPoints, expectedMaxX);
   });
 
-  it("adds affine world-extrema preimages for non-uniformly scaled spheres", () => {
+  it("adds affine world-extrema preimages for rotated ellipsoids under non-uniform scale", () => {
     const actor = actorIn(createDefaultScene());
     actor.body.limbPresence = resolveActorLimbPresenceUpdates(
       actor.body.limbPresence,
@@ -226,36 +222,49 @@ describe("actor visible rig bounds", () => {
         upper_leg_r: "absent",
       },
     );
-    const dimensions = deriveActorAnatomyDimensions(actor.body);
     const transform = {
       positionM: [0.3, -0.2, 1.1] as Vec3,
       rotation: quaternionFromEulerDegrees([0, 0, 45]),
       scale: [5, 1, 1] as Vec3,
     };
-    const headCenter: Vec3 = [
-      0,
-      dimensions.spineOriginY + dimensions.headOriginY,
-      0,
-    ];
+    const ellipsoid = primitiveById(
+      resolveLegacyActorProjection(actor).primitives,
+      "face",
+    );
+    if (ellipsoid.kind !== "ellipsoid") {
+      throw new Error("Expected face ellipsoid.");
+    }
+    const ellipsoidCenter = framePoint(ellipsoid.frame, [...ellipsoid.center]);
     const linearTransform = { ...transform, positionM: [0, 0, 0] as Vec3 };
-    const columnX = transformPoint(linearTransform, [1, 0, 0]);
-    const columnY = transformPoint(linearTransform, [0, 1, 0]);
-    const columnZ = transformPoint(linearTransform, [0, 0, 1]);
-    const gradient: Vec3 = [columnX[0], columnY[0], columnZ[0]];
-    const gradientLength = Math.hypot(...gradient);
-    const localOffset = gradient.map(
-      (component) =>
-        (component / gradientLength) * dimensions.headRadius,
-    ) as Vec3;
+    const primitiveAxes = ([
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ] as const).map((axis) => rotateVector([...axis], ellipsoid.frame.rotation));
+    const worldAxes = primitiveAxes.map((axis) =>
+      transformPoint(linearTransform, axis),
+    );
+    const gradient: Vec3 = worldAxes.map((axis) => axis[0]) as Vec3;
+    const denominator = Math.hypot(
+      ellipsoid.radii[0] * gradient[0],
+      ellipsoid.radii[1] * gradient[1],
+      ellipsoid.radii[2] * gradient[2],
+    );
+    const primitiveOffset: Vec3 = [
+      (ellipsoid.radii[0] ** 2 * gradient[0]) / denominator,
+      (ellipsoid.radii[1] ** 2 * gradient[1]) / denominator,
+      (ellipsoid.radii[2] ** 2 * gradient[2]) / denominator,
+    ];
+    const localOffset = rotateVector(primitiveOffset, ellipsoid.frame.rotation);
     const expectedLocalMax: Vec3 = [
-      headCenter[0] + localOffset[0],
-      headCenter[1] + localOffset[1],
-      headCenter[2] + localOffset[2],
+      ellipsoidCenter[0] + localOffset[0],
+      ellipsoidCenter[1] + localOffset[1],
+      ellipsoidCenter[2] + localOffset[2],
     ];
     const expectedLocalMin: Vec3 = [
-      headCenter[0] - localOffset[0],
-      headCenter[1] - localOffset[1],
-      headCenter[2] - localOffset[2],
+      ellipsoidCenter[0] - localOffset[0],
+      ellipsoidCenter[1] - localOffset[1],
+      ellipsoidCenter[2] - localOffset[2],
     ];
     const expectedWorldMax = transformPoint(transform, expectedLocalMax);
     const expectedWorldMin = transformPoint(transform, expectedLocalMin);

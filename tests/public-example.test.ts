@@ -6,7 +6,11 @@ import { ACTOR_LIMB_PART_IDS } from "../src/domain/actor-anatomy";
 import { INTENT_REPORT_SCHEMA_VERSION } from "../src/domain/intent-report";
 import { parseSceneSubmission } from "../src/domain/scene-submission";
 import { analyzeComposition } from "../src/domain/composition-safety";
-import { isLegacyActorEntity } from "../src/domain/scene-schema";
+import {
+  isLegacyActorEntity,
+  sceneSpecSchema,
+} from "../src/domain/scene-schema";
+import { SCENE_SCHEMA_VERSION } from "../src/domain/schema-versions";
 
 const exampleUrl = new URL(
   "../examples/quickstart.scene-submission.json",
@@ -142,7 +146,7 @@ describe("public quick-start scene submission", () => {
     ]);
 
     expect(submission.scene.sceneId).toBe("scene_quickstart_1");
-    expect(submission.scene.schemaVersion).toBe(5);
+    expect(submission.scene.schemaVersion).toBe(SCENE_SCHEMA_VERSION);
     expect(submission.scene.spatialLayout).toBeNull();
     expect(submission.scene.revision).toBe(0);
     expect(submission.scene.output).toEqual({
@@ -221,14 +225,16 @@ describe("public quick-start scene submission", () => {
     );
   });
 
-  it("keeps every canonical public scene on v5 lockMode and limb-presence fields", async () => {
+  it("keeps every canonical public scene on v6 lockMode and limb-presence fields", async () => {
     const starterSource = await readFile(
       new URL("../examples/starter.scene.json", import.meta.url),
       "utf8",
     );
     const starter: unknown = JSON.parse(starterSource);
+    const parsedStarter = sceneSpecSchema.parse(starter);
 
-    expect(starter).toMatchObject({ schemaVersion: 5 });
+    expect(starter).toMatchObject({ schemaVersion: SCENE_SCHEMA_VERSION });
+    expect(parsedStarter.schemaVersion).toBe(SCENE_SCHEMA_VERSION);
     expect(collectExactKeys(starter, "locked")).toEqual([]);
     expect(starter).toMatchObject({
       entities: expect.arrayContaining([
@@ -274,8 +280,12 @@ describe("public quick-start scene submission", () => {
         await readFile(new URL(fileName, examplesDirectoryUrl), "utf8"),
       );
       const submission = parseSceneSubmission(raw);
-      expect(submission.scene.schemaVersion, fileName).toBe(5);
-      expect(submission.intentReport.schemaVersion, fileName).toBe(5);
+      expect(submission.scene.schemaVersion, fileName).toBe(
+        SCENE_SCHEMA_VERSION,
+      );
+      expect(submission.intentReport.schemaVersion, fileName).toBe(
+        INTENT_REPORT_SCHEMA_VERSION,
+      );
       for (const actor of submission.scene.entities.filter(
         (entity) => entity.kind === "actor",
       )) {

@@ -112,7 +112,7 @@ describe("Actor Blueprint Patch operations", () => {
       ]),
     );
 
-    expect(PATCH_SCHEMA_VERSION).toBe(5);
+    expect(PATCH_SCHEMA_VERSION).toBe(6);
     expect(applied.next.revision).toBe(before.revision + 1);
     expect(applied.next.actorBlueprints).toEqual([snapshot]);
     expect(applied.next.entities).toContainEqual(actor);
@@ -132,7 +132,7 @@ describe("Actor Blueprint Patch operations", () => {
     };
     expect(parseScenePatchInput(legacyPatch)).toEqual({
       ...legacyPatch,
-      schemaVersion: 5,
+      schemaVersion: 6,
     });
 
     const snapshot = createActorBlueprintSnapshot(

@@ -5,11 +5,21 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { applyScenePatch } from "../src/domain/apply-scene-patch";
 import { createDefaultScene } from "../src/domain/default-scene";
+import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
 import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
-import type { ActorEntity, SceneSpec } from "../src/domain/scene-schema";
+import {
+  isBlueprintActorEntity,
+  sceneSpecSchema,
+  type ActorEntity,
+  type SceneSpec,
+} from "../src/domain/scene-schema";
 import { Inspector } from "../src/editor/Inspector";
 import { createActorLimbPresencePatch } from "../src/editor/manual-patches";
 import { dispatchActorLimbPresenceChange } from "../src/editor/ActorLimbControls";
+import {
+  createBlueprintActor,
+  createGenericActorBlueprintDocument,
+} from "./helpers/actor-blueprint-fixtures";
 
 const requireActor = (scene: SceneSpec): ActorEntity => {
   const actor = scene.entities.find(
@@ -90,10 +100,47 @@ describe("authoritative actor limb Inspector controls", () => {
     }
     for (const select of controls.values()) {
       expect(select).toContain('value="present"');
-      expect(select).toContain(">Present</option>");
+      expect(select).toContain(">存在</option>");
       expect(select).toContain('value="absent"');
-      expect(select).toContain(">Absent</option>");
+      expect(select).toContain(">缺失</option>");
     }
+  });
+
+  it("renders Blueprint variant and instance overrides as effective limb presence", () => {
+    const scene: SceneSpec = sceneSpecSchema.parse(createDefaultScene());
+    scene.entities = scene.entities.filter(
+      (entity) => entity.kind !== "actor",
+    );
+    scene.constraints = [];
+    scene.actorBlueprints = [
+      createActorBlueprintSnapshot(createGenericActorBlueprintDocument()),
+    ];
+    scene.entities.push(createBlueprintActor());
+    const parsed = sceneSpecSchema.parse(scene);
+    const actor = parsed.entities.find(isBlueprintActorEntity);
+    if (!actor) throw new Error("Blueprint actor fixture is missing.");
+    actor.blueprintInstance.limbPresenceOverrides = {
+      upper_arm_r: "present",
+      forearm_r: "present",
+      hand_r: "present",
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        scene: parsed,
+        selectedId: actor.id,
+        disabled: false,
+        onSetLimbPresence: () => undefined,
+      }),
+    );
+    const controls = limbSelects(markup);
+
+    expect(controls).toHaveLength(12);
+    expect(selectedMode(controls.get("upper_arm_r") ?? "")).toBe("present");
+    expect(selectedMode(controls.get("forearm_r") ?? "")).toBe("present");
+    expect(selectedMode(controls.get("hand_r") ?? "")).toBe("present");
+    expect(selectedMode(controls.get("lower_leg_l") ?? "")).toBe("absent");
+    expect(selectedMode(controls.get("foot_l") ?? "")).toBe("absent");
   });
 
   it("disables descendants when an ancestor is absent and explains why", () => {

@@ -58,6 +58,9 @@ const featureIds = [
   "actor.modular-primitives",
   "actor.variants",
   "actor.resolved-projection",
+  "actor.height",
+  "actor.pose-joints",
+  "actor.blueprint-instance-limb-overrides",
 ];
 
 const entityLockModes = ["none", "workflow", "user"] as const;
@@ -83,6 +86,21 @@ const actorLimbPartIds = [
 ] as const;
 const actorLimbPresenceModes = ["present", "absent"] as const;
 const actorLimbErrorCodes = ["LIMB_HIERARCHY_CONFLICT"] as const;
+const actorPuppet = {
+  heightLimitsM: { min: 1, max: 2.4 },
+  jointIds: [
+    "pelvis", "spine", "neck", "upper_arm_l", "forearm_l", "hand_l",
+    "upper_arm_r", "forearm_r", "hand_r", "upper_leg_l", "lower_leg_l",
+    "foot_l", "upper_leg_r", "lower_leg_r", "foot_r",
+  ],
+  operationIds: ["actor.height.set", "actor.pose.joints.set"],
+  errorCodes: [
+    "ACTOR_HEIGHT_TARGET_INVALID",
+    "ACTOR_HEIGHT_RANGE_INVALID",
+    "ACTOR_JOINT_TARGET_INVALID",
+    "ACTOR_JOINT_ID_INVALID",
+  ],
+} as const;
 const actorBlueprint = {
   schemaVersion: 1,
   mounts: [
@@ -118,9 +136,10 @@ const modernManifest = (
   capabilitiesContractVersion: 2,
   applicationVersion: "1.0.0",
   bridgeProtocolVersion: 1,
-  sceneSchemaVersion: 5,
-  patchSchemaVersion: 5,
-  intentReportSchemaVersion: 5,
+  workspaceRoutingVersion: 1,
+  sceneSchemaVersion: 6,
+  patchSchemaVersion: 6,
+  intentReportSchemaVersion: 6,
   semanticAuthority: "host",
   inputContract: "structured-only",
   modelIntegration: "none",
@@ -134,6 +153,7 @@ const modernManifest = (
   actorLimbPartIds: [...actorLimbPartIds],
   actorLimbPresenceModes: [...actorLimbPresenceModes],
   actorLimbErrorCodes: [...actorLimbErrorCodes],
+  actorPuppet: structuredClone(actorPuppet),
   actorBlueprint: structuredClone(actorBlueprint),
   ...overrides,
 });
@@ -168,9 +188,9 @@ const optionsForCase = (
       return {
         doctorData: modernManifest({
           applicationVersion: "999.0.0",
-          sceneSchemaVersion: 6,
-          patchSchemaVersion: 6,
-          intentReportSchemaVersion: 6,
+          sceneSchemaVersion: 7,
+          patchSchemaVersion: 7,
+          intentReportSchemaVersion: 7,
         }),
       };
     case "requires-key":

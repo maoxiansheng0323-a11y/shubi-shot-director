@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { scenePatchSchema } from "../src/domain/scene-patch";
 import {
+  createActorHeightPatch,
+  createActorJointPatch,
   createActorLimbPresencePatch,
   createActorVariantPatch,
   createCameraLensPatch,
@@ -10,8 +12,13 @@ import {
   createTransformPatch,
   transformsEqual,
 } from "../src/editor/manual-patches";
+import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
-import { sceneSpecSchema, type SceneSpec } from "../src/domain/scene-schema";
+import {
+  sceneSpecSchema,
+  type QuaternionTuple,
+  type SceneSpec,
+} from "../src/domain/scene-schema";
 import {
   createBlueprintActor,
   createGenericActorBlueprintDocument,
@@ -37,7 +44,7 @@ describe("manual editor patches", () => {
     );
 
     expect(patch).toMatchObject({
-      schemaVersion: 5,
+      schemaVersion: PATCH_SCHEMA_VERSION,
       sceneId: scene.sceneId,
       baseRevision: scene.revision,
       source: "manual",
@@ -52,6 +59,56 @@ describe("manual editor patches", () => {
     });
   });
 
+  it("creates one authoritative actor height operation", () => {
+    const scene = createDefaultScene();
+    const patch = scenePatchSchema.parse(
+      createActorHeightPatch(scene, "actor_generic_1", 1.55),
+    );
+
+    expect(patch).toMatchObject({
+      schemaVersion: PATCH_SCHEMA_VERSION,
+      sceneId: scene.sceneId,
+      baseRevision: scene.revision,
+      source: "manual",
+      preserveLock: false,
+      operations: [
+        {
+          op: "actor.height.set",
+          actorId: "actor_generic_1",
+          heightM: 1.55,
+        },
+      ],
+    });
+  });
+
+  it("creates one authoritative actor joint operation", () => {
+    const scene = createDefaultScene();
+    const rotation: QuaternionTuple = [
+      0,
+      0,
+      0.3826834323650898,
+      0.9238795325112867,
+    ];
+    const patch = scenePatchSchema.parse(
+      createActorJointPatch(scene, "actor_generic_1", "hand_l", rotation),
+    );
+
+    expect(patch).toMatchObject({
+      schemaVersion: PATCH_SCHEMA_VERSION,
+      sceneId: scene.sceneId,
+      baseRevision: scene.revision,
+      source: "manual",
+      preserveLock: false,
+      operations: [
+        {
+          op: "actor.pose.joints.set",
+          actorId: "actor_generic_1",
+          updates: { hand_l: rotation },
+        },
+      ],
+    });
+  });
+
   it("creates one authoritative actor limb presence operation", () => {
     const scene = createDefaultScene();
     const patch = scenePatchSchema.parse(
@@ -60,7 +117,7 @@ describe("manual editor patches", () => {
       }),
     );
 
-    expect(patch.schemaVersion).toBe(5);
+    expect(patch.schemaVersion).toBe(PATCH_SCHEMA_VERSION);
     expect(patch.baseRevision).toBe(scene.revision);
     expect(patch.source).toBe("manual");
     expect(patch.preserveLock).toBe(false);

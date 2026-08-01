@@ -5,13 +5,13 @@ import {
 } from "../domain/presets";
 import { isSupportedContactSurface } from "../domain/contact-constraints";
 import type {
-  ActorEntity,
+  AnyActorEntity,
   SceneSpec,
 } from "../domain/scene-schema";
 
 export interface ActorPresetControlsProps {
   scene: SceneSpec;
-  actor: ActorEntity;
+  actor: AnyActorEntity;
   disabled: boolean;
   onApplyPose?: (actorId: string, presetId: string) => void;
   onApplyRelationship?: (
@@ -40,7 +40,7 @@ export const ActorPresetControls = ({
   const otherActors = useMemo(
     () =>
       scene.entities.filter(
-        (entity): entity is ActorEntity =>
+        (entity): entity is AnyActorEntity =>
           entity.kind === "actor" && entity.id !== actor.id,
       ),
     [actor.id, scene.entities],
@@ -88,6 +88,8 @@ export const ActorPresetControls = ({
   }, [actor.id, currentSurfaceValue]);
 
   const editingDisabled = disabled || actor.lockMode !== "none";
+  const relationshipEditingDisabled =
+    editingDisabled || !onApplyRelationship;
   const contactEnabled =
     contact?.type === "ground-contact" ? contact.enabled : false;
   const posePresets = listPosePresets();
@@ -137,6 +139,7 @@ export const ActorPresetControls = ({
         <span>人物姿势</span>
         <select
           aria-label="人物姿势预设"
+          data-actor-edit
           disabled={editingDisabled || !onApplyPose}
           value={actor.pose.preset.id}
           onChange={(event) =>
@@ -149,7 +152,11 @@ export const ActorPresetControls = ({
             </option>
           ) : null}
           {posePresets.map((preset) => (
-            <option key={preset.id} value={preset.id}>
+            <option
+              key={preset.id}
+              data-action-id={preset.id}
+              value={preset.id}
+            >
               {preset.label}
             </option>
           ))}
@@ -159,6 +166,7 @@ export const ActorPresetControls = ({
       <label className="contact-toggle">
         <input
           aria-label="启用人物接触吸附"
+          data-actor-edit
           checked={contactEnabled}
           disabled={editingDisabled || !onSetGroundContact}
           type="checkbox"
@@ -179,6 +187,7 @@ export const ActorPresetControls = ({
         <span>接触表面</span>
         <select
           aria-label="人物接触表面"
+          data-actor-edit
           disabled={editingDisabled || !onSetGroundContact}
           value={currentSurfaceValue}
           onChange={(event) =>
@@ -210,7 +219,8 @@ export const ActorPresetControls = ({
             <span>关系预设</span>
             <select
               aria-label="双人关系预设"
-              disabled={editingDisabled}
+              data-actor-edit
+              disabled={relationshipEditingDisabled}
               value={relationshipPresetId}
               onChange={(event) =>
                 setRelationshipPresetId(event.currentTarget.value)
@@ -232,7 +242,8 @@ export const ActorPresetControls = ({
             <span>另一人物</span>
             <select
               aria-label="双人关系对象"
-              disabled={editingDisabled}
+              data-actor-edit
+              disabled={relationshipEditingDisabled}
               value={secondaryActorId}
               onChange={(event) =>
                 setSecondaryActorId(event.currentTarget.value)
@@ -249,7 +260,8 @@ export const ActorPresetControls = ({
             <span>支撑表面</span>
             <select
               aria-label="双人关系支撑表面"
-              disabled={editingDisabled}
+              data-actor-edit
+              disabled={relationshipEditingDisabled}
               value={relationshipSurfaceId}
               onChange={(event) =>
                 setRelationshipSurfaceId(event.currentTarget.value)
@@ -265,9 +277,9 @@ export const ActorPresetControls = ({
           </label>
           <button
             className="preset-apply-button"
+            data-actor-edit
             disabled={
-              editingDisabled ||
-              !onApplyRelationship ||
+              relationshipEditingDisabled ||
               secondaryActorId.length === 0
             }
             type="button"
