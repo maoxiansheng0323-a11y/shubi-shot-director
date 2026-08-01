@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { BufferGeometry, Object3D } from "three";
+import {
+  BUILT_IN_REFINED_MANNEQUIN_MANIFEST_URL,
+  BUILT_IN_REFINED_MANNEQUIN_URL,
+} from "../domain/built-in-asset-paths";
 import type {
   ActorProjectionEllipsoidPrimitive,
   ActorProjectionPrimitive,
@@ -7,10 +11,19 @@ import type {
 } from "../domain/actor-projection";
 import type { Vec3 } from "../domain/scene-schema";
 
-export const BUILT_IN_REFINED_MANNEQUIN_URL =
-  "/assets/refined-white-mannequin-v1.glb" as const;
+export {
+  BUILT_IN_REFINED_MANNEQUIN_MANIFEST_URL,
+  BUILT_IN_REFINED_MANNEQUIN_URL,
+};
 
 export const REFINED_MANNEQUIN_MAX_BYTES = 2 * 1024 * 1024;
+
+export const BUILT_IN_REFINED_MANNEQUIN_FILE_SHA256 =
+  "1bd1bf8650a0e2b0d35e8544bca4d21a99069bcf2bd4b26974cf1b5ac1857b94" as const;
+export const BUILT_IN_REFINED_MANNEQUIN_FILE_BYTE_LENGTH = 603_548;
+export const BUILT_IN_REFINED_MANNEQUIN_TRIANGLE_COUNT = 35_904;
+export const BUILT_IN_REFINED_MANNEQUIN_SOURCE_SHA256 =
+  "811f43accbb31a88266d932f8f5563b2d13586fca0ba2693aad1f5fe582b3515" as const;
 
 export const REFINED_SECTION_IDS = [
   "pelvis",
@@ -88,7 +101,9 @@ const refinedMannequinManifestSchema = z
     license: z.literal("CC0-1.0"),
     source: z
       .object({
-        publisher: z.literal("Blender Studio"),
+        publisher: z.literal(
+          "Blender Studio and community contributors",
+        ),
         asset: z.literal("Human Base Meshes"),
         version: z.string().min(1).max(32),
         sourceUrl: z.url(),
@@ -149,31 +164,184 @@ export const parseRefinedMannequinManifest = (
   return parsed.data;
 };
 
+const builtInRefinedMannequinManifest = {
+  schemaVersion: 1,
+  assetId: "refined-white-mannequin-v1",
+  assetUrl: BUILT_IN_REFINED_MANNEQUIN_URL,
+  license: "CC0-1.0",
+  source: {
+    publisher: "Blender Studio and community contributors",
+    asset: "Human Base Meshes",
+    version: "1.4.1",
+    sourceUrl: "https://www.blender.org/download/demo-files/#assets",
+    licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+    downloadSha256: BUILT_IN_REFINED_MANNEQUIN_SOURCE_SHA256,
+  },
+  file: {
+    sha256: BUILT_IN_REFINED_MANNEQUIN_FILE_SHA256,
+    byteLength: BUILT_IN_REFINED_MANNEQUIN_FILE_BYTE_LENGTH,
+    triangleCount: BUILT_IN_REFINED_MANNEQUIN_TRIANGLE_COUNT,
+    materialCount: 1,
+  },
+  nodes: REFINED_SECTION_IDS.map((id) => ({
+    id,
+    nodeName: id,
+    bounds: {
+      min: [-0.5, -0.5, -0.5],
+      max: [0.5, 0.5, 0.5],
+    },
+  })),
+};
+
+export const parseBuiltInRefinedMannequinManifest = (
+  value: unknown,
+): RefinedMannequinManifest => {
+  const manifest = parseRefinedMannequinManifest(value);
+  if (
+    JSON.stringify(manifest) !==
+    JSON.stringify(builtInRefinedMannequinManifest)
+  ) {
+    throw new Error("REFINED_MANNEQUIN_MANIFEST_INVALID");
+  }
+  return manifest;
+};
+
+export const validateRefinedMannequinFileBytes = async (
+  bytes: Uint8Array,
+  manifest: RefinedMannequinManifest,
+): Promise<void> => {
+  if (bytes.byteLength !== manifest.file.byteLength) {
+    throw new Error("REFINED_MANNEQUIN_ASSET_INVALID");
+  }
+  const digestInput = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(digestInput).set(bytes);
+  const digest = new Uint8Array(
+    await globalThis.crypto.subtle.digest("SHA-256", digestInput),
+  );
+  const sha256 = Array.from(digest, (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
+  if (sha256 !== manifest.file.sha256) {
+    throw new Error("REFINED_MANNEQUIN_ASSET_INVALID");
+  }
+};
+
 const isRefinedSectionId = (value: string): value is RefinedSectionId =>
   (REFINED_SECTION_IDS as readonly string[]).includes(value);
 
 export const createRefinedGeometryCatalog = (
   root: Object3D,
+  manifest: RefinedMannequinManifest,
 ): RefinedGeometryCatalog => {
   const sourceGeometries = new Map<RefinedSectionId, BufferGeometry>();
+  const materials = new Set<object>();
+  let triangleCount = 0;
   let invalid = false;
+  const expectedBounds = new Map(
+    manifest.nodes.map((node) => [node.id, node.bounds] as const),
+  );
   root.traverse((object) => {
     const candidate = object as Object3D & {
       readonly isMesh?: boolean;
+      readonly isSkinnedMesh?: boolean;
+      readonly isCamera?: boolean;
+      readonly isLight?: boolean;
       readonly geometry?: BufferGeometry & {
         readonly isBufferGeometry?: boolean;
       };
+      readonly material?:
+        | { readonly isMaterial?: boolean }
+        | { readonly isMaterial?: boolean }[];
     };
+    const transformValues = [
+      object.position.x,
+      object.position.y,
+      object.position.z,
+      object.quaternion.x,
+      object.quaternion.y,
+      object.quaternion.z,
+      object.quaternion.w,
+      object.scale.x,
+      object.scale.y,
+      object.scale.z,
+    ];
+    if (
+      !transformValues.every(Number.isFinite) ||
+      object.position.lengthSq() > 1e-12 ||
+      Math.abs(object.quaternion.x) > 1e-6 ||
+      Math.abs(object.quaternion.y) > 1e-6 ||
+      Math.abs(object.quaternion.z) > 1e-6 ||
+      Math.abs(object.quaternion.w - 1) > 1e-6 ||
+      Math.abs(object.scale.x - 1) > 1e-6 ||
+      Math.abs(object.scale.y - 1) > 1e-6 ||
+      Math.abs(object.scale.z - 1) > 1e-6 ||
+      candidate.isSkinnedMesh === true ||
+      candidate.isCamera === true ||
+      candidate.isLight === true
+    ) {
+      invalid = true;
+    }
     if (candidate.isMesh === true) {
       if (
         !isRefinedSectionId(candidate.name) ||
         candidate.geometry?.isBufferGeometry !== true ||
-        sourceGeometries.has(candidate.name)
+        sourceGeometries.has(candidate.name) ||
+        Array.isArray(candidate.material) ||
+        candidate.material?.isMaterial !== true
       ) {
         invalid = true;
         return;
       }
-      sourceGeometries.set(candidate.name, candidate.geometry);
+      const geometry = candidate.geometry;
+      const position = geometry.getAttribute("position");
+      const index = geometry.getIndex();
+      if (
+        !position ||
+        position.itemSize !== 3 ||
+        position.count <= 0 ||
+        !index ||
+        index.count <= 0 ||
+        index.count % 3 !== 0
+      ) {
+        invalid = true;
+        return;
+      }
+      const minimum = [Infinity, Infinity, Infinity];
+      const maximum = [-Infinity, -Infinity, -Infinity];
+      for (let vertexIndex = 0; vertexIndex < position.count; vertexIndex += 1) {
+        const values = [
+          position.getX(vertexIndex),
+          position.getY(vertexIndex),
+          position.getZ(vertexIndex),
+        ];
+        if (!values.every(Number.isFinite)) {
+          invalid = true;
+          return;
+        }
+        for (let axis = 0; axis < 3; axis += 1) {
+          const value = values[axis] ?? 0;
+          minimum[axis] = Math.min(minimum[axis] ?? Infinity, value);
+          maximum[axis] = Math.max(maximum[axis] ?? -Infinity, value);
+        }
+      }
+      const bounds = expectedBounds.get(candidate.name);
+      if (
+        !bounds ||
+        minimum.some(
+          (value, axis) =>
+            Math.abs(value - (bounds.min[axis] ?? 0)) > 1e-5,
+        ) ||
+        maximum.some(
+          (value, axis) =>
+            Math.abs(value - (bounds.max[axis] ?? 0)) > 1e-5,
+        )
+      ) {
+        invalid = true;
+        return;
+      }
+      materials.add(candidate.material);
+      triangleCount += index.count / 3;
+      sourceGeometries.set(candidate.name, geometry);
       return;
     }
     if (isRefinedSectionId(candidate.name)) invalid = true;
@@ -181,7 +349,9 @@ export const createRefinedGeometryCatalog = (
   if (
     invalid ||
     sourceGeometries.size !== REFINED_SECTION_IDS.length ||
-    REFINED_SECTION_IDS.some((id) => !sourceGeometries.has(id))
+    REFINED_SECTION_IDS.some((id) => !sourceGeometries.has(id)) ||
+    materials.size !== manifest.file.materialCount ||
+    triangleCount !== manifest.file.triangleCount
   ) {
     throw new Error("REFINED_MANNEQUIN_ASSET_INVALID");
   }

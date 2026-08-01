@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  BUILT_IN_REFINED_MANNEQUIN_MANIFEST_URL,
+  BUILT_IN_REFINED_MANNEQUIN_URL,
+} from "../domain/built-in-asset-paths";
+import {
   scenePatchSchema,
   type ScenePatch,
 } from "../domain/scene-patch";
@@ -167,6 +171,42 @@ export class SceneClient {
     });
   }
 
+  async getBuiltInRefinedMannequinManifest(
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const response = await this.requestStaticAsset(
+      BUILT_IN_REFINED_MANNEQUIN_MANIFEST_URL,
+      signal,
+    );
+    try {
+      return (await response.json()) as unknown;
+    } catch (cause) {
+      throw new SceneClientError(
+        "INVALID_RESPONSE",
+        "The built-in mannequin manifest is unreadable.",
+        { status: response.status, cause },
+      );
+    }
+  }
+
+  async getBuiltInRefinedMannequinBytes(
+    signal?: AbortSignal,
+  ): Promise<ArrayBuffer> {
+    const response = await this.requestStaticAsset(
+      BUILT_IN_REFINED_MANNEQUIN_URL,
+      signal,
+    );
+    try {
+      return await response.arrayBuffer();
+    } catch (cause) {
+      throw new SceneClientError(
+        "INVALID_RESPONSE",
+        "The built-in mannequin asset is unreadable.",
+        { status: response.status, cause },
+      );
+    }
+  }
+
   subscribe(handlers: SceneEventHandlers): () => void {
     handlers.onConnectionChange?.("connecting");
 
@@ -308,6 +348,39 @@ export class SceneClient {
     }
 
     return envelope.data.data;
+  }
+
+  private async requestStaticAsset(
+    path:
+      | typeof BUILT_IN_REFINED_MANNEQUIN_MANIFEST_URL
+      | typeof BUILT_IN_REFINED_MANNEQUIN_URL,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(path, { method: "GET", signal });
+    } catch (cause) {
+      if (isAbortError(cause)) {
+        throw new SceneClientError(
+          "REQUEST_ABORTED",
+          "The built-in mannequin request was cancelled.",
+          { cause },
+        );
+      }
+      throw new SceneClientError(
+        "NETWORK_ERROR",
+        "Cannot load the built-in mannequin from this local application.",
+        { cause },
+      );
+    }
+    if (!response.ok) {
+      throw new SceneClientError(
+        "HTTP_ERROR",
+        `The built-in mannequin request returned HTTP ${response.status}.`,
+        { status: response.status },
+      );
+    }
+    return response;
   }
 }
 

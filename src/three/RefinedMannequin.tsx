@@ -1,22 +1,24 @@
-import { useGLTF } from "@react-three/drei";
 import {
   Component,
-  Suspense,
-  useMemo,
+  useEffect,
+  useState,
   type ErrorInfo,
   type ReactNode,
 } from "react";
-import type { BufferGeometry, Object3D } from "three";
+import type { BufferGeometry } from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { ActorRigPrimitive } from "../domain/actor-projection";
+import { sceneClient } from "../editor/scene-client";
 import {
-  BUILT_IN_REFINED_MANNEQUIN_URL,
-  createRefinedGeometryCatalog,
+  parseBuiltInRefinedMannequinManifest,
   refinedPrimitiveTransform,
   refinedSectionForPrimitive,
+  validateRefinedMannequinFileBytes,
   type RefinedGeometryCatalog,
   type RefinedPrimitiveTransform,
   type RefinedSectionId,
 } from "./mannequin-asset";
+import { createRefinedMannequinResource } from "./refined-mannequin-resource";
 
 export interface RefinedPrimitiveRenderDescriptor {
   readonly primitive: ActorRigPrimitive;
@@ -36,25 +38,14 @@ interface RefinedMannequinProps {
   ) => ReactNode;
 }
 
-const geometryCatalogCache = new WeakMap<
-  Object3D,
-  RefinedGeometryCatalog
->();
-
 const LoadedRefinedMannequin = ({
+  catalog,
   primitives,
   renderRefined,
   renderProcedural,
-}: Omit<RefinedMannequinProps, "fallback">) => {
-  const { scene } = useGLTF(BUILT_IN_REFINED_MANNEQUIN_URL);
-  const catalog = useMemo(() => {
-    const cached = geometryCatalogCache.get(scene);
-    if (cached) return cached;
-    const created = createRefinedGeometryCatalog(scene);
-    geometryCatalogCache.set(scene, created);
-    return created;
-  }, [scene]);
-
+}: Omit<RefinedMannequinProps, "fallback"> & {
+  readonly catalog: RefinedGeometryCatalog;
+}) => {
   return (
     <>
       {primitives.map((primitive) => {
@@ -85,6 +76,32 @@ interface BoundaryState {
 
 let fallbackDiagnosticEmitted = false;
 
+const emitFallbackDiagnostic = (): void => {
+  if (fallbackDiagnosticEmitted) return;
+  fallbackDiagnosticEmitted = true;
+  console.warn("REFINED_MANNEQUIN_FALLBACK");
+};
+
+const refinedMannequinLoader = new GLTFLoader();
+const refinedMannequinResource = createRefinedMannequinResource({
+  loadAsset: async () => {
+    const manifest = parseBuiltInRefinedMannequinManifest(
+      await sceneClient.getBuiltInRefinedMannequinManifest(),
+    );
+    const bytes = await sceneClient.getBuiltInRefinedMannequinBytes();
+    await validateRefinedMannequinFileBytes(
+      new Uint8Array(bytes),
+      manifest,
+    );
+    const loaded = await refinedMannequinLoader.parseAsync(bytes, "");
+    if (loaded.animations.length !== 0) {
+      throw new Error("REFINED_MANNEQUIN_ASSET_INVALID");
+    }
+    return { scene: loaded.scene, manifest };
+  },
+  onFallback: emitFallbackDiagnostic,
+});
+
 export class RefinedMannequinBoundary extends Component<
   BoundaryProps,
   BoundaryState
@@ -96,9 +113,7 @@ export class RefinedMannequinBoundary extends Component<
   }
 
   public componentDidCatch(_error: Error, _info: ErrorInfo): void {
-    if (fallbackDiagnosticEmitted) return;
-    fallbackDiagnosticEmitted = true;
-    console.warn("REFINED_MANNEQUIN_FALLBACK");
+    emitFallbackDiagnostic();
   }
 
   public render(): ReactNode {
@@ -108,11 +123,24 @@ export class RefinedMannequinBoundary extends Component<
 
 export const RefinedMannequin = (props: RefinedMannequinProps) => {
   const { fallback } = props;
+  const [resource, setResource] = useState(() =>
+    refinedMannequinResource.getSnapshot(),
+  );
+  useEffect(() => {
+    if (resource.status !== "loading") return undefined;
+    let active = true;
+    void refinedMannequinResource.load().then((next) => {
+      if (active) setResource(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [resource.status]);
+
+  if (resource.status !== "ready") return fallback;
   return (
     <RefinedMannequinBoundary fallback={fallback}>
-      <Suspense fallback={fallback}>
-        <LoadedRefinedMannequin {...props} />
-      </Suspense>
+      <LoadedRefinedMannequin {...props} catalog={resource.catalog} />
     </RefinedMannequinBoundary>
   );
 };

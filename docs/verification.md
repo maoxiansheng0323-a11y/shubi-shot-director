@@ -36,6 +36,92 @@ warning codes. Visual taste remains a human approval boundary.
 The v0.7 actor-control and migration gates below remain required historical
 compatibility coverage; their dated results are not v0.8 asset evidence.
 
+### Latest fresh evidence - 2026-08-02
+
+Director doctor reported application 0.8.0, capability contract 2, workspace
+routing 1, and SceneSpec/ScenePatch/IntentReport version 6. It also confirmed
+the required adjustable-actor capability IDs, `structured-only` input,
+`credential-forbidden`, and `loopback-only` policies.
+
+The complete `pnpm verify` gate passed with 82 test files and 1,842 tests,
+followed by schema generation, TypeScript, ESLint, and the production build.
+The public audit scanned 258 files with zero findings and reported only
+Apache-2.0, BSD-3-Clause, ISC, and MIT dependency license names. The build
+retained only the known non-blocking Vite large-chunk advisory.
+
+The built-in manifest is now pinned to compiled source/archive identity, GLB
+SHA-256, byte length, triangle count, material count, ordered nodes, and
+normalized bounds. The browser fetches only the fixed same-origin JSON and GLB
+paths through the reviewed `SceneClient`. Before selecting refined rendering,
+it verifies GLB bytes, parses without animations, rejects transformed nodes,
+skins, cameras, lights, multiple materials, empty or non-finite positions,
+missing indices, topology drift, and bounds drift. Focused asset, renderer, and
+runtime-boundary coverage passed 74 tests.
+
+The generic browser sequence used `scene_starter`. It verified a complete
+Walking pose, Right-arm reach, a custom right-forearm bend, 1.0 m and 2.4 m
+stature boundaries, and a missing right forearm/hand chain. The final revision
+7 restored all twelve limb sections, set stature to 1.72 m, and applied the
+complete fifteen-joint `pose.walking-step-v1` recipe with ground contact.
+
+A fresh forced 404 for the built-in GLB rendered the complete procedural actor
+and emitted exactly one `REFINED_MANNEQUIN_FALLBACK` warning with no page or
+console error. The normal refined asset emitted no warning or error. At
+1440 x 1000, the final Shot Preview WebGL canvas measured 938 x 911 pixels;
+at 800 x 900 it measured 800 x 769 pixels, had no horizontal overflow, and
+kept the preview controls unobstructed. Canvas screenshot statistics were
+nonblank at both breakpoints; the final desktop canvas had entropy
+3.7678942901766277 with nonzero per-channel variance.
+
+Composition inspection at revision 7 passed camera collision at confidence
+0.96. Anchor, framing, caption/UI, occlusion, and topology were correctly
+unchecked because the starter scene declares no matching composition goals;
+the real final-camera image was inspected instead of upgrading those unchecked
+results to `SAFE`.
+
+After the strict manifest and same-origin client changes, connected Shot
+Preview export produced the ignored legacy file
+`.shubi-shot/exports/refined-white-mannequin-v0.8-client-legacy.png` with:
+
+- scene ID `scene_starter`, revision 11;
+- 1920 x 1080 IHDR dimensions and PNG signature `89504e470d0a1a0a`;
+- 187,414 bytes;
+- SHA-256
+  `d77a942b6ffbd85e8e3dd5972482041dc1adf98436b99526c6bb98e434040e15`;
+- only `ACTIVE_CAMERA_UNLOCKED`, expected because the generic camera remained
+  editable.
+
+The generic Blueprint follow-up loaded the saved v6 snapshot and switched only
+the actor variant from `repaired` to `damaged`, advancing revision 8 to 9 while
+preserving workflow locks, the embedded snapshot SHA-256, 1.86 m resolved
+stature, complete Walking pose, and four lower-leg/foot instance overrides.
+The resulting actor kept both legs, removed the complete right-arm chain,
+showed three right-shoulder cylinder terminals, and retained both knee box
+interfaces alongside the refined anatomical sections.
+
+Blueprint composition reported every required check passing with no issues;
+`overallStatus` remained `check` because framing, caption/UI, and occlusion are
+explicitly approximate. Connected Shot Preview export produced
+`.shubi-shot/exports/refined-white-mannequin-v0.8-client-blueprint.png` with:
+
+- scene ID `scene_actor_puppet_blueprint_acceptance`, revision 9;
+- 1920 x 1080 IHDR dimensions and PNG signature `89504e470d0a1a0a`;
+- 209,285 bytes;
+- SHA-256
+  `3d7a712ac0b9ca36f62a75a76f99deff1ef55324421ba12b53e0fa1571f302f3`;
+- no export warnings.
+
+Independent byte and visual inspection matched both returned dimensions and
+SHA-256 values. The refined head, face planes, fingers, toes, segmented body,
+missing arm chain, and procedural Blueprint modules were visibly distinct.
+The in-app Browser controller refused fresh localhost DOM, console, screenshot,
+and viewport reads under its URL security policy, so no post-hardening claim is
+made for those UI-panel checks; the earlier responsive and forced-404 evidence
+above remains separately dated evidence. The two post-hardening PNGs were
+generated only by the connected browser Shot Preview product contract. Visual
+taste and any claim of production-character quality remain a human approval
+boundary.
+
 ## v0.7.0 adjustable actor puppet gates
 
 Run the public-contract and actor-puppet automation before the full repository gate:

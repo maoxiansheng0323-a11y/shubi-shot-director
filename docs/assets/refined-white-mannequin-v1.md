@@ -2,8 +2,9 @@
 
 ## License and source
 
-The bundled GLB is a segmented derivative of Blender Studio's **Human Base
-Meshes v1.4.1**, published as a CC0 asset bundle on the official
+The bundled GLB is a segmented derivative of **Human Base Meshes v1.4.1** by
+Blender Studio and community contributors, published as a CC0 asset bundle on
+the official
 [Blender demo files and asset bundles page](https://www.blender.org/download/demo-files/#assets).
 The derivative is distributed under
 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).

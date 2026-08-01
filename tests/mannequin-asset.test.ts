@@ -2,7 +2,14 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BoxGeometry, Group, Mesh } from "three";
+import {
+  BufferGeometry,
+  BoxGeometry,
+  Float32BufferAttribute,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+} from "three";
 import { describe, expect, it } from "vitest";
 import type {
   ActorRigFrame,
@@ -15,9 +22,11 @@ import {
   REFINED_MANNEQUIN_MAX_BYTES,
   REFINED_SECTION_IDS,
   createRefinedGeometryCatalog,
+  parseBuiltInRefinedMannequinManifest,
   parseRefinedMannequinManifest,
   refinedPrimitiveTransform,
   refinedSectionForPrimitive,
+  validateRefinedMannequinFileBytes,
 } from "../src/three/mannequin-asset";
 
 const identityFrame: ActorRigFrame = {
@@ -70,7 +79,7 @@ const createManifest = () => ({
   assetUrl: "/assets/refined-white-mannequin-v1.glb",
   license: "CC0-1.0",
   source: {
-    publisher: "Blender Studio",
+    publisher: "Blender Studio and community contributors",
     asset: "Human Base Meshes",
     version: "1.4.1",
     sourceUrl: "https://www.blender.org/download/demo-files/#assets",
@@ -92,6 +101,40 @@ const createManifest = () => ({
     },
   })),
 });
+
+const createRuntimeAsset = () => {
+  const root = new Group();
+  const material = new MeshBasicMaterial({ name: "refined_white" });
+  const sources = new Map<string, BoxGeometry>();
+  let triangleCount = 0;
+  for (const sectionId of REFINED_SECTION_IDS) {
+    const geometry = new BoxGeometry(1, 1, 1);
+    triangleCount += (geometry.index?.count ?? 0) / 3;
+    sources.set(sectionId, geometry);
+    const mesh = new Mesh(geometry, material);
+    mesh.name = sectionId;
+    root.add(mesh);
+  }
+  const source = createManifest();
+  const manifest = parseRefinedMannequinManifest({
+    ...source,
+    file: {
+      ...source.file,
+      triangleCount,
+    },
+  });
+  return { root, material, sources, manifest };
+};
+
+const disposeRuntimeAsset = (
+  root: Group,
+  materials: readonly MeshBasicMaterial[],
+) => {
+  root.traverse((object) => {
+    if (object instanceof Mesh) object.geometry.dispose();
+  });
+  for (const material of materials) material.dispose();
+};
 
 describe("built-in refined mannequin asset", () => {
   it("keeps one closed relative URL and sixteen stable section IDs", () => {
@@ -124,6 +167,61 @@ describe("built-in refined mannequin asset", () => {
     expect(parseRefinedMannequinManifest(createManifest())).toEqual(
       createManifest(),
     );
+  });
+
+  it("accepts only the exact committed built-in manifest identity", async () => {
+    const source = JSON.parse(
+      await readFile(
+        path.join(
+          repositoryRoot,
+          "public",
+          "assets",
+          "refined-white-mannequin-v1.json",
+        ),
+        "utf8",
+      ),
+    ) as ReturnType<typeof createManifest>;
+    expect(parseBuiltInRefinedMannequinManifest(source)).toEqual(source);
+
+    for (const changed of [
+      {
+        ...source,
+        file: { ...source.file, sha256: "0".repeat(64) },
+      },
+      {
+        ...source,
+        file: { ...source.file, byteLength: source.file.byteLength + 1 },
+      },
+      {
+        ...source,
+        file: {
+          ...source.file,
+          triangleCount: source.file.triangleCount + 1,
+        },
+      },
+      {
+        ...source,
+        source: { ...source.source, version: "1.4.2" },
+      },
+      {
+        ...source,
+        nodes: source.nodes.map((node, index) =>
+          index === 0
+            ? {
+                ...node,
+                bounds: {
+                  ...node.bounds,
+                  min: [-0.4, -0.5, -0.5],
+                },
+              }
+            : node,
+        ),
+      },
+    ]) {
+      expect(() => parseBuiltInRefinedMannequinManifest(changed)).toThrow(
+        "REFINED_MANNEQUIN_MANIFEST_INVALID",
+      );
+    }
   });
 
   it.each([
@@ -183,6 +281,35 @@ describe("built-in refined mannequin asset", () => {
         parseRefinedMannequinManifest({ ...manifest, nodes }),
       ).toThrow("REFINED_MANNEQUIN_MANIFEST_INVALID");
     }
+  });
+
+  it("validates runtime bytes against the closed manifest length and SHA-256", async () => {
+    const bytes = new Uint8Array([1, 3, 5, 7, 9]);
+    const source = createManifest();
+    const manifest = parseRefinedMannequinManifest({
+      ...source,
+      file: {
+        ...source.file,
+        byteLength: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      },
+    });
+
+    await expect(
+      validateRefinedMannequinFileBytes(bytes, manifest),
+    ).resolves.toBeUndefined();
+    await expect(
+      validateRefinedMannequinFileBytes(bytes.subarray(0, 4), manifest),
+    ).rejects.toThrow("REFINED_MANNEQUIN_ASSET_INVALID");
+    await expect(
+      validateRefinedMannequinFileBytes(
+        bytes,
+        parseRefinedMannequinManifest({
+          ...manifest,
+          file: { ...manifest.file, sha256: "0".repeat(64) },
+        }),
+      ),
+    ).rejects.toThrow("REFINED_MANNEQUIN_ASSET_INVALID");
   });
 
   it("maps only the sixteen supported analytical body primitives", () => {
@@ -304,6 +431,9 @@ describe("built-in refined mannequin asset", () => {
     );
     const gltf = readGlbJson(bytes);
 
+    expect(manifest.source.publisher).toBe(
+      "Blender Studio and community contributors",
+    );
     expect(bytes).toHaveLength(manifest.file.byteLength);
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(
       manifest.file.sha256,
@@ -351,17 +481,9 @@ describe("built-in refined mannequin asset", () => {
   });
 
   it("validates and clones exactly one geometry for every runtime section", () => {
-    const root = new Group();
-    const sources = new Map<string, BoxGeometry>();
-    for (const sectionId of REFINED_SECTION_IDS) {
-      const geometry = new BoxGeometry(1, 1, 1);
-      sources.set(sectionId, geometry);
-      const mesh = new Mesh(geometry);
-      mesh.name = sectionId;
-      root.add(mesh);
-    }
+    const { root, material, sources, manifest } = createRuntimeAsset();
 
-    const catalog = createRefinedGeometryCatalog(root);
+    const catalog = createRefinedGeometryCatalog(root, manifest);
     expect(Object.keys(catalog)).toEqual(REFINED_SECTION_IDS);
     for (const sectionId of REFINED_SECTION_IDS) {
       expect(catalog[sectionId]).not.toBe(sources.get(sectionId));
@@ -369,8 +491,75 @@ describe("built-in refined mannequin asset", () => {
         sources.get(sectionId)?.getAttribute("position").count,
       );
       catalog[sectionId].dispose();
-      sources.get(sectionId)?.dispose();
     }
+    disposeRuntimeAsset(root, [material]);
+  });
+
+  it.each([
+    [
+      "transformed node",
+      ({ root }: ReturnType<typeof createRuntimeAsset>) => {
+        root.children[0].position.x = 0.1;
+      },
+    ],
+    [
+      "multiple materials",
+      ({ root }: ReturnType<typeof createRuntimeAsset>) => {
+        (root.children[0] as Mesh).material = new MeshBasicMaterial();
+      },
+    ],
+    [
+      "empty geometry",
+      ({ root }: ReturnType<typeof createRuntimeAsset>) => {
+        const geometry = new BufferGeometry();
+        geometry.setAttribute(
+          "position",
+          new Float32BufferAttribute([], 3),
+        );
+        (root.children[0] as Mesh).geometry = geometry;
+      },
+    ],
+    [
+      "non-normalized bounds",
+      ({ root }: ReturnType<typeof createRuntimeAsset>) => {
+        (root.children[0] as Mesh).geometry = new BoxGeometry(2, 1, 1);
+      },
+    ],
+  ])("rejects runtime geometry with %s", (_label, mutate) => {
+    const fixture = createRuntimeAsset();
+    mutate(fixture);
+
+    expect(() =>
+      createRefinedGeometryCatalog(fixture.root, fixture.manifest),
+    ).toThrow("REFINED_MANNEQUIN_ASSET_INVALID");
+    const materials = new Set<MeshBasicMaterial>([fixture.material]);
+    fixture.root.traverse((object) => {
+      if (object instanceof Mesh) {
+        const meshMaterials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        for (const material of meshMaterials) {
+          if (material instanceof MeshBasicMaterial) materials.add(material);
+        }
+      }
+    });
+    disposeRuntimeAsset(fixture.root, [...materials]);
+  });
+
+  it("rejects runtime topology that disagrees with the manifest", () => {
+    const fixture = createRuntimeAsset();
+    const manifest = parseRefinedMannequinManifest({
+      ...fixture.manifest,
+      file: {
+        ...fixture.manifest.file,
+        triangleCount: fixture.manifest.file.triangleCount + 1,
+      },
+    });
+
+    expect(() =>
+      createRefinedGeometryCatalog(fixture.root, manifest),
+    ).toThrow("REFINED_MANNEQUIN_ASSET_INVALID");
+    disposeRuntimeAsset(fixture.root, [fixture.material]);
   });
 
   it("rejects missing, duplicate, unexpected, and non-mesh runtime nodes", () => {
@@ -408,8 +597,14 @@ describe("built-in refined mannequin asset", () => {
     nonMesh.add(group);
     invalidRoots.push(nonMesh);
 
+    const validFixture = createRuntimeAsset();
+    const runtimeManifest = validFixture.manifest;
+    disposeRuntimeAsset(validFixture.root, [validFixture.material]);
+
     for (const root of invalidRoots) {
-      expect(() => createRefinedGeometryCatalog(root)).toThrow(
+      expect(() =>
+        createRefinedGeometryCatalog(root, runtimeManifest),
+      ).toThrow(
         "REFINED_MANNEQUIN_ASSET_INVALID",
       );
       root.traverse((object) => {
