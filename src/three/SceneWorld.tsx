@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  BufferGeometry,
   Group,
   PerspectiveCamera as ThreePerspectiveCamera,
 } from "three";
@@ -46,6 +47,10 @@ import {
   type SceneSpec,
   type TransformSpec,
 } from "../domain/scene-schema";
+import {
+  RefinedMannequin,
+  type RefinedPrimitiveRenderDescriptor,
+} from "./RefinedMannequin";
 
 export interface SceneWorldProps {
   scene: SceneSpec;
@@ -143,7 +148,8 @@ const SelectionEdges = ({ selected }: { selected: boolean }) =>
 interface GrayMeshProps {
   color: string;
   selected: boolean;
-  children: ReactNode;
+  children?: ReactNode;
+  geometry?: BufferGeometry;
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number];
@@ -158,6 +164,7 @@ const GrayMesh = ({
   color,
   selected,
   children,
+  geometry,
   position,
   rotation,
   scale,
@@ -169,6 +176,7 @@ const GrayMesh = ({
   const resolvedOpacity = opacity ?? inheritedOpacity;
   return (
     <mesh
+      geometry={geometry}
       position={position}
       rotation={rotation}
       scale={scale}
@@ -576,7 +584,7 @@ const MannequinActor = ({
   selected: boolean;
 }) => {
   const projection = resolveActorProjection(scene, actor);
-  return (
+  const procedural = (
     <>
       {projection.primitives.map((primitive) => (
         <ActorRigPrimitiveMesh
@@ -587,6 +595,41 @@ const MannequinActor = ({
         />
       ))}
     </>
+  );
+  const renderProcedural = (primitive: ActorRigPrimitive) => (
+    <ActorRigPrimitiveMesh
+      key={primitive.id}
+      primitive={primitive}
+      color={actor.color}
+      selected={selected}
+    />
+  );
+  const renderRefined = ({
+    primitive,
+    geometry,
+    transform,
+  }: RefinedPrimitiveRenderDescriptor) => (
+    <group
+      key={primitive.id}
+      position={primitive.frame.position}
+      quaternion={primitive.frame.rotation}
+    >
+      <GrayMesh
+        color={actor.color}
+        selected={selected}
+        geometry={geometry}
+        position={transform.position}
+        scale={transform.scale}
+      />
+    </group>
+  );
+  return (
+    <RefinedMannequin
+      primitives={projection.primitives}
+      fallback={procedural}
+      renderProcedural={renderProcedural}
+      renderRefined={renderRefined}
+    />
   );
 };
 

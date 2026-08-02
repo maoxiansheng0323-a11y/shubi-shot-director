@@ -97,6 +97,14 @@ Portable or native relative `--file` paths are resolved against the directory wh
 - Use the existing Inspector only to read the blueprint summary and select an existing variant. Do not import, author, edit, duplicate, rename, or delete blueprints, modules, proportions, or variants in the UI.
 - Rendering, bounds, contact, composition, and diagnostics must consume the one resolved actor projection. Do not reinterpret blueprint data in any consumer.
 
+## Use the refined white mannequin
+
+- The browser automatically renders legacy and Blueprint actors with the built-in segmented CC0 white mannequin. This is a renderer projection only; never add an asset path, mesh node, material, or renderer option to SceneSpec, ScenePatch, IntentReport, or a Blueprint.
+- The sixteen refined sections follow the existing pelvis, torso, neck, head, arm, hand, leg, and foot primitives. The fifteen canonical joints, resolved stature, limb presence, contact, bounds, composition, save/load, and PNG export contracts remain authoritative.
+- Fingers and toes are visible terminal shape detail but are not independent pose controls. Keep face direction markers, joint indicators, and Blueprint box/sphere/cylinder modules in their existing analytical roles.
+- If the built-in GLB is loading, missing, or invalid, the browser uses the complete procedural mannequin. Treat `REFINED_MANNEQUIN_FALLBACK` as a visual-QA warning, not permission to alter scene data or import another asset.
+- Inspect the real final-camera view before export. Do not claim final-character quality, skinning, facial performance, clothing, hair, arbitrary GLB import, animation, physics, or production asset management.
+
 ## Respect lock provenance
 
 - `lockMode: "none"` means editable graybox work; use it for new and unfinished entities.

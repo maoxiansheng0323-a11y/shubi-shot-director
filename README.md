@@ -8,7 +8,7 @@ Shubi Shot Director is a local, browser-based 3D graybox camera-previsualization
 
 **[Watch the 49-second launch demo](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/shubi-shot-director-launch-demo.mp4)** · [Exported PNG](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/final-perspective.png) · [English subtitles](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.en.srt) · [中文字幕](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.zh-CN.srt)
 
-Current release contract: [v0.7.0 release notes](docs/releases/v0.7.0.md).
+Current release contract: [v0.8.0 release notes](docs/releases/v0.8.0.md).
 
 Shubi Shot Director is open-source graybox camera previs: it turns natural-language shot intent into a structured, editable 3D scene, shows the actual final camera through the real browser Shot Preview, and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
 
@@ -21,6 +21,12 @@ and perspective cameras. The browser provides Overview, focused Local preview,
 and an independent final-camera Shot Preview, and it can export a 16:9 PNG
 reference for blocking, scale, contact, occlusion, camera height, angle, and
 focal length.
+
+Actors render through one built-in refined CC0 white mannequin with shaped
+head, facial planes, hands, fingers, feet, and toes. Its sixteen articulated
+mesh sections follow the same authoritative analytical projection used by
+bounds, contact, composition, persistence, and diagnostics. Loading or
+validation failure deterministically falls back to the procedural mannequin.
 
 The project stops at graybox previs. It does not generate final artwork, author animation, manage production assets, build image prompts, or provide project-specific character systems.
 
@@ -157,7 +163,7 @@ These commands are not a natural-language route and carry no semantic-completene
 
 ## Reusable Actor Blueprints
 
-v0.7 can validate an explicitly supplied external JSON blueprint at the Host boundary:
+The Director can validate an explicitly supplied external JSON blueprint at the Host boundary:
 
 ```powershell
 node scripts/director.mjs blueprint validate --file <actor-blueprint.json>
@@ -165,7 +171,7 @@ node scripts/director.mjs blueprint validate --file <actor-blueprint.json>
 
 The result is a generic summary containing the blueprint ID, version, canonical content SHA-256, module count, and variant count. The source path and raw file never enter SceneSpec, ScenePatch, history, diagnostics, logs, screenshots, or PNG metadata.
 
-A SceneSpec embeds one path-free canonical snapshot and may contain multiple independent actor instances that reference it. Equal SHA-256 content reuses that snapshot. A reused ID with different content is rejected rather than overwritten. Snapshots persist across save/load without the source file, are never automatically garbage-collected, and have no removal operation in v0.7.
+A SceneSpec embeds one path-free canonical snapshot and may contain multiple independent actor instances that reference it. Equal SHA-256 content reuses that snapshot. A reused ID with different content is rejected rather than overwritten. Snapshots persist across save/load without the source file, are never automatically garbage-collected, and have no removal operation.
 
 Blueprint modules are combinations of box, sphere, and cylinder primitives mounted at supported shoulder, elbow, wrist, hip, and knee frames. Effective limb presence layers immutable base state, selected variant deltas, then instance `limbPresenceOverrides`; switching variants preserves manual overrides. The Inspector shows a read-only snapshot summary and selects only existing variants; it is not a blueprint editor.
 
@@ -223,7 +229,8 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Known limits
 
-- Actors are generic graybox rigs or strict reusable blueprints with box/sphere/cylinder modules; arbitrary custom meshes and production character assets remain unsupported.
+- Actors use one built-in segmented CC0 white mannequin or its procedural fallback. Strict reusable blueprints may add only box/sphere/cylinder modules; arbitrary GLB import, custom meshes, clothing, hair, and production character assets remain unsupported.
+- Fingers and toes are visible mesh detail but are not independently articulated. Facial performance, skinning, and animation authoring remain unsupported.
 - Pose and relationship presets materialize transforms and joints; they are not live IK, animation, physics, or collision systems.
 - Ground contact currently supports room floors and horizontal box or plane surfaces.
 - Connected layouts currently support one shared floor elevation. Stairs,
@@ -235,7 +242,7 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Verified platform
 
-The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.7.0 automated verification evidence is recorded in [`docs/releases/v0.7.0.md`](docs/releases/v0.7.0.md). Final v0.7 real-browser and PNG-export acceptance remains a separate release gate; macOS and Linux are not claimed as verified for v0.7.0.
+The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.8.0 verification evidence is recorded in [`docs/releases/v0.8.0.md`](docs/releases/v0.8.0.md). macOS and Linux are not claimed as verified for v0.8.0.
 
 ## Origin & Maintainer
 

@@ -1,6 +1,6 @@
 {
   "name": "shubi-shot-director",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -10,7 +10,9 @@
     "start": "tsx server/index.ts --production",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
-    "test": "vitest run",
+    "test": "pnpm test:parallel && pnpm test:workspace-e2e",
+    "test:parallel": "vitest run --exclude tests/parallel-workspace-e2e.test.ts",
+    "test:workspace-e2e": "vitest run tests/parallel-workspace-e2e.test.ts",
     "test:watch": "vitest",
     "lint": "eslint .",
     "schemas:generate": "tsx scripts/generate-schemas.ts",

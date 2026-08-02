@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "assetId": "refined-white-mannequin-v1",
+  "assetUrl": "/assets/refined-white-mannequin-v1.glb",
+  "license": "CC0-1.0",
+  "source": {
+    "publisher": "Blender Studio and community contributors",
+    "asset": "Human Base Meshes",
+    "version": "1.4.1",
+    "sourceUrl": "https://www.blender.org/download/demo-files/#assets",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "downloadSha256": "811f43accbb31a88266d932f8f5563b2d13586fca0ba2693aad1f5fe582b3515"
+  },
+  "file": {
+    "sha256": "1bd1bf8650a0e2b0d35e8544bca4d21a99069bcf2bd4b26974cf1b5ac1857b94",
+    "byteLength": 603548,
+    "triangleCount": 35904,
+    "materialCount": 1
+  },
+  "nodes": [
+    { "id": "pelvis", "nodeName": "pelvis", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "torso", "nodeName": "torso", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "neck", "nodeName": "neck", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "head", "nodeName": "head", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "upper_arm_l", "nodeName": "upper_arm_l", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "forearm_l", "nodeName": "forearm_l", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "hand_l", "nodeName": "hand_l", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "upper_arm_r", "nodeName": "upper_arm_r", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "forearm_r", "nodeName": "forearm_r", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "hand_r", "nodeName": "hand_r", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "upper_leg_l", "nodeName": "upper_leg_l", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "lower_leg_l", "nodeName": "lower_leg_l", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "foot_l", "nodeName": "foot_l", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "upper_leg_r", "nodeName": "upper_leg_r", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "lower_leg_r", "nodeName": "lower_leg_r", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } },
+    { "id": "foot_r", "nodeName": "foot_r", "bounds": { "min": [-0.5, -0.5, -0.5], "max": [0.5, 0.5, 0.5] } }
+  ]
+}

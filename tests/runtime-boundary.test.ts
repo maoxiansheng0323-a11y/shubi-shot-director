@@ -995,6 +995,36 @@ describe("static Director runtime boundary", () => {
 });
 
 describe("same-origin SceneClient", () => {
+  it("loads the built-in refined mannequin only from its fixed same-origin paths", async () => {
+    const fetchUrls: string[] = [];
+    const fetchImpl: typeof globalThis.fetch = async (input) => {
+      const url = String(input);
+      fetchUrls.push(url);
+      return url.endsWith(".json")
+        ? new Response(JSON.stringify({ marker: "manifest" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        : new Response(new Uint8Array([1, 3, 5, 7]), { status: 200 });
+    };
+    const client = new SceneClient({
+      fetch: fetchImpl,
+      ...({ baseUrl: "https://remote.example.test/escape" } as object),
+    });
+    await expect(
+      client.getBuiltInRefinedMannequinManifest(),
+    ).resolves.toEqual({
+      marker: "manifest",
+    });
+    await expect(client.getBuiltInRefinedMannequinBytes()).resolves.toEqual(
+      new Uint8Array([1, 3, 5, 7]).buffer,
+    );
+    expect(fetchUrls).toEqual([
+      "/assets/refined-white-mannequin-v1.json",
+      "/assets/refined-white-mannequin-v1.glb",
+    ]);
+  });
+
   it("uses exact relative API and event-stream URLs even when an extra baseUrl property is supplied", async () => {
     const scene = createStructuredScene();
     const patch = createStructuredPatch(scene);
