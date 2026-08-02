@@ -170,6 +170,7 @@ describe("public onboarding", () => {
       version?: unknown;
       private?: unknown;
       license?: unknown;
+      scripts?: Record<string, unknown>;
     };
 
     expect(packageJson).toMatchObject({
@@ -177,6 +178,13 @@ describe("public onboarding", () => {
       version: "0.8.0",
       private: true,
       license: "MIT",
+    });
+    expect(packageJson.scripts).toMatchObject({
+      test: "pnpm test:parallel && pnpm test:workspace-e2e",
+      "test:parallel":
+        "vitest run --exclude tests/parallel-workspace-e2e.test.ts",
+      "test:workspace-e2e":
+        "vitest run tests/parallel-workspace-e2e.test.ts",
     });
   });
 
