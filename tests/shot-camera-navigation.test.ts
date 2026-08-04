@@ -91,6 +91,41 @@ describe("shot camera navigation", () => {
     expect(fallbackDistance).toBeGreaterThan(0);
   });
 
+  it("keeps free pan depth independent of framing and keep-visible semantics", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    const actor = scene.entities.find(
+      (entity) => entity.kind === "actor",
+    );
+    if (actor?.kind !== "actor") {
+      throw new Error("Shot camera fixture is missing an actor.");
+    }
+    const baseline = deriveShotPanReferenceDistance(
+      scene,
+      camera,
+      null,
+    );
+
+    scene.compositionGoals = {
+      framing: {
+        mode: "medium",
+        targetEntityIds: [actor.id],
+      },
+    };
+    scene.constraints.push({
+      id: "constraint_visible_actor_1",
+      type: "keep-visible",
+      cameraId: camera.id,
+      subjectEntityId: actor.id,
+      anchor: "face",
+      enabled: true,
+    });
+
+    expect(
+      deriveShotPanReferenceDistance(scene, camera, null),
+    ).toBeCloseTo(baseline, 8);
+  });
+
   it("keeps the legacy pan target overload compatible until the controller migrates", () => {
     const scene = createDefaultScene();
     const camera = activeCameraIn(scene);

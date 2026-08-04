@@ -132,7 +132,7 @@ const visibleEntityCenter = (
 ): Vec3 | null =>
   pointsCenter(visibleEntityPoints(scene, entity));
 
-const visibleSceneBoundsCenter = (scene: SceneSpec): Vec3 | null => {
+const visibleScenePoints = (scene: SceneSpec): Vec3[] => {
   const points = scene.entities.flatMap((entity) =>
     visibleEntityPoints(scene, entity),
   );
@@ -149,8 +149,11 @@ const visibleSceneBoundsCenter = (scene: SceneSpec): Vec3 | null => {
       }
     }
   }
-  return pointsCenter(points);
+  return points;
 };
+
+const visibleSceneBoundsCenter = (scene: SceneSpec): Vec3 | null =>
+  pointsCenter(visibleScenePoints(scene));
 
 const resolveConstraintTarget = (
   scene: SceneSpec,
@@ -362,16 +365,31 @@ export const deriveShotPanReferenceDistance = (
       return Math.max(0.1, explicitDistanceM);
     }
   }
-  const fallbackTarget = deriveAutomaticShotReferenceTarget(
-    scene,
-    camera,
-  ).targetM;
-  const fallbackDistanceM = Math.hypot(
-    ...subtractVectors(camera.transform.positionM, fallbackTarget),
+  const rawForward = rotateVector(
+    [0, 0, -1],
+    camera.transform.rotation,
   );
-  return Number.isFinite(fallbackDistanceM) && fallbackDistanceM > 0
-    ? Math.max(0.1, fallbackDistanceM)
-    : 5;
+  const forwardLength = Math.hypot(...rawForward);
+  if (!Number.isFinite(forwardLength) || forwardLength <= 0) {
+    return 5;
+  }
+  const forward = scaleVector(rawForward, 1 / forwardLength);
+  const positiveDepths = visibleScenePoints(scene)
+    .filter(finiteVector)
+    .map((point) =>
+      dotVectors(
+        subtractVectors(point, camera.transform.positionM),
+        forward,
+      ),
+    )
+    .filter((depth) => Number.isFinite(depth) && depth > 0);
+  if (positiveDepths.length === 0) {
+    return 5;
+  }
+  return Math.max(
+    0.1,
+    (Math.min(...positiveDepths) + Math.max(...positiveDepths)) / 2,
+  );
 };
 
 const deriveAutomaticShotReferenceTarget = (
