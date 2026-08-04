@@ -482,7 +482,6 @@ export const ViewportWorkspace = ({
           <ShotCameraNavigation
             scene={scene}
             disabled={interactionDisabled}
-            onSelectCamera={onSelect}
             onUnlockUserProtectedCamera={onUnlockUserProtectedCamera}
             onDraftChange={handleShotCameraDraftChange}
             onCommitTransform={onCommitCameraTransform}

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultScene } from "../src/domain/default-scene";
-import { actorAnchorWorldPoint } from "../src/domain/actor-projection";
 import { lookAtQuaternion, rotateVector } from "../src/domain/scene-math";
 import type {
   CameraEntity,
@@ -11,7 +10,6 @@ import type {
 import { sceneSpecSchema } from "../src/domain/scene-schema";
 import {
   adjustShotFocalLength,
-  deriveShotOrbitTarget,
   deriveShotPanReferenceDistance,
   moveShotCameraByKey,
   orbitShotCamera,
@@ -211,19 +209,6 @@ describe("shot camera navigation", () => {
     expect(
       deriveShotPanReferenceDistance(scene, camera, null),
     ).toBe(0.1);
-  });
-
-  it("keeps the legacy pan target overload compatible until the controller migrates", () => {
-    const scene = createDefaultScene();
-    const camera = activeCameraIn(scene);
-    const targetM: Vec3 = [0, 1, 0];
-    const distanceM = Math.hypot(
-      ...subtract(camera.transform.positionM, targetM),
-    );
-
-    expect(panShotCamera(camera, targetM, [32, -18], 720)).toEqual(
-      panShotCamera(camera, distanceM, [32, -18], 720),
-    );
   });
 
   it("rotates freely without changing position or scale", () => {
@@ -434,53 +419,4 @@ describe("shot camera navigation", () => {
     expect(adjustShotFocalLength(35, 0, {})).toBe(35);
   });
 
-  it("prefers a framing keep-visible anchor for the orbit target", () => {
-    const scene = createDefaultScene();
-    const camera = activeCameraIn(scene);
-    const actor = scene.entities.find(
-      (entity) => entity.kind === "actor",
-    );
-    if (actor?.kind !== "actor") {
-      throw new Error("Shot camera fixture is missing an actor.");
-    }
-    scene.compositionGoals = {
-      framing: {
-        mode: "full",
-        targetEntityIds: [actor.id],
-      },
-    };
-    scene.constraints.push({
-      id: "constraint_visible_actor_1",
-      type: "keep-visible",
-      cameraId: camera.id,
-      subjectEntityId: actor.id,
-      anchor: "face",
-      enabled: true,
-    });
-
-    expect(deriveShotOrbitTarget(scene, camera)).toEqual({
-      targetM: actorAnchorWorldPoint(actor, "face"),
-      source: "keep-visible-framing",
-    });
-  });
-
-  it("falls back to a finite point on the camera-forward ray", () => {
-    const scene = createDefaultScene();
-    const camera = activeCameraIn(scene);
-    scene.compositionGoals = undefined;
-    scene.constraints = [];
-    scene.entities = scene.entities.map((entity) =>
-      entity.kind === "camera" ? entity : { ...entity, visible: false },
-    );
-
-    const target = deriveShotOrbitTarget(scene, camera);
-    const offset = subtract(target.targetM, camera.transform.positionM);
-    const forward = normalize(
-      rotateVector([0, 0, -1], camera.transform.rotation),
-    );
-
-    expect(target.source).toBe("camera-forward");
-    expect(Math.hypot(...offset)).toBeCloseTo(5, 8);
-    expect(dot(normalize(offset), forward)).toBeCloseTo(1, 8);
-  });
 });

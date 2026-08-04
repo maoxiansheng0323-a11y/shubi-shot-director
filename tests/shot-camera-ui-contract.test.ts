@@ -1,8 +1,27 @@
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { createDefaultScene } from "../src/domain/default-scene";
+import { ShotCameraNavigation } from "../src/editor/ShotCameraNavigation";
 
 const readSource = (relativePath: string): string =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
+
+const renderNavigation = (
+  scene = createDefaultScene(),
+  disabled = false,
+): string =>
+  renderToStaticMarkup(
+    createElement(ShotCameraNavigation, {
+      scene,
+      disabled,
+      onUnlockUserProtectedCamera: () => undefined,
+      onDraftChange: () => undefined,
+      onCommitTransform: async () => undefined,
+      onCommitFocalLength: async () => undefined,
+    }),
+  );
 
 describe("shot camera navigation UI contract", () => {
   it("owns Shot Preview input without a hidden activation mode", () => {
@@ -59,6 +78,131 @@ describe("shot camera navigation UI contract", () => {
     expect(pointerDown).toContain("event.button === 2");
     expect(pointerDown.indexOf("event.preventDefault()"))
       .toBeLessThan(pointerDown.indexOf('camera.lockMode === "user"'));
+  });
+
+  it("renders a controlled explicit target selector that defaults to free rotation", () => {
+    const markup = renderNavigation();
+
+    expect(markup).toContain("Target lock");
+    expect(markup).toContain(
+      'aria-label="Right-drag orbit target"',
+    );
+    expect(markup).toContain("Off (free rotation)");
+    expect(markup).toContain("Generic actor");
+    expect(markup).toContain("Blocking cube");
+
+    const source = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+    expect(source).toContain(
+      "useState<string | null>(null)",
+    );
+    expect(source).toContain("listShotOrbitTargets(scene)");
+    expect(source).toContain('value={targetEntityId ?? ""}');
+  });
+
+  it("builds target options only from the stable visible actor and prop list", () => {
+    const scene = createDefaultScene();
+    const actor = scene.entities.find(
+      (entity) => entity.kind === "actor",
+    );
+    const prop = scene.entities.find(
+      (entity) => entity.kind === "prop",
+    );
+    if (!actor || !prop) throw new Error("Missing target fixtures.");
+    actor.visible = false;
+    scene.entities.push({
+      ...structuredClone(prop),
+      id: "prop_generic_2",
+      label: "Second prop",
+    });
+
+    const markup = renderNavigation(scene);
+
+    expect(markup).not.toContain("Generic actor");
+    expect(markup.indexOf("Blocking cube")).toBeLessThan(
+      markup.indexOf("Second prop"),
+    );
+    expect(markup).not.toContain("Room shell");
+    expect(markup).not.toContain("Shot camera");
+  });
+
+  it("captures target and pan references at pointer-down and does not retarget mid-drag", () => {
+    const source = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+    const pointerDown = source.slice(
+      source.indexOf("const handlePointerDown"),
+      source.indexOf("const handlePointerMove"),
+    );
+    const pointerMove = source.slice(
+      source.indexOf("const handlePointerMove"),
+      source.indexOf("const finishPointerGesture"),
+    );
+
+    expect(pointerDown).toContain("resolveShotOrbitTargetCenter");
+    expect(pointerDown).toContain("deriveShotPanReferenceDistance");
+    expect(pointerDown).toContain("targetEntityId:");
+    expect(pointerDown).toContain("targetM:");
+    expect(pointerDown).toContain("panReferenceDistanceM:");
+    expect(pointerMove).toContain("rotateShotCameraFree");
+    expect(pointerMove).toContain("orbitShotCamera");
+    expect(pointerMove).toContain("gesture.targetEntityId");
+    expect(pointerMove).toContain("gesture.targetM");
+    expect(pointerMove).toContain("gesture.panReferenceDistanceM");
+    expect(pointerMove).not.toContain("resolveShotOrbitTargetCenter");
+    expect(pointerMove).not.toContain("deriveShotPanReferenceDistance");
+  });
+
+  it("reconciles target validity independently from revision draft cancellation", () => {
+    const source = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+
+    expect(source).toContain("reconcileShotOrbitTargetId");
+    expect(source).toContain("previous.sceneId");
+    expect(source).toContain("previous.cameraId");
+    expect(source).toContain("expectedOwnRevisionRef.current === scene.revision");
+    expect(source).toMatch(
+      /reconcileShotOrbitTargetId[\s\S]*expectedOwnRevisionRef\.current === scene\.revision/u,
+    );
+  });
+
+  it("disables target changes during protected, disabled, drag, draft, and pending states", () => {
+    expect(renderNavigation(createDefaultScene(), true)).toMatch(
+      /<select[^>]*aria-label="Right-drag orbit target"[^>]*disabled=""/u,
+    );
+
+    const source = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+    expect(source).toMatch(
+      /const targetSelectorDisabled =[\s\S]{0,220}controlsDisabled[\s\S]{0,220}dragging[\s\S]{0,220}draft/u,
+    );
+    expect(source).toContain("disabled={targetSelectorDisabled}");
+    expect(source).toContain("isEditableTarget(event.target)");
+  });
+
+  it("keeps shot navigation independent from studio selection and automatic targets", () => {
+    const navigation = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
+
+    expect(navigation).not.toContain("onSelectCamera");
+    expect(navigation).not.toContain("deriveShotOrbitTarget");
+    expect(navigation).not.toContain("type ShotOrbitTarget");
+    expect(navigation).not.toContain("orbitTargetRef");
+    expect(workspace).not.toContain("onSelectCamera={onSelect}");
+  });
+
+  it("keeps the target selector in the compact wrapping control band", () => {
+    const styles = readSource("src/styles.css");
+
+    expect(styles).toContain(".shot-camera-target-control");
+    expect(styles).toMatch(
+      /\.shot-camera-controls\s*\{[\s\S]*?flex-wrap:\s*wrap/u,
+    );
   });
 
   it("offers six explicit one-click camera movement controls", () => {

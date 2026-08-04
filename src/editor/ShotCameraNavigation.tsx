@@ -10,16 +10,22 @@ import type {
   CameraEntity,
   SceneSpec,
   TransformSpec,
+  Vec3,
 } from "../domain/scene-schema";
 import {
   adjustShotFocalLength,
-  deriveShotOrbitTarget,
+  deriveShotPanReferenceDistance,
   moveShotCameraByKey,
   orbitShotCamera,
   panShotCamera,
+  rotateShotCameraFree,
   type ShotNavigationKey,
-  type ShotOrbitTarget,
 } from "./shot-camera-navigation";
+import {
+  listShotOrbitTargets,
+  reconcileShotOrbitTargetId,
+  resolveShotOrbitTargetCenter,
+} from "./shot-camera-target-lock";
 import {
   createShotCameraGestureSession,
   decideShotCameraGesture,
@@ -38,7 +44,6 @@ export interface ShotCameraDraft {
 export interface ShotCameraNavigationProps {
   scene: SceneSpec;
   disabled: boolean;
-  onSelectCamera: (cameraId: string) => void;
   onUnlockUserProtectedCamera: () => void | Promise<void>;
   onDraftChange: (draft: ShotCameraDraft | null) => void;
   onCommitTransform: (
@@ -58,6 +63,9 @@ interface PointerGesture {
   startY: number;
   camera: CameraEntity;
   session: ShotCameraGestureSession;
+  targetEntityId: string | null;
+  targetM: Vec3 | null;
+  panReferenceDistanceM: number;
 }
 
 interface TransformGesture {
@@ -121,13 +129,18 @@ const activeCameraFrom = (scene: SceneSpec): CameraEntity | null =>
 export const ShotCameraNavigation = ({
   scene,
   disabled,
-  onSelectCamera,
   onUnlockUserProtectedCamera,
   onDraftChange,
   onCommitTransform,
   onCommitFocalLength,
 }: ShotCameraNavigationProps) => {
   const camera = useMemo(() => activeCameraFrom(scene), [scene]);
+  const targetOptions = useMemo(
+    () => listShotOrbitTargets(scene),
+    [scene],
+  );
+  const [targetEntityId, setTargetEntityId] =
+    useState<string | null>(null);
   const [draft, setDraft] = useState<ShotCameraDraft | null>(null);
   const [dragging, setDragging] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -136,7 +149,6 @@ export const ShotCameraNavigation = ({
   const wheelGestureRef = useRef<FocalGesture | null>(null);
   const heldKeysRef = useRef(new Set<ShotNavigationKey>());
   const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const orbitTargetRef = useRef<ShotOrbitTarget | null>(null);
   const expectedOwnRevisionRef = useRef<number | null>(null);
   const previousSceneRef = useRef({
     sceneId: scene.sceneId,
@@ -275,9 +287,20 @@ export const ShotCameraNavigation = ({
       revision: scene.revision,
       cameraId: scene.activeCameraId,
     };
+    const reconciledTargetEntityId = reconcileShotOrbitTargetId(
+      scene,
+      scene.activeCameraId,
+      {
+        sceneId: previous.sceneId,
+        activeCameraId: previous.cameraId,
+        entityId: targetEntityId,
+      },
+    );
+    if (reconciledTargetEntityId !== targetEntityId) {
+      setTargetEntityId(reconciledTargetEntityId);
+    }
     if (!camera || disabled || camera.lockMode === "user") {
       cancelGestures();
-      orbitTargetRef.current = null;
       return;
     }
     const cameraChanged =
@@ -285,11 +308,6 @@ export const ShotCameraNavigation = ({
       previous.cameraId !== scene.activeCameraId;
     if (cameraChanged) {
       cancelGestures();
-      orbitTargetRef.current = null;
-    }
-    if (!orbitTargetRef.current) {
-      orbitTargetRef.current = deriveShotOrbitTarget(scene, camera);
-      onSelectCamera(camera.id);
       requestAnimationFrame(focusSurface);
       return;
     }
@@ -301,13 +319,12 @@ export const ShotCameraNavigation = ({
       return;
     }
     cancelGestures();
-    orbitTargetRef.current = deriveShotOrbitTarget(scene, camera);
   }, [
     camera,
     cancelGestures,
     disabled,
-    onSelectCamera,
     scene,
+    targetEntityId,
   ]);
 
   useEffect(
@@ -338,9 +355,17 @@ export const ShotCameraNavigation = ({
     }
     event.preventDefault();
     focusSurface();
-    onSelectCamera(camera.id);
     cancelGestures();
     const baseCamera = cloneCamera(camera);
+    const selectedTargetM = targetEntityId
+      ? resolveShotOrbitTargetCenter(scene, targetEntityId)
+      : null;
+    const capturedTargetEntityId = selectedTargetM
+      ? targetEntityId
+      : null;
+    if (targetEntityId && !selectedTargetM) {
+      setTargetEntityId(null);
+    }
     pointerGestureRef.current = {
       pointerId: event.pointerId,
       button: event.button,
@@ -348,6 +373,13 @@ export const ShotCameraNavigation = ({
       startY: event.clientY,
       camera: baseCamera,
       session: createShotCameraGestureSession(scene, camera.id),
+      targetEntityId: capturedTargetEntityId,
+      targetM: selectedTargetM,
+      panReferenceDistanceM: deriveShotPanReferenceDistance(
+        scene,
+        baseCamera,
+        selectedTargetM,
+      ),
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
@@ -357,8 +389,7 @@ export const ShotCameraNavigation = ({
     event: PointerEvent<HTMLDivElement>,
   ): void => {
     const gesture = pointerGestureRef.current;
-    const target = orbitTargetRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId || !target) {
+    if (!gesture || gesture.pointerId !== event.pointerId) {
       return;
     }
     event.preventDefault();
@@ -370,11 +401,13 @@ export const ShotCameraNavigation = ({
       gesture.button === 0
         ? panShotCamera(
             gesture.camera,
-            target.targetM,
+            gesture.panReferenceDistanceM,
             delta,
             event.currentTarget.clientHeight,
           )
-        : orbitShotCamera(gesture.camera, target.targetM, delta);
+        : gesture.targetEntityId && gesture.targetM
+          ? orbitShotCamera(gesture.camera, gesture.targetM, delta)
+          : rotateShotCameraFree(gesture.camera, delta);
     publishDraft({
       cameraId: gesture.camera.id,
       transform,
@@ -538,11 +571,12 @@ export const ShotCameraNavigation = ({
 
   const controlsDisabled =
     disabled || !camera || camera.lockMode === "user";
+  const targetSelectorDisabled =
+    controlsDisabled || dragging || draft !== null;
   const nudgeCamera = (key: ShotNavigationKey): void => {
     if (controlsDisabled || !camera || draft?.pending) {
       return;
     }
-    onSelectCamera(camera.id);
     const baseCamera = cloneCamera(camera);
     void commitTransform({
       camera: baseCamera,
@@ -629,6 +663,25 @@ export const ShotCameraNavigation = ({
         <output className="shot-camera-focal-readout">
           {focalLengthMm.toFixed(1)} mm
         </output>
+        <label className="shot-camera-target-control">
+          <span>Target lock</span>
+          <select
+            aria-label="Right-drag orbit target"
+            data-shot-navigation-exempt
+            value={targetEntityId ?? ""}
+            disabled={targetSelectorDisabled}
+            onChange={(event) =>
+              setTargetEntityId(event.currentTarget.value || null)
+            }
+          >
+            <option value="">Off (free rotation)</option>
+            {targetOptions.map((option) => (
+              <option key={option.entityId} value={option.entityId}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {camera?.lockMode === "user" ? (
           <div className="shot-camera-lock-notice" role="status">
             <span>镜头已被用户保护</span>

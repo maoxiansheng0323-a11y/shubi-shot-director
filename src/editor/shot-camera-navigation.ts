@@ -1,5 +1,4 @@
 import { actorVisibleRigBounds } from "../domain/actor-visible-bounds";
-import { actorAnchorWorldPoint } from "../domain/actor-projection";
 import {
   addVectors,
   lookAtQuaternion,
@@ -8,7 +7,6 @@ import {
 } from "../domain/scene-math";
 import {
   type CameraEntity,
-  type SceneConstraint,
   type SceneEntity,
   type SceneSpec,
   type TransformSpec,
@@ -27,21 +25,6 @@ export interface ShotNavigationModifiers {
   shiftKey?: boolean;
   altKey?: boolean;
 }
-
-export interface ShotOrbitTarget {
-  targetM: Vec3;
-  source:
-    | "keep-visible-framing"
-    | "keep-visible"
-    | "framing"
-    | "visible-bounds"
-    | "camera-forward";
-}
-
-type KeepVisibleConstraint = Extract<
-  SceneConstraint,
-  { type: "keep-visible" }
->;
 
 export const SHOT_KEY_STEP_M = 0.1;
 export const SHOT_KEY_FAST_STEP_M = 0.5;
@@ -76,24 +59,6 @@ const dotVectors = (left: Vec3, right: Vec3): number =>
 const finiteVector = (vector: Vec3): boolean =>
   vector.every(Number.isFinite);
 
-const pointsCenter = (points: readonly Vec3[]): Vec3 | null => {
-  const finitePoints = points.filter(finiteVector);
-  if (finitePoints.length === 0) {
-    return null;
-  }
-  return [
-    (Math.min(...finitePoints.map((point) => point[0])) +
-      Math.max(...finitePoints.map((point) => point[0]))) /
-      2,
-    (Math.min(...finitePoints.map((point) => point[1])) +
-      Math.max(...finitePoints.map((point) => point[1]))) /
-      2,
-    (Math.min(...finitePoints.map((point) => point[2])) +
-      Math.max(...finitePoints.map((point) => point[2]))) /
-      2,
-  ];
-};
-
 const propWorldPoints = (
   entity: Extract<SceneEntity, { kind: "prop" }>,
 ): Vec3[] => {
@@ -126,32 +91,6 @@ const visibleEntityPoints = (
   }
 };
 
-const visibleEntityCenter = (
-  scene: SceneSpec,
-  entity: SceneEntity,
-): Vec3 | null =>
-  pointsCenter(visibleEntityPoints(scene, entity));
-
-const visibleScenePoints = (scene: SceneSpec): Vec3[] => {
-  const points = scene.entities.flatMap((entity) =>
-    visibleEntityPoints(scene, entity),
-  );
-  if (scene.spatialLayout) {
-    for (const region of scene.spatialLayout.regions) {
-      if (!region.visible) {
-        continue;
-      }
-      for (const [x, z] of region.footprintXZ) {
-        points.push(
-          [x, scene.spatialLayout.floorY, z],
-          [x, scene.spatialLayout.floorY + region.heightM, z],
-        );
-      }
-    }
-  }
-  return points;
-};
-
 const forEachVisibleScenePoint = (
   scene: SceneSpec,
   callback: (point: Vec3) => void,
@@ -179,64 +118,22 @@ const forEachVisibleScenePoint = (
   }
 };
 
-const visibleSceneBoundsCenter = (scene: SceneSpec): Vec3 | null =>
-  pointsCenter(visibleScenePoints(scene));
-
-const resolveConstraintTarget = (
-  scene: SceneSpec,
-  constraint: KeepVisibleConstraint,
-): Vec3 | null => {
-  const subject = scene.entities.find(
-    (entity) =>
-      entity.id === constraint.subjectEntityId && entity.visible,
-  );
-  if (!subject) {
-    return null;
-  }
-  const target =
-    subject.kind === "actor"
-      ? actorAnchorWorldPoint(scene, subject, constraint.anchor)
-      : ([...subject.transform.positionM] as Vec3);
-  return finiteVector(target) ? target : null;
-};
-
-export function panShotCamera(
+export const panShotCamera = (
   camera: CameraEntity,
   distanceM: number,
   deltaPx: readonly [number, number],
   viewportHeightPx: number,
-): TransformSpec;
-/** @deprecated Task 2 will migrate the controller to the distance overload. */
-export function panShotCamera(
-  camera: CameraEntity,
-  targetM: Vec3,
-  deltaPx: readonly [number, number],
-  viewportHeightPx: number,
-): TransformSpec;
-export function panShotCamera(
-  camera: CameraEntity,
-  reference: number | Vec3,
-  deltaPx: readonly [number, number],
-  viewportHeightPx: number,
-): TransformSpec {
-  const rawDistanceM =
-    typeof reference === "number"
-      ? reference
-      : Math.hypot(
-          ...camera.transform.positionM.map(
-            (value, axis) => value - reference[axis],
-          ),
-        );
-  const distanceM =
-    Number.isFinite(rawDistanceM) && rawDistanceM > 0
-      ? Math.max(0.1, rawDistanceM)
+): TransformSpec => {
+  const referenceDistanceM =
+    Number.isFinite(distanceM) && distanceM > 0
+      ? Math.max(0.1, distanceM)
       : 0.1;
   const sensorHeightMm = camera.lens.sensorWidthMm * (9 / 16);
   const verticalFov =
     2 *
     Math.atan(sensorHeightMm / (2 * camera.lens.focalLengthMm));
   const metersPerPixel =
-    (2 * distanceM * Math.tan(verticalFov / 2)) /
+    (2 * referenceDistanceM * Math.tan(verticalFov / 2)) /
     Math.max(1, viewportHeightPx);
   const right = rotateVector(
     [1, 0, 0],
@@ -254,7 +151,7 @@ export function panShotCamera(
       translation,
     ),
   };
-}
+};
 
 export const rotateShotCameraFree = (
   camera: CameraEntity,
@@ -425,83 +322,3 @@ export const deriveShotPanReferenceDistance = (
     ? Math.max(0.1, midpointDepth)
     : 5;
 };
-
-const deriveAutomaticShotReferenceTarget = (
-  scene: SceneSpec,
-  camera: CameraEntity,
-): ShotOrbitTarget => {
-  const framingIds =
-    scene.compositionGoals?.framing?.targetEntityIds ?? [];
-  const constraints = scene.constraints.filter(
-    (constraint): constraint is KeepVisibleConstraint =>
-      constraint.type === "keep-visible" &&
-      constraint.enabled &&
-      constraint.cameraId === camera.id,
-  );
-  for (const entityId of framingIds) {
-    const constraint = constraints.find(
-      (candidate) => candidate.subjectEntityId === entityId,
-    );
-    const targetM = constraint
-      ? resolveConstraintTarget(scene, constraint)
-      : null;
-    if (targetM) {
-      return { targetM, source: "keep-visible-framing" };
-    }
-  }
-  for (const constraint of constraints) {
-    const targetM = resolveConstraintTarget(scene, constraint);
-    if (targetM) {
-      return { targetM, source: "keep-visible" };
-    }
-  }
-  for (const entityId of framingIds) {
-    const entity = scene.entities.find(
-      (candidate) =>
-        candidate.id === entityId && candidate.visible,
-    );
-    const targetM = entity ? visibleEntityCenter(scene, entity) : null;
-    if (targetM) {
-      return { targetM, source: "framing" };
-    }
-  }
-  const boundsCenter = visibleSceneBoundsCenter(scene);
-  const forward = rotateVector(
-    [0, 0, -1],
-    camera.transform.rotation,
-  );
-  if (boundsCenter) {
-    const projectedDistance = dotVectors(
-      subtractVectors(
-        boundsCenter,
-        camera.transform.positionM,
-      ),
-      forward,
-    );
-    if (projectedDistance > 0.1) {
-      return {
-        targetM: addVectors(
-          camera.transform.positionM,
-          scaleVector(forward, projectedDistance),
-        ),
-        source: "visible-bounds",
-      };
-    }
-  }
-  return {
-    targetM: addVectors(
-      camera.transform.positionM,
-      scaleVector(forward, 5),
-    ),
-    source: "camera-forward",
-  };
-};
-
-/**
- * @deprecated Compatibility for the current controller only. Task 2 removes
- * automatic right-drag target semantics in favor of explicit UI target state.
- */
-export const deriveShotOrbitTarget = (
-  scene: SceneSpec,
-  camera: CameraEntity,
-): ShotOrbitTarget => deriveAutomaticShotReferenceTarget(scene, camera);
