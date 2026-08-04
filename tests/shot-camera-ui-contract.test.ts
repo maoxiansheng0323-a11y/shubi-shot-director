@@ -199,7 +199,7 @@ describe("shot camera navigation UI contract", () => {
     expect(workspace).not.toContain("onSelectCamera={onSelect}");
   });
 
-  it("keeps the target selector in the compact wrapping control band", () => {
+  it("keeps the target selector in the compact camera control band", () => {
     const workspace = readSource("src/editor/ViewportWorkspace.tsx");
     const styles = readSource("src/styles.css");
 
@@ -219,10 +219,13 @@ describe("shot camera navigation UI contract", () => {
     expect(styles).toMatch(
       /\.shot-camera-(?:move-pad|focal-readout|target-control|lock-notice)[\s\S]*?flex:\s*0\s+0\s+auto/u,
     );
-    expect(workspace).toContain(
-      'max(160px, calc((100vh - 180px) * 16 / 9))',
+    expect(workspace).toContain('alignSelf: "end"');
+    expect(workspace).toContain('justifySelf: "end"');
+    expect(workspace).toContain('width: "min(42%, 560px)"');
+    expect(workspace).toContain('data-shot-preview-expanded');
+    expect(styles).toContain(
+      '.shot-preview-panel[data-shot-preview-expanded="true"]',
     );
-    expect(workspace).not.toContain("max(320px");
     const controlsRule = styles.match(
       /\.shot-camera-controls\s*\{([\s\S]*?)\}/u,
     )?.[1];
@@ -309,6 +312,7 @@ describe("shot camera navigation UI contract", () => {
     expect(workspace).toContain("onCameraDraftChange");
     expect(app).toContain("preserveLock: true");
     expect(app).toContain("cameraDraftActive");
-    expect(app).toMatch(/exportDisabled[\s\S]*cameraDraftActive/u);
+    expect(app).toContain("const hasLocalDraft = cameraDraftActive");
+    expect(app).toMatch(/exportDisabled[\s\S]*hasLocalDraft/u);
   });
 });
