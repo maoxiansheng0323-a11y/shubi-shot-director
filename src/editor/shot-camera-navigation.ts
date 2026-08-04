@@ -152,6 +152,33 @@ const visibleScenePoints = (scene: SceneSpec): Vec3[] => {
   return points;
 };
 
+const forEachVisibleScenePoint = (
+  scene: SceneSpec,
+  callback: (point: Vec3) => void,
+): void => {
+  for (const entity of scene.entities) {
+    for (const point of visibleEntityPoints(scene, entity)) {
+      callback(point);
+    }
+  }
+  if (!scene.spatialLayout) {
+    return;
+  }
+  for (const region of scene.spatialLayout.regions) {
+    if (!region.visible) {
+      continue;
+    }
+    for (const [x, z] of region.footprintXZ) {
+      callback([x, scene.spatialLayout.floorY, z]);
+      callback([
+        x,
+        scene.spatialLayout.floorY + region.heightM,
+        z,
+      ]);
+    }
+  }
+};
+
 const visibleSceneBoundsCenter = (scene: SceneSpec): Vec3 | null =>
   pointsCenter(visibleScenePoints(scene));
 
@@ -374,22 +401,29 @@ export const deriveShotPanReferenceDistance = (
     return 5;
   }
   const forward = scaleVector(rawForward, 1 / forwardLength);
-  const positiveDepths = visibleScenePoints(scene)
-    .filter(finiteVector)
-    .map((point) =>
-      dotVectors(
-        subtractVectors(point, camera.transform.positionM),
-        forward,
-      ),
-    )
-    .filter((depth) => Number.isFinite(depth) && depth > 0);
-  if (positiveDepths.length === 0) {
+  let minDepth = Number.POSITIVE_INFINITY;
+  let maxDepth = Number.NEGATIVE_INFINITY;
+  forEachVisibleScenePoint(scene, (point) => {
+    if (!finiteVector(point)) {
+      return;
+    }
+    const depth = dotVectors(
+      subtractVectors(point, camera.transform.positionM),
+      forward,
+    );
+    if (!Number.isFinite(depth) || depth <= 0) {
+      return;
+    }
+    minDepth = Math.min(minDepth, depth);
+    maxDepth = Math.max(maxDepth, depth);
+  });
+  if (!Number.isFinite(minDepth) || !Number.isFinite(maxDepth)) {
     return 5;
   }
-  return Math.max(
-    0.1,
-    (Math.min(...positiveDepths) + Math.max(...positiveDepths)) / 2,
-  );
+  const midpointDepth = minDepth / 2 + maxDepth / 2;
+  return Number.isFinite(midpointDepth)
+    ? Math.max(0.1, midpointDepth)
+    : 5;
 };
 
 const deriveAutomaticShotReferenceTarget = (

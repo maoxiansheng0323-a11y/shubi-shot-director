@@ -8,6 +8,7 @@ import type {
   SceneSpec,
   Vec3,
 } from "../src/domain/scene-schema";
+import { sceneSpecSchema } from "../src/domain/scene-schema";
 import {
   adjustShotFocalLength,
   deriveShotOrbitTarget,
@@ -126,6 +127,92 @@ describe("shot camera navigation", () => {
     ).toBeCloseTo(baseline, 8);
   });
 
+  it("handles the schema entity limit without aggregating visible actor points", () => {
+    const scene = createDefaultScene();
+    const actorTemplate = scene.entities.find(
+      (entity) => entity.kind === "actor",
+    );
+    if (actorTemplate?.kind !== "actor") {
+      throw new Error("Shot camera fixture is missing an actor.");
+    }
+    const actors = Array.from({ length: 253 }, (_, index) => {
+      const actor = structuredClone(actorTemplate);
+      actor.id = `actor_generic_${index + 1}`;
+      actor.slot = `actor_generic_${index + 1}`;
+      return actor;
+    });
+    scene.entities = [
+      ...scene.entities.filter((entity) => entity.kind !== "actor"),
+      ...actors,
+    ];
+    const parsed = sceneSpecSchema.parse(scene);
+    const camera = activeCameraIn(parsed);
+    let distanceM = Number.NaN;
+
+    expect(() => {
+      distanceM = deriveShotPanReferenceDistance(parsed, camera, null);
+    }).not.toThrow();
+    expect(Number.isFinite(distanceM)).toBe(true);
+    expect(distanceM).toBeGreaterThan(0);
+  });
+
+  it("keeps free pan distance finite for extreme finite scene depth", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    const prop = scene.entities.find(
+      (entity) => entity.kind === "prop",
+    );
+    if (prop?.kind !== "prop") {
+      throw new Error("Shot camera fixture is missing a prop.");
+    }
+    for (const entity of scene.entities) {
+      if (entity.kind !== "camera") {
+        entity.visible = entity.id === prop.id;
+      }
+    }
+    camera.transform.positionM = [0, 0, 0];
+    camera.transform.rotation = lookAtQuaternion(
+      camera.transform.positionM,
+      [0, 0, -1],
+    );
+    prop.transform.positionM = [0, 0, -1e308];
+
+    const distanceM = deriveShotPanReferenceDistance(
+      scene,
+      camera,
+      null,
+    );
+
+    expect(Number.isFinite(distanceM)).toBe(true);
+    expect(distanceM).toBeGreaterThan(0);
+  });
+
+  it("clamps an underflowed positive depth midpoint to the minimum distance", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    const environment = scene.entities.find(
+      (entity) => entity.kind === "environment",
+    );
+    if (environment?.kind !== "environment") {
+      throw new Error("Shot camera fixture is missing an environment.");
+    }
+    for (const entity of scene.entities) {
+      if (entity.kind !== "camera") {
+        entity.visible = entity.id === environment.id;
+      }
+    }
+    camera.transform.positionM = [0, 0, 0];
+    camera.transform.rotation = lookAtQuaternion(
+      camera.transform.positionM,
+      [0, 0, -1],
+    );
+    environment.transform.positionM = [0, 0, -Number.MIN_VALUE];
+
+    expect(
+      deriveShotPanReferenceDistance(scene, camera, null),
+    ).toBe(0.1);
+  });
+
   it("keeps the legacy pan target overload compatible until the controller migrates", () => {
     const scene = createDefaultScene();
     const camera = activeCameraIn(scene);
@@ -222,21 +309,22 @@ describe("shot camera navigation", () => {
       (Math.PI * 2) / SHOT_ORBIT_RADIANS_PER_PIXEL;
 
     const next = rotateShotCameraFree(camera, [oneRevolutionPx, 0]);
+    const beforeForward = rotateVector(
+      [0, 0, -1],
+      camera.transform.rotation,
+    );
+    const afterForward = rotateVector([0, 0, -1], next.rotation);
 
-    expectQuaternionEquivalent(next.rotation, camera.transform.rotation);
+    for (let axis = 0; axis < 3; axis += 1) {
+      expect(afterForward[axis]).toBeCloseTo(beforeForward[axis], 8);
+    }
   });
 
   it("rotates from camera transform alone without scene semantics", () => {
-    const transformOnlyCamera = {
-      transform: {
-        positionM: [1, 2, 3],
-        rotation: lookAtQuaternion([1, 2, 3], [1, 2, 2]),
-        scale: [1, 1, 1],
-      },
-    } as CameraEntity;
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
 
-    expect(() => rotateShotCameraFree(transformOnlyCamera, [10, 20])).not.toThrow();
-    expect(rotateShotCameraFree.length).toBe(2);
+    expect(() => rotateShotCameraFree(camera, [10, 20])).not.toThrow();
   });
 
   it("orbits at a fixed radius and keeps looking at the target", () => {

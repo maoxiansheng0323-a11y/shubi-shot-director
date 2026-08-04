@@ -105,6 +105,21 @@ describe("shot camera explicit target lock", () => {
     expectVectorClose(center!, midpoint(minimum, maximum));
   });
 
+  it("keeps an extreme finite prop target center finite", () => {
+    const scene = createDefaultScene();
+    const prop = scene.entities.find((entity) => entity.kind === "prop");
+    if (prop?.kind !== "prop") {
+      throw new Error("Missing generic prop fixture.");
+    }
+    prop.transform.positionM = [1e308, -1e308, 1e308];
+
+    const center = resolveShotOrbitTargetCenter(scene, prop.id);
+
+    expect(center).not.toBeNull();
+    expect(center?.every(Number.isFinite)).toBe(true);
+    expect(center).toEqual(prop.transform.positionM);
+  });
+
   it("rejects hidden, removed, unsupported, and non-finite targets", () => {
     const hiddenScene = createDefaultScene();
     const hiddenActor = hiddenScene.entities.find(

@@ -19,9 +19,9 @@ const boundsCenter = (minimum: Vec3, maximum: Vec3): Vec3 | null => {
     return null;
   }
   const center: Vec3 = [
-    (minimum[0] + maximum[0]) / 2,
-    (minimum[1] + maximum[1]) / 2,
-    (minimum[2] + maximum[2]) / 2,
+    minimum[0] / 2 + maximum[0] / 2,
+    minimum[1] / 2 + maximum[1] / 2,
+    minimum[2] / 2 + maximum[2] / 2,
   ];
   return finiteVector(center) ? center : null;
 };
