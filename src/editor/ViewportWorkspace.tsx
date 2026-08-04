@@ -107,7 +107,7 @@ const shotFrameStyle: CSSProperties = {
   justifySelf: "center",
   width: "100%",
   maxWidth:
-    "min(1120px, max(320px, calc((100vh - 180px) * 16 / 9)))",
+    "min(1120px, max(160px, calc((100vh - 180px) * 16 / 9)))",
   height: "auto",
   maxHeight: "100%",
 };

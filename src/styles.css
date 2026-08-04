@@ -531,9 +531,18 @@ button {
   align-items: end;
   align-self: start;
   box-sizing: border-box;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
   pointer-events: none;
+}
+
+.shot-camera-move-pad,
+.shot-camera-focal-readout,
+.shot-camera-target-control,
+.shot-camera-lock-notice {
+  flex: 0 0 auto;
 }
 
 .shot-camera-move-pad {
@@ -615,8 +624,7 @@ button {
 .shot-camera-surface {
   position: absolute;
   z-index: 3;
-  grid-column: 1;
-  grid-row: 1;
+  grid-area: 1 / 1 / 2 / 2;
   inset: 0;
   outline: none;
   cursor: grab;
@@ -1517,10 +1525,6 @@ button {
     font-size: 11px;
   }
 
-  .shot-camera-target-control {
-    flex: 1 1 172px;
-    max-width: 220px;
-  }
 }
 
 @media (max-width: 680px) {

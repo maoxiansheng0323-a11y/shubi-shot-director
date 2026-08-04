@@ -1,8 +1,7 @@
-import { createElement, type ComponentProps } from "react";
+import { createElement } from "react";
 import {
   act,
   create,
-  type ReactTestInstance,
   type ReactTestRenderer,
   type ReactTestRendererJSON,
   type ReactTestRendererNode,
@@ -33,11 +32,7 @@ vi.mock("@react-three/drei", async (importOriginal) => {
 });
 
 import { createDefaultScene } from "../src/domain/default-scene";
-import type {
-  CameraEntity,
-  SceneSpec,
-  TransformSpec,
-} from "../src/domain/scene-schema";
+import type { SceneSpec } from "../src/domain/scene-schema";
 import {
   deriveShotPanReferenceDistance,
   orbitShotCamera,
@@ -45,242 +40,38 @@ import {
   rotateShotCameraFree,
 } from "../src/editor/shot-camera-navigation";
 import { resolveShotOrbitTargetCenter } from "../src/editor/shot-camera-target-lock";
-import {
-  ShotCameraNavigation,
-  type ShotCameraDraft,
-} from "../src/editor/ShotCameraNavigation";
 import { ViewportWorkspace } from "../src/editor/ViewportWorkspace";
+import {
+  MockHtmlElement,
+  MockOwnerDocument,
+  MockSurface,
+  activeCameraIn,
+  chooseTarget,
+  cleanupNavigationHarnesses,
+  createNavigationHarness,
+  drag,
+  expectTransformEqual,
+  finishDrag,
+  installNavigationTestEnvironment,
+  latestDraft,
+  pointerEvent,
+  surfaceIn,
+  unmountNavigationHarness,
+} from "./helpers/shot-camera-navigation-harness";
 
-(globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT: boolean;
-}).IS_REACT_ACT_ENVIRONMENT = true;
-
-class MockHtmlElement {
-  readonly isContentEditable = false;
-
-  constructor(readonly tagName: string) {}
-
-  closest(): MockHtmlElement | null {
-    return ["input", "textarea", "select"].includes(
-      this.tagName.toLowerCase(),
-    )
-      ? this
-      : null;
-  }
-}
-
-class MockOwnerDocument {
-  readonly listeners = new Map<string, Set<(event: unknown) => void>>();
-
-  addEventListener = (
-    type: string,
-    listener: (event: unknown) => void,
-  ): void => {
-    const listeners = this.listeners.get(type) ?? new Set();
-    listeners.add(listener);
-    this.listeners.set(type, listeners);
-  };
-
-  removeEventListener = (
-    type: string,
-    listener: (event: unknown) => void,
-  ): void => {
-    this.listeners.get(type)?.delete(listener);
-  };
-
-  dispatch(type: string, event: unknown): void {
-    for (const listener of this.listeners.get(type) ?? []) {
-      listener(event);
-    }
-  }
-}
-
-class MockSurface extends MockHtmlElement {
-  readonly ownerDocument: MockOwnerDocument;
-  readonly clientHeight = 720;
-  readonly capturedPointers = new Set<number>();
-  readonly focus = vi.fn();
-  readonly setPointerCapture = vi.fn((pointerId: number) => {
-    this.capturedPointers.add(pointerId);
-  });
-  readonly releasePointerCapture = vi.fn((pointerId: number) => {
-    this.capturedPointers.delete(pointerId);
-  });
-  readonly hasPointerCapture = vi.fn((pointerId: number) =>
-    this.capturedPointers.has(pointerId),
-  );
-  readonly listeners = new Map<string, Set<(event: unknown) => void>>();
-
-  constructor(ownerDocument: MockOwnerDocument) {
-    super("div");
-    this.ownerDocument = ownerDocument;
-  }
-
-  addEventListener = (
-    type: string,
-    listener: (event: unknown) => void,
-  ): void => {
-    const listeners = this.listeners.get(type) ?? new Set();
-    listeners.add(listener);
-    this.listeners.set(type, listeners);
-  };
-
-  removeEventListener = (
-    type: string,
-    listener: (event: unknown) => void,
-  ): void => {
-    this.listeners.get(type)?.delete(listener);
-  };
-}
-
-type NavigationProps = ComponentProps<typeof ShotCameraNavigation>;
-
-interface Harness {
-  renderer: ReactTestRenderer;
-  ownerDocument: MockOwnerDocument;
-  surface: MockSurface;
-  callbacks: {
-    onDraftChange: ReturnType<typeof vi.fn>;
-    onCommitTransform: ReturnType<typeof vi.fn>;
-  };
-  update: (scene: SceneSpec, props?: Partial<NavigationProps>) => void;
-}
-
-const mountedRenderers = new Set<ReactTestRenderer>();
+let restoreEnvironment: () => void;
 
 beforeAll(() => {
-  vi.stubGlobal("HTMLElement", MockHtmlElement);
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-    callback(0);
-    return 1;
-  });
-  vi.stubGlobal("cancelAnimationFrame", () => undefined);
+  restoreEnvironment = installNavigationTestEnvironment();
 });
 
 afterEach(() => {
-  for (const renderer of mountedRenderers) {
-    act(() => renderer.unmount());
-  }
-  mountedRenderers.clear();
+  cleanupNavigationHarnesses();
 });
 
 afterAll(() => {
-  vi.unstubAllGlobals();
+  restoreEnvironment();
 });
-
-const activeCameraIn = (scene: SceneSpec): CameraEntity => {
-  const camera = scene.entities.find(
-    (entity): entity is CameraEntity =>
-      entity.kind === "camera" && entity.id === scene.activeCameraId,
-  );
-  if (!camera) throw new Error("Missing active camera fixture.");
-  return camera;
-};
-
-const createHarness = (
-  scene: SceneSpec = createDefaultScene() as SceneSpec,
-  props: Partial<NavigationProps> = {},
-): Harness => {
-  const ownerDocument = new MockOwnerDocument();
-  const surface = new MockSurface(ownerDocument);
-  const onDraftChange = vi.fn();
-  const onCommitTransform = vi.fn(async () => undefined);
-  let currentProps: NavigationProps = {
-    scene,
-    disabled: false,
-    onUnlockUserProtectedCamera: () => undefined,
-    onDraftChange,
-    onCommitTransform,
-    onCommitFocalLength: async () => undefined,
-    ...props,
-  };
-  const render = () => createElement(ShotCameraNavigation, currentProps);
-  const originalConsoleError = console.error;
-  const errorSpy = vi.spyOn(console, "error").mockImplementation((...args) => {
-    if (String(args[0]).includes("react-test-renderer is deprecated")) return;
-    originalConsoleError(...args);
-  });
-  let renderer: ReactTestRenderer | undefined;
-  try {
-    act(() => {
-      renderer = create(render(), {
-        createNodeMock: (element) =>
-          (element.props as { className?: string }).className?.includes(
-            "shot-camera-surface",
-          )
-            ? surface
-            : new MockHtmlElement(String(element.type)),
-      });
-    });
-  } finally {
-    errorSpy.mockRestore();
-  }
-  if (!renderer) throw new Error("Navigation renderer was not created.");
-  mountedRenderers.add(renderer);
-  return {
-    renderer,
-    ownerDocument,
-    surface,
-    callbacks: { onDraftChange, onCommitTransform },
-    update: (nextScene, nextProps = {}) => {
-      currentProps = {
-        ...currentProps,
-        ...nextProps,
-        scene: nextScene,
-      };
-      act(() => renderer?.update(render()));
-    },
-  };
-};
-
-const selectIn = (renderer: ReactTestRenderer): ReactTestInstance =>
-  renderer.root.findByProps({
-    "aria-label": "Right-drag orbit target",
-  });
-
-const surfaceIn = (renderer: ReactTestRenderer): ReactTestInstance =>
-  renderer.root.find(
-    (node) =>
-      node.type === "div" &&
-      String(node.props.className).includes("shot-camera-surface"),
-  );
-
-const pointerEvent = (
-  surface: MockSurface,
-  overrides: Partial<{
-    button: number;
-    pointerId: number;
-    clientX: number;
-    clientY: number;
-  }> = {},
-) => ({
-  button: 2,
-  pointerId: 7,
-  clientX: 100,
-  clientY: 100,
-  target: surface,
-  currentTarget: surface,
-  preventDefault: vi.fn(),
-  ...overrides,
-});
-
-const latestDraft = (
-  callback: ReturnType<typeof vi.fn>,
-): ShotCameraDraft | null | undefined =>
-  callback.mock.calls.at(-1)?.[0] as ShotCameraDraft | null | undefined;
-
-const expectTransformEqual = (
-  actual: TransformSpec,
-  expected: TransformSpec,
-): void => {
-  expect(actual.positionM).toEqual(expected.positionM);
-  expect(actual.scale).toEqual(expected.scale);
-  const dot = actual.rotation.reduce(
-    (sum, value, index) => sum + value * expected.rotation[index],
-    0,
-  );
-  expect(Math.abs(dot)).toBeCloseTo(1, 8);
-};
 
 const findJsonByClassName = (
   node: ReactTestRendererNode | ReactTestRendererNode[] | null,
@@ -298,50 +89,10 @@ const findJsonByClassName = (
   return findJsonByClassName(node.children, className);
 };
 
-const chooseTarget = (
-  renderer: ReactTestRenderer,
-  entityId: string,
-): void => {
-  act(() => {
-    selectIn(renderer).props.onChange({ currentTarget: { value: entityId } });
-  });
-};
-
-const drag = (
-  harness: Harness,
-  button: 0 | 2,
-  delta: readonly [number, number],
-): void => {
-  const surface = surfaceIn(harness.renderer);
-  act(() => {
-    surface.props.onPointerDown(
-      pointerEvent(harness.surface, { button }),
-    );
-  });
-  act(() => {
-    surfaceIn(harness.renderer).props.onPointerMove(
-      pointerEvent(harness.surface, {
-        button,
-        clientX: 100 + delta[0],
-        clientY: 100 + delta[1],
-      }),
-    );
-  });
-};
-
-const finishDrag = async (harness: Harness): Promise<void> => {
-  await act(async () => {
-    surfaceIn(harness.renderer).props.onPointerUp(
-      pointerEvent(harness.surface),
-    );
-    await Promise.resolve();
-  });
-};
-
-describe("ShotCameraNavigation mounted interaction", () => {
+describe("ShotCameraNavigation routing and layout", () => {
   it("routes free right-drag to free rotation and commits one patch", async () => {
     const scene = createDefaultScene();
-    const harness = createHarness(scene);
+    const harness = createNavigationHarness(scene);
     const camera = activeCameraIn(scene);
     const delta = [80, -25] as const;
 
@@ -361,13 +112,16 @@ describe("ShotCameraNavigation mounted interaction", () => {
 
   it("captures an explicit actor center and ignores selector changes mid-drag", async () => {
     const scene = createDefaultScene();
-    const harness = createHarness(scene);
+    const harness = createNavigationHarness(scene);
     const camera = activeCameraIn(scene);
     const actorId = "actor_generic_1";
     const center = resolveShotOrbitTargetCenter(scene, actorId);
     if (!center) throw new Error("Missing actor target center.");
     chooseTarget(harness.renderer, actorId);
-    const staleSelectHandler = selectIn(harness.renderer).props.onChange;
+    const select = harness.renderer.root.findByProps({
+      "aria-label": "Right-drag orbit target",
+    });
+    const staleSelectHandler = select.props.onChange;
     const surface = surfaceIn(harness.renderer);
 
     act(() => {
@@ -395,7 +149,7 @@ describe("ShotCameraNavigation mounted interaction", () => {
 
   it("routes left-drag through a captured scalar pan distance", () => {
     const scene = createDefaultScene();
-    const harness = createHarness(scene);
+    const harness = createNavigationHarness(scene);
     const camera = activeCameraIn(scene);
     const actorId = "actor_generic_1";
     const center = resolveShotOrbitTargetCenter(scene, actorId);
@@ -418,182 +172,8 @@ describe("ShotCameraNavigation mounted interaction", () => {
     );
   });
 
-  it.each(["scene", "camera"] as const)(
-    "resets the selected target when the %s context changes",
-    (context) => {
-      const scene = createDefaultScene();
-      const harness = createHarness(scene);
-      chooseTarget(harness.renderer, "actor_generic_1");
-      const next = structuredClone(scene) as SceneSpec;
-      if (context === "scene") {
-        next.sceneId = "scene_replacement";
-      } else {
-        const camera = structuredClone(activeCameraIn(next));
-        camera.id = "camera_shot_2";
-        next.entities.push(camera);
-        next.activeCameraId = camera.id;
-      }
-
-      harness.update(next);
-
-      expect(selectIn(harness.renderer).props.value).toBe("");
-    },
-  );
-
-  it.each(["hidden", "removed", "invalid"] as const)(
-    "resets a %s target after an authoritative rerender",
-    (mode) => {
-      const scene = createDefaultScene();
-      const harness = createHarness(scene);
-      chooseTarget(harness.renderer, "actor_generic_1");
-      const next = structuredClone(scene) as SceneSpec;
-      next.revision += 1;
-      const actorIndex = next.entities.findIndex(
-        (entity) => entity.id === "actor_generic_1",
-      );
-      if (mode === "removed") {
-        next.entities.splice(actorIndex, 1);
-      } else if (mode === "hidden") {
-        next.entities[actorIndex].visible = false;
-      } else {
-        next.entities[actorIndex].transform.positionM[0] = Number.NaN;
-      }
-
-      harness.update(next);
-
-      expect(selectIn(harness.renderer).props.value).toBe("");
-    },
-  );
-
-  it("preserves a valid target across own accepted and unrelated revisions", async () => {
-    const scene = createDefaultScene();
-    const accepted = structuredClone(scene) as SceneSpec;
-    accepted.revision += 1;
-    const onCommitTransform = vi.fn(async () => accepted);
-    const harness = createHarness(scene, { onCommitTransform });
-    chooseTarget(harness.renderer, "actor_generic_1");
-    drag(harness, 2, [24, 8]);
-    await finishDrag(harness);
-
-    harness.update(accepted);
-    expect(selectIn(harness.renderer).props.value).toBe("actor_generic_1");
-
-    const unrelated = structuredClone(accepted) as SceneSpec;
-    unrelated.revision += 1;
-    harness.update(unrelated);
-    expect(selectIn(harness.renderer).props.value).toBe("actor_generic_1");
-  });
-
-  it("cancels an external-revision draft without retrying and retains a valid target", () => {
-    const scene = createDefaultScene();
-    const harness = createHarness(scene);
-    chooseTarget(harness.renderer, "actor_generic_1");
-    drag(harness, 2, [35, -12]);
-    const external = structuredClone(scene) as SceneSpec;
-    external.revision += 1;
-
-    harness.update(external);
-
-    expect(latestDraft(harness.callbacks.onDraftChange)).toBeNull();
-    expect(selectIn(harness.renderer).props.value).toBe("actor_generic_1");
-    act(() => {
-      surfaceIn(harness.renderer).props.onPointerUp(
-        pointerEvent(harness.surface),
-      );
-    });
-    expect(harness.callbacks.onCommitTransform).not.toHaveBeenCalled();
-  });
-
-  it("resets an invalid target even on the controller's own accepted revision", async () => {
-    const scene = createDefaultScene();
-    const accepted = structuredClone(scene) as SceneSpec;
-    accepted.revision += 1;
-    const actor = accepted.entities.find(
-      (entity) => entity.id === "actor_generic_1",
-    );
-    if (!actor) throw new Error("Missing actor fixture.");
-    actor.visible = false;
-    const harness = createHarness(scene, {
-      onCommitTransform: vi.fn(async () => accepted),
-    });
-    chooseTarget(harness.renderer, actor.id);
-    drag(harness, 2, [22, 5]);
-    await finishDrag(harness);
-
-    harness.update(accepted);
-
-    expect(selectIn(harness.renderer).props.value).toBe("");
-  });
-
-  it("disables the selector for disabled, protected, dragging, draft, and pending states", async () => {
-    const scene = createDefaultScene();
-    const disabledHarness = createHarness(scene, { disabled: true });
-    expect(selectIn(disabledHarness.renderer).props.disabled).toBe(true);
-
-    const protectedScene = structuredClone(scene) as SceneSpec;
-    activeCameraIn(protectedScene).lockMode = "user";
-    const protectedHarness = createHarness(protectedScene);
-    expect(selectIn(protectedHarness.renderer).props.disabled).toBe(true);
-
-    const keyDraftHarness = createHarness(scene);
-    act(() => {
-      keyDraftHarness.ownerDocument.dispatch("keydown", {
-        key: "ArrowUp",
-        target: keyDraftHarness.surface,
-        preventDefault: vi.fn(),
-      });
-    });
-    expect(selectIn(keyDraftHarness.renderer).props.disabled).toBe(true);
-    await act(async () => {
-      keyDraftHarness.ownerDocument.dispatch("keyup", {
-        key: "ArrowUp",
-        target: keyDraftHarness.surface,
-        preventDefault: vi.fn(),
-      });
-      await Promise.resolve();
-    });
-
-    let resolveCommit: ((value: SceneSpec | void) => void) | undefined;
-    const commitPromise = new Promise<SceneSpec | void>((resolve) => {
-      resolveCommit = resolve;
-    });
-    const onCommitTransform = vi.fn(() => commitPromise);
-    const harness = createHarness(scene, { onCommitTransform });
-    const surface = surfaceIn(harness.renderer);
-    act(() => {
-      surface.props.onPointerDown(pointerEvent(harness.surface));
-    });
-    expect(selectIn(harness.renderer).props.disabled).toBe(true);
-    act(() => {
-      surfaceIn(harness.renderer).props.onPointerMove(
-        pointerEvent(harness.surface, { clientX: 140 }),
-      );
-    });
-    expect(selectIn(harness.renderer).props.disabled).toBe(true);
-    act(() => {
-      surfaceIn(harness.renderer).props.onPointerUp(
-        pointerEvent(harness.surface),
-      );
-    });
-    expect(selectIn(harness.renderer).props.disabled).toBe(true);
-    const captureCount = harness.surface.setPointerCapture.mock.calls.length;
-
-    act(() => {
-      surfaceIn(harness.renderer).props.onPointerDown(
-        pointerEvent(harness.surface, { pointerId: 9 }),
-      );
-    });
-    expect(harness.surface.setPointerCapture).toHaveBeenCalledTimes(captureCount);
-
-    await act(async () => {
-      resolveCommit?.(undefined);
-      await commitPromise;
-      await Promise.resolve();
-    });
-  });
-
   it("leaves Arrow and Page keys native for select/input targets", () => {
-    const harness = createHarness();
+    const harness = createNavigationHarness();
     for (const [tagName, key] of [
       ["select", "ArrowDown"],
       ["input", "PageUp"],
@@ -612,7 +192,7 @@ describe("ShotCameraNavigation mounted interaction", () => {
   });
 
   it("keeps ordinary surface keyboard movement and cleans document listeners", async () => {
-    const harness = createHarness();
+    const harness = createNavigationHarness();
     const down = {
       key: "ArrowUp",
       target: harness.surface,
@@ -631,15 +211,14 @@ describe("ShotCameraNavigation mounted interaction", () => {
     expect(harness.callbacks.onCommitTransform).toHaveBeenCalledOnce();
     expect(harness.ownerDocument.listeners.get("keydown")?.size).toBe(1);
     expect(harness.surface.listeners.get("wheel")?.size).toBe(1);
-    act(() => harness.renderer.unmount());
-    mountedRenderers.delete(harness.renderer);
+    unmountNavigationHarness(harness);
     expect(harness.ownerDocument.listeners.get("keydown")?.size).toBe(0);
     expect(harness.ownerDocument.listeners.get("keyup")?.size).toBe(0);
     expect(harness.surface.listeners.get("wheel")?.size).toBe(0);
   });
 
   it("does not commit a no-op pointer gesture", () => {
-    const harness = createHarness();
+    const harness = createNavigationHarness();
     const surface = surfaceIn(harness.renderer);
     act(() => {
       surface.props.onPointerDown(pointerEvent(harness.surface));
@@ -707,7 +286,6 @@ describe("ShotCameraNavigation mounted interaction", () => {
       warnSpy.mockRestore();
     }
     if (!renderer) throw new Error("Viewport renderer was not created.");
-    mountedRenderers.add(renderer);
     const panel = findJsonByClassName(
       renderer.toJSON(),
       "shot-preview-panel",
@@ -728,5 +306,6 @@ describe("ShotCameraNavigation mounted interaction", () => {
     expect(
       findJsonByClassName(image ?? null, "shot-camera-controls"),
     ).toBeNull();
+    act(() => renderer?.unmount());
   });
 });

@@ -168,7 +168,7 @@ describe("shot camera navigation UI contract", () => {
     );
   });
 
-  it("disables target changes during protected, disabled, drag, draft, and pending states", () => {
+  it("disables target changes while any navigation input owns the session", () => {
     expect(renderNavigation(createDefaultScene(), true)).toMatch(
       /<select[^>]*aria-label="Right-drag orbit target"[^>]*disabled=""/u,
     );
@@ -176,8 +176,11 @@ describe("shot camera navigation UI contract", () => {
     const source = readSource(
       "src/editor/ShotCameraNavigation.tsx",
     );
+    expect(source).toContain(
+      'const navigationInputBusy = inputOwnerRef.current !== "idle"',
+    );
     expect(source).toMatch(
-      /const targetSelectorDisabled =[\s\S]{0,220}controlsDisabled[\s\S]{0,220}dragging[\s\S]{0,220}draft/u,
+      /const targetSelectorDisabled =[\s\S]{0,160}controlsDisabled \|\| navigationInputBusy/u,
     );
     expect(source).toContain("disabled={targetSelectorDisabled}");
     expect(source).toContain("isEditableTarget(event.target)");
@@ -197,11 +200,12 @@ describe("shot camera navigation UI contract", () => {
   });
 
   it("keeps the target selector in the compact wrapping control band", () => {
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
     const styles = readSource("src/styles.css");
 
     expect(styles).toContain(".shot-camera-target-control");
     expect(styles).toMatch(
-      /\.shot-camera-controls\s*\{[\s\S]*?flex-wrap:\s*wrap/u,
+      /\.shot-camera-controls\s*\{[\s\S]*?flex-wrap:\s*nowrap[\s\S]*?overflow-x:\s*auto[\s\S]*?overflow-y:\s*hidden/u,
     );
     expect(styles).toMatch(
       /\.shot-preview-image\s*\{[\s\S]*?position:\s*relative[\s\S]*?aspect-ratio:\s*16\s*\/\s*9/u,
@@ -210,8 +214,15 @@ describe("shot camera navigation UI contract", () => {
       /\.shot-camera-controls\s*\{[\s\S]*?position:\s*static[\s\S]*?grid-row:\s*2/u,
     );
     expect(styles).toMatch(
-      /\.shot-camera-surface\s*\{[\s\S]*?grid-row:\s*1/u,
+      /\.shot-camera-surface\s*\{[\s\S]*?grid-area:\s*1\s*\/\s*1\s*\/\s*2\s*\/\s*2/u,
     );
+    expect(styles).toMatch(
+      /\.shot-camera-(?:move-pad|focal-readout|target-control|lock-notice)[\s\S]*?flex:\s*0\s+0\s+auto/u,
+    );
+    expect(workspace).toContain(
+      'max(160px, calc((100vh - 180px) * 16 / 9))',
+    );
+    expect(workspace).not.toContain("max(320px");
     const controlsRule = styles.match(
       /\.shot-camera-controls\s*\{([\s\S]*?)\}/u,
     )?.[1];
@@ -235,7 +246,9 @@ describe("shot camera navigation UI contract", () => {
     }
     expect(source).toContain("moveShotCameraByKey(baseCamera, key, {})");
     expect(source).toContain("createShotCameraGestureSession(scene, camera.id)");
-    expect(source).toContain("disabled={controlsDisabled || draft?.pending}");
+    expect(source).toContain(
+      "disabled={controlsDisabled || navigationInputBusy}",
+    );
   });
 
   it("offers an in-preview unlock action when the camera is user protected", () => {
