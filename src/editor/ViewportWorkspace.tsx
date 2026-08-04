@@ -9,8 +9,6 @@ import {
 import { Canvas } from "@react-three/fiber";
 import {
   Grid,
-  OrbitControls,
-  PerspectiveCamera,
   View,
 } from "@react-three/drei";
 import { snapTransformToContact } from "../domain/contact-constraints";
@@ -24,6 +22,7 @@ import {
   type ShotCameraDraft,
 } from "./ShotCameraNavigation";
 import { CompactShotPreviewControls } from "./CompactShotPreviewControls";
+import { EditorCameraRig } from "./EditorCameraRig";
 import type { ShotCameraGestureSession } from "./shot-camera-session";
 import {
   createTransformDragSession,
@@ -198,21 +197,12 @@ const EditorScene = ({
 }: EditorSceneProps) => (
   <>
     <color attach="background" args={["#1c222b"]} />
-    <PerspectiveCamera
-      makeDefault
-      position={spatialPreview.camera.position}
-      fov={50}
-      near={0.02}
-      far={500}
-    />
-    <OrbitControls
-      makeDefault
+    <EditorCameraRig
+      frame={{
+        positionM: spatialPreview.camera.position,
+        targetM: spatialPreview.camera.target,
+      }}
       domElement={editorDomElement ?? undefined}
-      target={spatialPreview.camera.target}
-      enableDamping
-      dampingFactor={0.08}
-      minDistance={0.5}
-      maxDistance={80}
     />
     <Grid
       position={[0, 0.002, 0]}
