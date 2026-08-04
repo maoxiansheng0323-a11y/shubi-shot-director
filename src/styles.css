@@ -476,6 +476,22 @@ button {
   background: #101419;
 }
 
+.shot-preview-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 6px;
+}
+
+.shot-preview-image {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  width: 100%;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+}
+
 .viewport-mode-button {
   min-height: 28px;
   padding: 0 10px;
@@ -505,13 +521,16 @@ button {
 }
 
 .shot-camera-controls {
-  position: absolute;
+  position: static;
   z-index: 5;
-  bottom: 12px;
-  left: 12px;
+  grid-column: 1;
+  grid-row: 2;
   display: flex;
-  max-width: calc(100% - 24px);
+  width: 100%;
+  max-width: 100%;
   align-items: end;
+  align-self: start;
+  box-sizing: border-box;
   flex-wrap: wrap;
   gap: 6px;
   pointer-events: none;
@@ -596,6 +615,8 @@ button {
 .shot-camera-surface {
   position: absolute;
   z-index: 3;
+  grid-column: 1;
+  grid-row: 1;
   inset: 0;
   outline: none;
   cursor: grab;

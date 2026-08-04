@@ -348,6 +348,8 @@ export const ShotCameraNavigation = ({
       disabled ||
       !camera ||
       camera.lockMode === "user" ||
+      dragging ||
+      draft !== null ||
       (event.button !== 0 && event.button !== 2) ||
       isEditableTarget(event.target)
     ) {

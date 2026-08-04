@@ -203,6 +203,19 @@ describe("shot camera navigation UI contract", () => {
     expect(styles).toMatch(
       /\.shot-camera-controls\s*\{[\s\S]*?flex-wrap:\s*wrap/u,
     );
+    expect(styles).toMatch(
+      /\.shot-preview-image\s*\{[\s\S]*?position:\s*relative[\s\S]*?aspect-ratio:\s*16\s*\/\s*9/u,
+    );
+    expect(styles).toMatch(
+      /\.shot-camera-controls\s*\{[\s\S]*?position:\s*static[\s\S]*?grid-row:\s*2/u,
+    );
+    expect(styles).toMatch(
+      /\.shot-camera-surface\s*\{[\s\S]*?grid-row:\s*1/u,
+    );
+    const controlsRule = styles.match(
+      /\.shot-camera-controls\s*\{([\s\S]*?)\}/u,
+    )?.[1];
+    expect(controlsRule).not.toMatch(/position:\s*absolute/u);
   });
 
   it("offers six explicit one-click camera movement controls", () => {

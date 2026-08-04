@@ -105,10 +105,11 @@ const shotFrameStyle: CSSProperties = {
   gridArea: "1 / 1",
   alignSelf: "center",
   justifySelf: "center",
-  width: "min(100%, 1120px)",
+  width: "100%",
+  maxWidth:
+    "min(1120px, max(320px, calc((100vh - 180px) * 16 / 9)))",
   height: "auto",
   maxHeight: "100%",
-  aspectRatio: "16 / 9",
 };
 
 const viewStyle: CSSProperties = {
@@ -454,6 +455,7 @@ export const ViewportWorkspace = ({
       aria-label="3D shot workspace"
     >
       <section
+        className="shot-preview-panel"
         id="compact-shot-panel"
         style={{
           ...shotFrameStyle,
@@ -465,19 +467,21 @@ export const ViewportWorkspace = ({
         aria-label="Locked 16 by 9 shot preview"
         aria-hidden={previewMode !== "shot"}
       >
-        <p style={labelStyle} aria-hidden="true">
-          Shot Preview · {scene.output.resolutionPx.width} ×{" "}
-          {scene.output.resolutionPx.height}
-        </p>
-        <View id="shot-three-view" style={viewStyle} index={1}>
-          <ShotScene
-            scene={scene}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            registerExporter={registerExporter}
-            cameraDraft={shotCameraDraft}
-          />
-        </View>
+        <div className="shot-preview-image">
+          <p style={labelStyle} aria-hidden="true">
+            Shot Preview · {scene.output.resolutionPx.width} ×{" "}
+            {scene.output.resolutionPx.height}
+          </p>
+          <View id="shot-three-view" style={viewStyle} index={1}>
+            <ShotScene
+              scene={scene}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              registerExporter={registerExporter}
+              cameraDraft={shotCameraDraft}
+            />
+          </View>
+        </div>
         {previewMode === "shot" ? (
           <ShotCameraNavigation
             scene={scene}
