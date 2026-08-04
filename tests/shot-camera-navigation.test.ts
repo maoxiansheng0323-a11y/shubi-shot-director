@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { actorAnchorWorldPoint } from "../src/domain/actor-projection";
-import { rotateVector } from "../src/domain/scene-math";
+import { lookAtQuaternion, rotateVector } from "../src/domain/scene-math";
 import type {
   CameraEntity,
+  TransformSpec,
   SceneSpec,
   Vec3,
 } from "../src/domain/scene-schema";
 import {
   adjustShotFocalLength,
   deriveShotOrbitTarget,
+  deriveShotPanReferenceDistance,
   moveShotCameraByKey,
   orbitShotCamera,
   panShotCamera,
+  rotateShotCameraFree,
+  SHOT_ORBIT_MAX_PITCH,
+  SHOT_ORBIT_RADIANS_PER_PIXEL,
 } from "../src/editor/shot-camera-navigation";
 
 const activeCameraIn = (scene: SceneSpec): CameraEntity => {
@@ -40,12 +45,22 @@ const normalize = (value: Vec3): Vec3 => {
   return value.map((component) => component / length) as Vec3;
 };
 
+const expectQuaternionEquivalent = (
+  actual: TransformSpec["rotation"],
+  expected: TransformSpec["rotation"],
+): void => {
+  const dotProduct = actual.reduce(
+    (sum, component, index) => sum + component * expected[index],
+    0,
+  );
+  expect(Math.abs(dotProduct)).toBeCloseTo(1, 8);
+};
+
 describe("shot camera navigation", () => {
   it("pans in the image plane without changing camera direction", () => {
     const scene = createDefaultScene();
     const camera = activeCameraIn(scene);
-    const targetM: Vec3 = [0, 1, 0];
-    const next = panShotCamera(camera, targetM, [100, -50], 720);
+    const next = panShotCamera(camera, 5, [100, -50], 720);
     const delta = subtract(next.positionM, camera.transform.positionM);
     const right = rotateVector([1, 0, 0], camera.transform.rotation);
     const up = rotateVector([0, 1, 0], camera.transform.rotation);
@@ -53,6 +68,140 @@ describe("shot camera navigation", () => {
     expect(next.rotation).toEqual(camera.transform.rotation);
     expect(dot(delta, right)).toBeGreaterThan(0);
     expect(dot(delta, up)).toBeGreaterThan(0);
+  });
+
+  it("derives a finite positive pan distance from an explicit target", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    camera.transform.positionM = [3, 4, 0];
+
+    const explicitDistance = deriveShotPanReferenceDistance(
+      scene,
+      camera,
+      [0, 0, 0],
+    );
+    const fallbackDistance = deriveShotPanReferenceDistance(
+      scene,
+      camera,
+      [Number.NaN, 0, 0],
+    );
+
+    expect(explicitDistance).toBe(5);
+    expect(Number.isFinite(fallbackDistance)).toBe(true);
+    expect(fallbackDistance).toBeGreaterThan(0);
+  });
+
+  it("keeps the legacy pan target overload compatible until the controller migrates", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    const targetM: Vec3 = [0, 1, 0];
+    const distanceM = Math.hypot(
+      ...subtract(camera.transform.positionM, targetM),
+    );
+
+    expect(panShotCamera(camera, targetM, [32, -18], 720)).toEqual(
+      panShotCamera(camera, distanceM, [32, -18], 720),
+    );
+  });
+
+  it("rotates freely without changing position or scale", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    const before = structuredClone(camera.transform);
+
+    const next = rotateShotCameraFree(camera, [90, -25]);
+
+    expect(next.positionM).toEqual(before.positionM);
+    expect(next.scale).toEqual(before.scale);
+    expect(camera.transform).toEqual(before);
+  });
+
+  it("applies horizontal yaw from the original camera forward", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    camera.transform.rotation = lookAtQuaternion([0, 0, 0], [0, 0, -1]);
+
+    const next = rotateShotCameraFree(camera, [100, 0]);
+    const forward = rotateVector([0, 0, -1], next.rotation);
+
+    expect(forward[0]).toBeGreaterThan(0);
+    expect(forward[1]).toBeCloseTo(0, 8);
+    expect(forward[2]).toBeCloseTo(
+      -Math.cos(100 * SHOT_ORBIT_RADIANS_PER_PIXEL),
+      8,
+    );
+  });
+
+  it("clamps vertical pitch before the camera reaches a pole", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    camera.transform.rotation = lookAtQuaternion([0, 0, 0], [0, 0, -1]);
+
+    const next = rotateShotCameraFree(camera, [0, -100_000]);
+    const forward = rotateVector([0, 0, -1], next.rotation);
+    const pitch = Math.asin(forward[1]);
+
+    expect(pitch).toBeCloseTo(SHOT_ORBIT_MAX_PITCH, 8);
+    expect(Math.abs(forward[1])).toBeLessThan(1);
+  });
+
+  it("rebuilds a normalized look quaternion without roll", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    const next = rotateShotCameraFree(camera, [173, -91]);
+    const right = rotateVector([1, 0, 0], next.rotation);
+    const quaternionLength = Math.hypot(...next.rotation);
+
+    expect(quaternionLength).toBeCloseTo(1, 8);
+    expect(right[1]).toBeCloseTo(0, 8);
+  });
+
+  it("is independent of pointer-event frequency when given total delta", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    const replay = (events: readonly (readonly [number, number])[]) => {
+      let result = camera.transform;
+      for (const totalDelta of events) {
+        result = rotateShotCameraFree(camera, totalDelta);
+      }
+      return result;
+    };
+
+    const sparse = replay([[240, -75]]);
+    const dense = replay([
+      [40, -10],
+      [80, -25],
+      [120, -35],
+      [180, -55],
+      [240, -75],
+    ]);
+
+    expect(sparse.positionM).toEqual(dense.positionM);
+    expectQuaternionEquivalent(sparse.rotation, dense.rotation);
+  });
+
+  it("returns to the original direction after one horizontal revolution", () => {
+    const scene = createDefaultScene();
+    const camera = activeCameraIn(scene);
+    const oneRevolutionPx =
+      (Math.PI * 2) / SHOT_ORBIT_RADIANS_PER_PIXEL;
+
+    const next = rotateShotCameraFree(camera, [oneRevolutionPx, 0]);
+
+    expectQuaternionEquivalent(next.rotation, camera.transform.rotation);
+  });
+
+  it("rotates from camera transform alone without scene semantics", () => {
+    const transformOnlyCamera = {
+      transform: {
+        positionM: [1, 2, 3],
+        rotation: lookAtQuaternion([1, 2, 3], [1, 2, 2]),
+        scale: [1, 1, 1],
+      },
+    } as CameraEntity;
+
+    expect(() => rotateShotCameraFree(transformOnlyCamera, [10, 20])).not.toThrow();
+    expect(rotateShotCameraFree.length).toBe(2);
   });
 
   it("orbits at a fixed radius and keeps looking at the target", () => {

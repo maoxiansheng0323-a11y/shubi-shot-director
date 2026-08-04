@@ -170,20 +170,37 @@ const resolveConstraintTarget = (
   return finiteVector(target) ? target : null;
 };
 
-export const panShotCamera = (
+export function panShotCamera(
+  camera: CameraEntity,
+  distanceM: number,
+  deltaPx: readonly [number, number],
+  viewportHeightPx: number,
+): TransformSpec;
+/** @deprecated Task 2 will migrate the controller to the distance overload. */
+export function panShotCamera(
   camera: CameraEntity,
   targetM: Vec3,
   deltaPx: readonly [number, number],
   viewportHeightPx: number,
-): TransformSpec => {
-  const distanceM = Math.max(
-    0.1,
-    Math.hypot(
-      ...camera.transform.positionM.map(
-        (value, axis) => value - targetM[axis],
-      ),
-    ),
-  );
+): TransformSpec;
+export function panShotCamera(
+  camera: CameraEntity,
+  reference: number | Vec3,
+  deltaPx: readonly [number, number],
+  viewportHeightPx: number,
+): TransformSpec {
+  const rawDistanceM =
+    typeof reference === "number"
+      ? reference
+      : Math.hypot(
+          ...camera.transform.positionM.map(
+            (value, axis) => value - reference[axis],
+          ),
+        );
+  const distanceM =
+    Number.isFinite(rawDistanceM) && rawDistanceM > 0
+      ? Math.max(0.1, rawDistanceM)
+      : 0.1;
   const sensorHeightMm = camera.lens.sensorWidthMm * (9 / 16);
   const verticalFov =
     2 *
@@ -206,6 +223,45 @@ export const panShotCamera = (
       camera.transform.positionM,
       translation,
     ),
+  };
+}
+
+export const rotateShotCameraFree = (
+  camera: CameraEntity,
+  totalDeltaPx: readonly [number, number],
+): TransformSpec => {
+  const originalForward = rotateVector(
+    [0, 0, -1],
+    camera.transform.rotation,
+  );
+  const forwardLength = Math.hypot(...originalForward);
+  const forward: Vec3 = originalForward.map(
+    (component) => component / forwardLength,
+  ) as Vec3;
+  const yaw =
+    Math.atan2(-forward[0], -forward[2]) -
+    totalDeltaPx[0] * SHOT_ORBIT_RADIANS_PER_PIXEL;
+  const pitch = clamp(
+    Math.asin(clamp(forward[1], -1, 1)) -
+      totalDeltaPx[1] * SHOT_ORBIT_RADIANS_PER_PIXEL,
+    -SHOT_ORBIT_MAX_PITCH,
+    SHOT_ORBIT_MAX_PITCH,
+  );
+  const horizontal = Math.cos(pitch);
+  const nextForward: Vec3 = [
+    -Math.sin(yaw) * horizontal,
+    Math.sin(pitch),
+    -Math.cos(yaw) * horizontal,
+  ];
+  const positionM: Vec3 = [...camera.transform.positionM];
+  return {
+    ...camera.transform,
+    positionM,
+    rotation: lookAtQuaternion(
+      positionM,
+      addVectors(positionM, nextForward),
+    ),
+    scale: [...camera.transform.scale],
   };
 };
 
@@ -293,7 +349,32 @@ export const adjustShotFocalLength = (
   return Math.round(clamp(next, 12, 300) * 10) / 10;
 };
 
-export const deriveShotOrbitTarget = (
+export const deriveShotPanReferenceDistance = (
+  scene: SceneSpec,
+  camera: CameraEntity,
+  explicitTargetM?: Vec3 | null,
+): number => {
+  if (explicitTargetM && finiteVector(explicitTargetM)) {
+    const explicitDistanceM = Math.hypot(
+      ...subtractVectors(camera.transform.positionM, explicitTargetM),
+    );
+    if (Number.isFinite(explicitDistanceM)) {
+      return Math.max(0.1, explicitDistanceM);
+    }
+  }
+  const fallbackTarget = deriveAutomaticShotReferenceTarget(
+    scene,
+    camera,
+  ).targetM;
+  const fallbackDistanceM = Math.hypot(
+    ...subtractVectors(camera.transform.positionM, fallbackTarget),
+  );
+  return Number.isFinite(fallbackDistanceM) && fallbackDistanceM > 0
+    ? Math.max(0.1, fallbackDistanceM)
+    : 5;
+};
+
+const deriveAutomaticShotReferenceTarget = (
   scene: SceneSpec,
   camera: CameraEntity,
 ): ShotOrbitTarget => {
@@ -363,3 +444,12 @@ export const deriveShotOrbitTarget = (
     source: "camera-forward",
   };
 };
+
+/**
+ * @deprecated Compatibility for the current controller only. Task 2 removes
+ * automatic right-drag target semantics in favor of explicit UI target state.
+ */
+export const deriveShotOrbitTarget = (
+  scene: SceneSpec,
+  camera: CameraEntity,
+): ShotOrbitTarget => deriveAutomaticShotReferenceTarget(scene, camera);
