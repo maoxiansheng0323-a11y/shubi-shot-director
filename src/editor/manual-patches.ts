@@ -103,6 +103,22 @@ export const createCameraLensPatch = (
     options.preserveLock ?? false,
   );
 
+export const createActiveCameraPatch = (
+  scene: SceneSpec,
+  cameraId: string,
+): ScenePatch | null => {
+  const camera = scene.entities.find((entity) => entity.id === cameraId);
+  if (camera?.kind !== "camera" || scene.activeCameraId === cameraId) {
+    return null;
+  }
+  return createOperationsPatch(scene, "active_camera", [
+    {
+      op: "scene.active-camera.set",
+      cameraId,
+    },
+  ]);
+};
+
 export const createLockModePatch = (
   scene: SceneSpec,
   entityId: string,
