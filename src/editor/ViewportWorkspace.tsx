@@ -23,6 +23,7 @@ import {
   ShotCameraNavigation,
   type ShotCameraDraft,
 } from "./ShotCameraNavigation";
+import { CompactShotPreviewControls } from "./CompactShotPreviewControls";
 import type { ShotCameraGestureSession } from "./shot-camera-session";
 import {
   createTransformDragSession,
@@ -52,9 +53,12 @@ export interface ViewportWorkspaceProps {
     transform: TransformSpec,
   ) => void | Promise<void>;
   registerExporter: (exporter: ShotExporterHandle | null) => void;
-  previewMode: SpatialPreviewMode;
+  previewMode: SpatialPreviewMode | "shot";
+  shotPreviewExpanded?: boolean;
   focusedRegionId: string | null;
   onPreviewModeChange: (mode: SpatialPreviewMode) => void;
+  onShotPreviewExpandedChange?: (expanded: boolean) => void;
+  onActivateShotCamera?: (cameraId: string) => void | Promise<void>;
   onFocusedRegionChange: (regionId: string) => void;
   interactionDisabled: boolean;
   onUnlockUserProtectedCamera: () => void | Promise<void>;
@@ -103,11 +107,10 @@ const editorFrameStyle: CSSProperties = {
 const shotFrameStyle: CSSProperties = {
   ...viewportFrameStyle,
   gridArea: "1 / 1",
-  alignSelf: "center",
-  justifySelf: "center",
-  width: "100%",
-  maxWidth:
-    "min(1120px, max(160px, calc((100vh - 180px) * 16 / 9)))",
+  alignSelf: "end",
+  justifySelf: "end",
+  width: "min(42%, 560px)",
+  maxWidth: "calc(100% - 32px)",
   height: "auto",
   maxHeight: "100%",
 };
@@ -173,7 +176,9 @@ type EditorSceneProps = Pick<
   | "focusedRegionId"
   | "onFocusedRegionChange"
 > &
-  DraftSceneProps;
+  DraftSceneProps & {
+    previewMode: SpatialPreviewMode;
+  };
 
 const EditorScene = ({
   scene,
@@ -326,8 +331,11 @@ export const ViewportWorkspace = ({
   onCommitTransform,
   registerExporter,
   previewMode,
+  shotPreviewExpanded = false,
   focusedRegionId,
   onPreviewModeChange,
+  onShotPreviewExpandedChange = () => undefined,
+  onActivateShotCamera = () => undefined,
   onFocusedRegionChange,
   interactionDisabled,
   onUnlockUserProtectedCamera,
@@ -347,6 +355,7 @@ export const ViewportWorkspace = ({
   const [shotCameraDraft, setShotCameraDraft] =
     useState<ShotCameraDraft | null>(null);
   const dragSessionRef = useRef<TransformDragSession | null>(null);
+  const isShotPreviewExpanded = shotPreviewExpanded || previewMode === "shot";
 
   const handleShotCameraDraftChange = useCallback(
     (nextDraft: ShotCameraDraft | null): void => {
@@ -354,6 +363,15 @@ export const ViewportWorkspace = ({
       onCameraDraftChange(nextDraft !== null);
     },
     [onCameraDraftChange],
+  );
+
+  const handleActivateShotCamera = useCallback(
+    async (cameraId: string): Promise<void> => {
+      setShotCameraDraft(null);
+      onCameraDraftChange(false);
+      await onActivateShotCamera(cameraId);
+    },
+    [onActivateShotCamera, onCameraDraftChange],
   );
 
   useEffect(() => {
@@ -380,7 +398,7 @@ export const ViewportWorkspace = ({
     () =>
       deriveSpatialPreview(
         scene.spatialLayout,
-        previewMode,
+        previewMode === "local" ? "local" : "overview",
         focusedRegionId,
       ),
     [focusedRegionId, previewMode, scene.spatialLayout],
@@ -459,15 +477,34 @@ export const ViewportWorkspace = ({
         id="compact-shot-panel"
         style={{
           ...shotFrameStyle,
-          zIndex: previewMode === "shot" ? 2 : 1,
-          opacity: previewMode === "shot" ? 1 : 0,
-          pointerEvents: previewMode === "shot" ? "auto" : "none",
+          zIndex: isShotPreviewExpanded ? 5 : 3,
+          opacity: 1,
+          pointerEvents: "auto",
+          ...(isShotPreviewExpanded
+            ? {
+                position: "absolute",
+                inset: 12,
+                width: "auto",
+                maxWidth: "none",
+                maxHeight: "none",
+                alignSelf: "stretch",
+                justifySelf: "stretch",
+              }
+            : {}),
         }}
         data-testid="shot-preview"
+        data-shot-preview-expanded={isShotPreviewExpanded}
         aria-label="Locked 16 by 9 shot preview"
-        aria-hidden={previewMode !== "shot"}
+        aria-hidden={false}
       >
-        <div className="shot-preview-image">
+        <div
+          className="shot-preview-image"
+          style={
+            isShotPreviewExpanded
+              ? { height: "100%", aspectRatio: "auto" }
+              : undefined
+          }
+        >
           <p style={labelStyle} aria-hidden="true">
             Shot Preview · {scene.output.resolutionPx.width} ×{" "}
             {scene.output.resolutionPx.height}
@@ -482,7 +519,15 @@ export const ViewportWorkspace = ({
             />
           </View>
         </div>
-        {previewMode === "shot" ? (
+        <CompactShotPreviewControls
+          scene={scene}
+          disabled={interactionDisabled}
+          onActivateCamera={handleActivateShotCamera}
+          onExpand={() => onShotPreviewExpandedChange(true)}
+          expanded={isShotPreviewExpanded}
+          onCollapse={() => onShotPreviewExpandedChange(false)}
+        />
+        {isShotPreviewExpanded ? (
           <ShotCameraNavigation
             scene={scene}
             disabled={interactionDisabled}
@@ -500,7 +545,8 @@ export const ViewportWorkspace = ({
         style={{
           ...editorFrameStyle,
           zIndex: 2,
-          display: previewMode === "shot" ? "none" : "block",
+          display: "block",
+          pointerEvents: isShotPreviewExpanded ? "none" : "auto",
         }}
         data-testid="editor-viewport"
         aria-label="Editor viewport. Drag to orbit, right-drag to pan, and scroll to zoom."
@@ -514,13 +560,12 @@ export const ViewportWorkspace = ({
         </p>
         <View id="editor-three-view" style={viewStyle} index={2}>
           <EditorScene
-            key={`${previewMode}-${spatialPreview.focusedRegionId ?? "none"}`}
             scene={scene}
             selectedId={selectedId}
             onSelect={onSelect}
             toolMode={toolMode}
             snapEnabled={snapEnabled}
-            previewMode={previewMode}
+            previewMode={previewMode === "local" ? "local" : "overview"}
             focusedRegionId={focusedRegionId}
             onFocusedRegionChange={onFocusedRegionChange}
             transformOverrides={transformOverrides}
@@ -538,7 +583,6 @@ export const ViewportWorkspace = ({
           [
             ["overview", "整体总览"],
             ["local", "局部预览"],
-            ["shot", "镜头预览"],
           ] as const
         ).map(([mode, label]) => (
           <button

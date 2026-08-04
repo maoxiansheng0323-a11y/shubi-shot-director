@@ -483,6 +483,10 @@ button {
   gap: 6px;
 }
 
+.shot-preview-panel[data-shot-preview-expanded="true"] {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .shot-preview-image {
   position: relative;
   grid-column: 1;
@@ -490,6 +494,57 @@ button {
   width: 100%;
   overflow: hidden;
   aspect-ratio: 16 / 9;
+}
+
+.compact-shot-preview-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #343e49;
+  background: rgb(16 20 25 / 94%);
+  color: #c8d3de;
+  font-size: 10px;
+}
+
+.compact-shot-preview-heading {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.compact-shot-preview-heading strong {
+  overflow: hidden;
+  color: #eef5fb;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-shot-preview-controls select {
+  min-width: 120px;
+  max-width: 180px;
+  min-height: 26px;
+  color: #e7eef6;
+  background: #202a34;
+  border: 1px solid #465564;
+}
+
+.compact-shot-preview-output {
+  margin-left: auto;
+  white-space: nowrap;
+  color: #9eacb9;
+}
+
+.compact-shot-preview-controls button {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid #526b84;
+  border-radius: 4px;
+  color: #e6f2ff;
+  background: #304357;
+  cursor: pointer;
 }
 
 .viewport-mode-button {

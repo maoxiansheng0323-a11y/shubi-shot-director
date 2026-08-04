@@ -846,7 +846,7 @@ export const SceneWorld = ({
       spatialPreview ??
       deriveSpatialPreview(
         scene.spatialLayout,
-        view === "shot" ? "shot" : previewMode,
+        view === "shot" ? "overview" : previewMode,
         selectedRegionId,
       ),
     [

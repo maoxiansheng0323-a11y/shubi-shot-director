@@ -5,6 +5,8 @@ export interface CompactShotPreviewControlsProps {
   disabled?: boolean;
   onActivateCamera: (cameraId: string) => void;
   onExpand: () => void;
+  expanded?: boolean;
+  onCollapse?: () => void;
 }
 
 export const CompactShotPreviewControls = ({
@@ -12,6 +14,8 @@ export const CompactShotPreviewControls = ({
   disabled = false,
   onActivateCamera,
   onExpand,
+  expanded = false,
+  onCollapse,
 }: CompactShotPreviewControlsProps) => {
   const cameras = scene.entities.filter(
     (entity) => entity.kind === "camera",
@@ -21,7 +25,10 @@ export const CompactShotPreviewControls = ({
   );
 
   return (
-    <div className="compact-shot-preview-controls">
+    <div
+      className="compact-shot-preview-controls"
+      data-studio-keyboard-exclusion="true"
+    >
       <div className="compact-shot-preview-heading">
         <span>Active camera</span>
         <strong>{activeCamera?.label ?? "Unavailable camera"}</strong>
@@ -47,12 +54,12 @@ export const CompactShotPreviewControls = ({
         {scene.output.aspect.width}:{scene.output.aspect.height}
       </span>
       <button
-        aria-label="Expand shot preview"
+        aria-label={expanded ? "Close shot preview" : "Expand shot preview"}
         disabled={disabled}
-        onClick={onExpand}
+        onClick={expanded ? onCollapse : onExpand}
         type="button"
       >
-        Expand
+        {expanded ? "Close" : "Expand"}
       </button>
     </div>
   );

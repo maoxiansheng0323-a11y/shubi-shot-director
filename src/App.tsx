@@ -42,6 +42,7 @@ import {
 } from "./editor/compact-workspace";
 import { CompactWorkspaceTabs } from "./editor/CompactWorkspaceTabs";
 import { ViewportWorkspace } from "./editor/ViewportWorkspace";
+import { activateShotCamera } from "./editor/active-camera-command";
 import {
   commitShotCameraFocalLength,
   commitShotCameraTransform,
@@ -79,6 +80,7 @@ export const App = () => {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [previewMode, setPreviewMode] =
     useState<SpatialPreviewMode>("overview");
+  const [shotPreviewExpanded, setShotPreviewExpanded] = useState(false);
   const [focusedRegionId, setFocusedRegionId] =
     useState<string | null>(null);
   const [compactPane, setCompactPane] =
@@ -682,9 +684,10 @@ export const App = () => {
   );
   const interactionDisabled =
     loading || isMutating || connectionStatus !== "connected";
+  const hasLocalDraft = cameraDraftActive;
   const exportDisabled =
     exporting ||
-    cameraDraftActive ||
+    hasLocalDraft ||
     interactionDisabled ||
     !exporterReady ||
     activeCamera?.kind !== "camera";
@@ -864,9 +867,9 @@ export const App = () => {
           onChange={(pane) => {
             setCompactPane(pane);
             if (pane === "shot") {
-              setPreviewMode("shot");
-            } else if (pane === "editor" && previewMode === "shot") {
-              setPreviewMode("overview");
+              setShotPreviewExpanded(true);
+            } else if (pane === "editor") {
+              setShotPreviewExpanded(false);
             }
           }}
         />
@@ -919,14 +922,24 @@ export const App = () => {
             onCameraDraftChange={handleCameraDraftChange}
             registerExporter={registerExporter}
             previewMode={previewMode}
+            shotPreviewExpanded={shotPreviewExpanded}
             focusedRegionId={focusedRegionId}
             onPreviewModeChange={(mode) => {
               setPreviewMode(mode);
-              if (mode === "shot") {
-                setCompactPane("shot");
-              } else if (compactPane === "shot") {
+              if (compactPane === "shot") {
                 setCompactPane("editor");
               }
+            }}
+            onShotPreviewExpandedChange={(expanded) => {
+              setShotPreviewExpanded(expanded);
+              setCompactPane(expanded ? "shot" : "editor");
+            }}
+            onActivateShotCamera={async (cameraId) => {
+              setShotPreviewExpanded(false);
+              await activateShotCamera(
+                () => useEditorStore.getState(),
+                cameraId,
+              );
             }}
             onFocusedRegionChange={(regionId) => {
               setFocusedRegionId(regionId);
