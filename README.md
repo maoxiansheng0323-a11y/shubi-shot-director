@@ -8,7 +8,7 @@ Shubi Shot Director is a local, browser-based 3D graybox camera-previsualization
 
 **[Watch the 49-second launch demo](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/shubi-shot-director-launch-demo.mp4)** · [Exported PNG](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/final-perspective.png) · [English subtitles](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.en.srt) · [中文字幕](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.zh-CN.srt)
 
-Current release contract: [v0.8.0 release notes](docs/releases/v0.8.0.md).
+Current release contract: [v0.9.0 release notes](docs/releases/v0.9.0.md).
 
 Shubi Shot Director is open-source graybox camera previs: it turns natural-language shot intent into a structured, editable 3D scene, shows the actual final camera through the real browser Shot Preview, and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
 
@@ -17,10 +17,10 @@ Shubi Shot Director is open-source graybox camera previs: it turns natural-langu
 It turns a shot description into an editable `SceneSpec` containing either a
 legacy single-room environment or a same-floor graph of arbitrary regions,
 boundaries, openings, and connections, plus legacy or reusable Blueprint actors with editable 1.0-2.4 m stature, fifteen canonical joints, generic limb presence, props, poses, constraints,
-and perspective cameras. The browser provides Overview, focused Local preview,
-and an independent final-camera Shot Preview, and it can export a 16:9 PNG
-reference for blocking, scale, contact, occlusion, camera height, angle, and
-focal length.
+and perspective cameras. The browser provides one directly manageable studio,
+focused Local filtering, and an independent active-camera Shot Preview, and it
+can export a 16:9 PNG reference for blocking, scale, contact, occlusion, camera
+height, angle, and focal length.
 
 Actors render through one built-in refined CC0 white mannequin with shaped
 head, facial planes, hands, fingers, feet, and toes. Its sixteen articulated
@@ -119,17 +119,30 @@ The successful export response includes the `sceneId`, revision, dimensions, SHA
 
 ## Browser controls and PNG export
 
-- Select an entity from the outliner or either viewport.
-- For connected layouts, switch among `整体总览`, `局部预览`, and `镜头预览`.
-  Selecting a region enters Local preview; adjacent and distant regions fade
-  only in the editor.
-- Press `W` to move, `E` to rotate, and `Q` to return to selection mode.
+- Treat the main viewport as the studio. `整体总览` and `局部预览` are editor
+  filters; the compact active-camera `镜头预览` stays visible independently.
+- Select an actor, prop, or camera once for ordinary selection. Double-click it
+  to frame the editor camera and enter red entity focus; right-click or
+  `Escape` clears focus. Double-clicking a shot camera also makes it the active
+  preview camera.
+- Drag a focused actor's torso or pelvis to move the whole entity. With an
+  actor focused, click a supported limb to enter green part focus, then drag
+  that limb from the current editor viewpoint to author one joint. Props and
+  camera proxies can be dragged as whole entities. User-protected entities
+  remain inspectable but cannot start mutation drafts.
+- Use the focused-entity arrow keys for editor-view-relative ground movement
+  and `PageUp`/`PageDown` for world-Y movement. Hold `Shift` for fast steps or
+  `Alt` for precision steps. `W`, `E`, and `Q` continue to select translate,
+  rotate, and ordinary select gizmo modes.
 - Use translation and rotation snapping for predictable blocking.
 - Edit actor stature, canonical joints, complete actions, generic limb presence, contact settings, and final-camera focal length in the inspector.
-- In `镜头预览`, final-camera controls are immediately available without an activation toggle.
-- Left-drag translates in the image plane, right-drag orbits around the primary composition target, and the wheel changes focal length in millimeters without moving the camera.
+- In expanded `镜头预览`, final-camera controls are immediately available
+  without an activation toggle. Right-drag rotates freely by default; choose an
+  explicit actor or prop target only when an orbit is wanted. Left-drag
+  translates in the image plane, and the wheel changes focal length in
+  millimeters without moving the camera.
 - Use the six-button movement pad or `ArrowUp`/`ArrowDown` for forward/backward, `ArrowLeft`/`ArrowRight` for lateral movement, and `PageUp`/`PageDown` for world-Y movement. Hold `Shift` for fast keyboard steps or `Alt` for precision steps; press `Escape` to cancel the current draft.
-- Each completed gesture or movement-button click creates one authoritative revision and one undo step. Workflow-locked cameras remain workflow locked through `preserveLock: true`; user-protected cameras disable these controls until explicit confirmation.
+- Each completed gesture or movement-button click creates one authoritative revision and one undo step. Workflow-locked entities remain workflow locked through `preserveLock: true`; user-protected entities disable mutation until explicit confirmation.
 - Use `Ctrl+Z` and `Ctrl+Shift+Z` for authoritative undo and redo.
 - Lock the final camera when the shot is approved.
 
@@ -242,7 +255,7 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Verified platform
 
-The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.8.0 verification evidence is recorded in [`docs/releases/v0.8.0.md`](docs/releases/v0.8.0.md). macOS and Linux are not claimed as verified for v0.8.0.
+The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.9.0 verification evidence is recorded in [`docs/releases/v0.9.0.md`](docs/releases/v0.9.0.md). macOS and Linux are not claimed as verified for v0.9.0.
 
 ## Origin & Maintainer
 

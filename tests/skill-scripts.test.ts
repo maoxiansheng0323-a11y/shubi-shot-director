@@ -1522,7 +1522,7 @@ describe("Skill host-semantic documentation", () => {
     );
 
     expect(skill).toMatch(
-      /Shot Preview[\s\S]*automatically owns[\s\S]*no activation toggle/iu,
+      /Expanded Shot Preview[\s\S]*authoritative camera[\s\S]*no activation toggle/iu,
     );
     expect(skill).toMatch(/six[\s-]*button[\s\S]*movement/iu);
     expect(skill).toMatch(/workflow[\s\S]*preserveLock: true/iu);

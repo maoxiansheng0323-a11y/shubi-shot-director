@@ -4,6 +4,55 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v0.9.0 direct studio manipulation gates
+
+Run the current release gate from the repository root:
+
+```powershell
+pnpm verify
+git diff --check
+```
+
+Require application 0.9.0 with capability contract 2, bridge protocol 1,
+workspace routing 1, and SceneSpec/ScenePatch/IntentReport version 6. No schema
+or generated-schema change is expected for this release. The public audit must
+remain clean, and `.pnpm-store/` must remain untracked local cache only.
+
+In the real browser, verify a generic scene containing at least two cameras,
+one actor, one prop, and one workflow-locked editable entity. From a distant
+studio view, double-click the actor and require deterministic framing without
+changing any shot camera. Drag its torso, focus a limb in green, and drag that
+limb from front and side editor viewpoints; require one entity transform or one
+canonical joint change per completed gesture. Double-click the prop and each
+camera, verify focus framing and explicit active-camera switching, and confirm
+that the compact preview always shows only the active shot camera. Exercise
+arrow/Page movement, right-click clear, `Escape`, workflow/user locks, undo,
+redo, stale-draft cancellation, expanded free camera rotation, and optional
+explicit target orbit.
+
+Require a nonblank studio canvas and compact Shot Preview at desktop and
+compact widths, no incoherent overlap, no unexpected console/page errors, and
+one connected browser-rendered 1920 x 1080 PNG export with scene ID, revision,
+dimensions, SHA-256, and warning codes checked. Visual taste and final framing
+remain a human approval boundary.
+
+### Latest fresh evidence - 2026-08-05
+
+The direct studio implementation was exercised in the local browser at
+`http://127.0.0.1:4317`. The studio canvas and compact Shot Preview rendered
+simultaneously. Double-click focus framed actors, props, and camera proxies;
+entity focus used the red treatment; actor-part focus used green; right-click
+cleared focus without opening the browser context menu. Whole-entity drag,
+editor-view-relative keyboard movement, workflow-lock preservation, and
+user-lock mutation blocking were covered. A focused limb drag projected into
+the compact preview and authored only the selected canonical joint.
+
+The final `pnpm verify` run passed schema generation, TypeScript, 95 test files
+with 1,929 tests, the separate workspace e2e file with 1 test, ESLint, and the
+production Vite build. The public audit scanned 286 files with zero findings
+and reported only Apache-2.0, BSD-3-Clause, ISC, and MIT dependency license
+names. Vite emitted only the existing non-blocking large-chunk advisory.
+
 ## v0.8.0 refined white mannequin gates
 
 Run the asset, renderer, compatibility, and public checks before the full
