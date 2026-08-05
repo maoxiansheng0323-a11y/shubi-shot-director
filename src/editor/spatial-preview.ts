@@ -4,7 +4,7 @@ import {
   type XzPoint,
 } from "../domain/spatial-layout";
 
-export type SpatialPreviewMode = "overview" | "local" | "shot";
+export type SpatialPreviewMode = "overview" | "local";
 
 export interface SpatialCameraFrame {
   position: [number, number, number];

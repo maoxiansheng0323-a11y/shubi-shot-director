@@ -476,6 +476,77 @@ button {
   background: #101419;
 }
 
+.shot-preview-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 6px;
+}
+
+.shot-preview-panel[data-shot-preview-expanded="true"] {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.shot-preview-image {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  width: 100%;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+}
+
+.compact-shot-preview-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #343e49;
+  background: rgb(16 20 25 / 94%);
+  color: #c8d3de;
+  font-size: 10px;
+}
+
+.compact-shot-preview-heading {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.compact-shot-preview-heading strong {
+  overflow: hidden;
+  color: #eef5fb;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-shot-preview-controls select {
+  min-width: 120px;
+  max-width: 180px;
+  min-height: 26px;
+  color: #e7eef6;
+  background: #202a34;
+  border: 1px solid #465564;
+}
+
+.compact-shot-preview-output {
+  margin-left: auto;
+  white-space: nowrap;
+  color: #9eacb9;
+}
+
+.compact-shot-preview-controls button {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid #526b84;
+  border-radius: 4px;
+  color: #e6f2ff;
+  background: #304357;
+  cursor: pointer;
+}
+
 .viewport-mode-button {
   min-height: 28px;
   padding: 0 10px;
@@ -505,14 +576,28 @@ button {
 }
 
 .shot-camera-controls {
-  position: absolute;
+  position: static;
   z-index: 5;
-  bottom: 12px;
-  left: 12px;
+  grid-column: 1;
+  grid-row: 2;
   display: flex;
+  width: 100%;
+  max-width: 100%;
   align-items: end;
+  align-self: start;
+  box-sizing: border-box;
+  flex-wrap: nowrap;
   gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
   pointer-events: none;
+}
+
+.shot-camera-move-pad,
+.shot-camera-focal-readout,
+.shot-camera-target-control,
+.shot-camera-lock-notice {
+  flex: 0 0 auto;
 }
 
 .shot-camera-move-pad {
@@ -594,6 +679,7 @@ button {
 .shot-camera-surface {
   position: absolute;
   z-index: 3;
+  grid-area: 1 / 1 / 2 / 2;
   inset: 0;
   outline: none;
   cursor: grab;
@@ -615,6 +701,43 @@ button {
   font-variant-numeric: tabular-nums;
   line-height: 1;
   pointer-events: auto;
+}
+
+.shot-camera-target-control {
+  display: grid;
+  min-width: 172px;
+  padding: 5px 7px 6px;
+  gap: 3px;
+  border: 1px solid rgb(226 232 240 / 16%);
+  border-radius: 6px;
+  color: #93a4b5;
+  background: rgb(15 23 42 / 88%);
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.shot-camera-target-control select {
+  width: 100%;
+  min-width: 0;
+  height: 27px;
+  padding: 0 6px;
+  border: 1px solid rgb(226 232 240 / 18%);
+  border-radius: 4px;
+  outline: 0;
+  color: #e2e8f0;
+  background: #26323e;
+  font-size: 10px;
+}
+
+.shot-camera-target-control select:focus-visible {
+  border-color: #7697b8;
+  box-shadow: 0 0 0 2px rgb(118 151 184 / 18%);
+}
+
+.shot-camera-target-control select:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .shot-camera-lock-notice {
@@ -1456,6 +1579,7 @@ button {
     padding: 0 8px;
     font-size: 11px;
   }
+
 }
 
 @media (max-width: 680px) {

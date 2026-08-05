@@ -1,5 +1,4 @@
 import { actorVisibleRigBounds } from "../domain/actor-visible-bounds";
-import { actorAnchorWorldPoint } from "../domain/actor-projection";
 import {
   addVectors,
   lookAtQuaternion,
@@ -8,7 +7,6 @@ import {
 } from "../domain/scene-math";
 import {
   type CameraEntity,
-  type SceneConstraint,
   type SceneEntity,
   type SceneSpec,
   type TransformSpec,
@@ -27,21 +25,6 @@ export interface ShotNavigationModifiers {
   shiftKey?: boolean;
   altKey?: boolean;
 }
-
-export interface ShotOrbitTarget {
-  targetM: Vec3;
-  source:
-    | "keep-visible-framing"
-    | "keep-visible"
-    | "framing"
-    | "visible-bounds"
-    | "camera-forward";
-}
-
-type KeepVisibleConstraint = Extract<
-  SceneConstraint,
-  { type: "keep-visible" }
->;
 
 export const SHOT_KEY_STEP_M = 0.1;
 export const SHOT_KEY_FAST_STEP_M = 0.5;
@@ -76,24 +59,6 @@ const dotVectors = (left: Vec3, right: Vec3): number =>
 const finiteVector = (vector: Vec3): boolean =>
   vector.every(Number.isFinite);
 
-const pointsCenter = (points: readonly Vec3[]): Vec3 | null => {
-  const finitePoints = points.filter(finiteVector);
-  if (finitePoints.length === 0) {
-    return null;
-  }
-  return [
-    (Math.min(...finitePoints.map((point) => point[0])) +
-      Math.max(...finitePoints.map((point) => point[0]))) /
-      2,
-    (Math.min(...finitePoints.map((point) => point[1])) +
-      Math.max(...finitePoints.map((point) => point[1]))) /
-      2,
-    (Math.min(...finitePoints.map((point) => point[2])) +
-      Math.max(...finitePoints.map((point) => point[2]))) /
-      2,
-  ];
-};
-
 const propWorldPoints = (
   entity: Extract<SceneEntity, { kind: "prop" }>,
 ): Vec3[] => {
@@ -126,70 +91,49 @@ const visibleEntityPoints = (
   }
 };
 
-const visibleEntityCenter = (
+const forEachVisibleScenePoint = (
   scene: SceneSpec,
-  entity: SceneEntity,
-): Vec3 | null =>
-  pointsCenter(visibleEntityPoints(scene, entity));
-
-const visibleSceneBoundsCenter = (scene: SceneSpec): Vec3 | null => {
-  const points = scene.entities.flatMap((entity) =>
-    visibleEntityPoints(scene, entity),
-  );
-  if (scene.spatialLayout) {
-    for (const region of scene.spatialLayout.regions) {
-      if (!region.visible) {
-        continue;
-      }
-      for (const [x, z] of region.footprintXZ) {
-        points.push(
-          [x, scene.spatialLayout.floorY, z],
-          [x, scene.spatialLayout.floorY + region.heightM, z],
-        );
-      }
+  callback: (point: Vec3) => void,
+): void => {
+  for (const entity of scene.entities) {
+    for (const point of visibleEntityPoints(scene, entity)) {
+      callback(point);
     }
   }
-  return pointsCenter(points);
-};
-
-const resolveConstraintTarget = (
-  scene: SceneSpec,
-  constraint: KeepVisibleConstraint,
-): Vec3 | null => {
-  const subject = scene.entities.find(
-    (entity) =>
-      entity.id === constraint.subjectEntityId && entity.visible,
-  );
-  if (!subject) {
-    return null;
+  if (!scene.spatialLayout) {
+    return;
   }
-  const target =
-    subject.kind === "actor"
-      ? actorAnchorWorldPoint(scene, subject, constraint.anchor)
-      : ([...subject.transform.positionM] as Vec3);
-  return finiteVector(target) ? target : null;
+  for (const region of scene.spatialLayout.regions) {
+    if (!region.visible) {
+      continue;
+    }
+    for (const [x, z] of region.footprintXZ) {
+      callback([x, scene.spatialLayout.floorY, z]);
+      callback([
+        x,
+        scene.spatialLayout.floorY + region.heightM,
+        z,
+      ]);
+    }
+  }
 };
 
 export const panShotCamera = (
   camera: CameraEntity,
-  targetM: Vec3,
+  distanceM: number,
   deltaPx: readonly [number, number],
   viewportHeightPx: number,
 ): TransformSpec => {
-  const distanceM = Math.max(
-    0.1,
-    Math.hypot(
-      ...camera.transform.positionM.map(
-        (value, axis) => value - targetM[axis],
-      ),
-    ),
-  );
+  const referenceDistanceM =
+    Number.isFinite(distanceM) && distanceM > 0
+      ? Math.max(0.1, distanceM)
+      : 0.1;
   const sensorHeightMm = camera.lens.sensorWidthMm * (9 / 16);
   const verticalFov =
     2 *
     Math.atan(sensorHeightMm / (2 * camera.lens.focalLengthMm));
   const metersPerPixel =
-    (2 * distanceM * Math.tan(verticalFov / 2)) /
+    (2 * referenceDistanceM * Math.tan(verticalFov / 2)) /
     Math.max(1, viewportHeightPx);
   const right = rotateVector(
     [1, 0, 0],
@@ -206,6 +150,45 @@ export const panShotCamera = (
       camera.transform.positionM,
       translation,
     ),
+  };
+};
+
+export const rotateShotCameraFree = (
+  camera: CameraEntity,
+  totalDeltaPx: readonly [number, number],
+): TransformSpec => {
+  const originalForward = rotateVector(
+    [0, 0, -1],
+    camera.transform.rotation,
+  );
+  const forwardLength = Math.hypot(...originalForward);
+  const forward: Vec3 = originalForward.map(
+    (component) => component / forwardLength,
+  ) as Vec3;
+  const yaw =
+    Math.atan2(-forward[0], -forward[2]) -
+    totalDeltaPx[0] * SHOT_ORBIT_RADIANS_PER_PIXEL;
+  const pitch = clamp(
+    Math.asin(clamp(forward[1], -1, 1)) -
+      totalDeltaPx[1] * SHOT_ORBIT_RADIANS_PER_PIXEL,
+    -SHOT_ORBIT_MAX_PITCH,
+    SHOT_ORBIT_MAX_PITCH,
+  );
+  const horizontal = Math.cos(pitch);
+  const nextForward: Vec3 = [
+    -Math.sin(yaw) * horizontal,
+    Math.sin(pitch),
+    -Math.cos(yaw) * horizontal,
+  ];
+  const positionM: Vec3 = [...camera.transform.positionM];
+  return {
+    ...camera.transform,
+    positionM,
+    rotation: lookAtQuaternion(
+      positionM,
+      addVectors(positionM, nextForward),
+    ),
+    scale: [...camera.transform.scale],
   };
 };
 
@@ -293,73 +276,49 @@ export const adjustShotFocalLength = (
   return Math.round(clamp(next, 12, 300) * 10) / 10;
 };
 
-export const deriveShotOrbitTarget = (
+export const deriveShotPanReferenceDistance = (
   scene: SceneSpec,
   camera: CameraEntity,
-): ShotOrbitTarget => {
-  const framingIds =
-    scene.compositionGoals?.framing?.targetEntityIds ?? [];
-  const constraints = scene.constraints.filter(
-    (constraint): constraint is KeepVisibleConstraint =>
-      constraint.type === "keep-visible" &&
-      constraint.enabled &&
-      constraint.cameraId === camera.id,
-  );
-  for (const entityId of framingIds) {
-    const constraint = constraints.find(
-      (candidate) => candidate.subjectEntityId === entityId,
+  explicitTargetM?: Vec3 | null,
+): number => {
+  if (explicitTargetM && finiteVector(explicitTargetM)) {
+    const explicitDistanceM = Math.hypot(
+      ...subtractVectors(camera.transform.positionM, explicitTargetM),
     );
-    const targetM = constraint
-      ? resolveConstraintTarget(scene, constraint)
-      : null;
-    if (targetM) {
-      return { targetM, source: "keep-visible-framing" };
+    if (Number.isFinite(explicitDistanceM)) {
+      return Math.max(0.1, explicitDistanceM);
     }
   }
-  for (const constraint of constraints) {
-    const targetM = resolveConstraintTarget(scene, constraint);
-    if (targetM) {
-      return { targetM, source: "keep-visible" };
-    }
-  }
-  for (const entityId of framingIds) {
-    const entity = scene.entities.find(
-      (candidate) =>
-        candidate.id === entityId && candidate.visible,
-    );
-    const targetM = entity ? visibleEntityCenter(scene, entity) : null;
-    if (targetM) {
-      return { targetM, source: "framing" };
-    }
-  }
-  const boundsCenter = visibleSceneBoundsCenter(scene);
-  const forward = rotateVector(
+  const rawForward = rotateVector(
     [0, 0, -1],
     camera.transform.rotation,
   );
-  if (boundsCenter) {
-    const projectedDistance = dotVectors(
-      subtractVectors(
-        boundsCenter,
-        camera.transform.positionM,
-      ),
+  const forwardLength = Math.hypot(...rawForward);
+  if (!Number.isFinite(forwardLength) || forwardLength <= 0) {
+    return 5;
+  }
+  const forward = scaleVector(rawForward, 1 / forwardLength);
+  let minDepth = Number.POSITIVE_INFINITY;
+  let maxDepth = Number.NEGATIVE_INFINITY;
+  forEachVisibleScenePoint(scene, (point) => {
+    if (!finiteVector(point)) {
+      return;
+    }
+    const depth = dotVectors(
+      subtractVectors(point, camera.transform.positionM),
       forward,
     );
-    if (projectedDistance > 0.1) {
-      return {
-        targetM: addVectors(
-          camera.transform.positionM,
-          scaleVector(forward, projectedDistance),
-        ),
-        source: "visible-bounds",
-      };
+    if (!Number.isFinite(depth) || depth <= 0) {
+      return;
     }
+    minDepth = Math.min(minDepth, depth);
+    maxDepth = Math.max(maxDepth, depth);
+  });
+  if (!Number.isFinite(minDepth) || !Number.isFinite(maxDepth)) {
+    return 5;
   }
-  return {
-    targetM: addVectors(
-      camera.transform.positionM,
-      scaleVector(forward, 5),
-    ),
-    source: "camera-forward",
-  };
+  const midpointDepth = minDepth / 2 + maxDepth / 2;
+  return Number.isFinite(midpointDepth)
+    ? Math.max(0.1, midpointDepth)
+    : 5;
 };

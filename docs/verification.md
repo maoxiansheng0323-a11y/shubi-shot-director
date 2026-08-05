@@ -4,6 +4,115 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v0.9.2 editor view mouse control gates
+
+Run the focused editor interaction checks before the current release gate:
+
+```powershell
+pnpm exec vitest run tests/editor-camera-rig.test.ts tests/studio-selection.test.ts tests/studio-interaction-controller.test.tsx tests/studio-world-interaction.test.ts tests/studio-pointer-events.test.ts tests/studio-workspace-layout.test.tsx
+pnpm verify
+node .agents/skills/shubi-shot-director/scripts/audit-generic-output.mjs
+git diff --check
+```
+
+Require application 0.9.2 with capability contract 2, bridge protocol 1,
+workspace routing 1, and SceneSpec/ScenePatch/IntentReport version 6. No schema
+or generated-schema change is expected. The public audit must remain clean,
+and `.pnpm-store/` must remain untracked local cache only.
+
+In a real browser, use a generic large scene with an actor, a prop, and at
+least one persistent shot camera. Left-drag empty studio space and require the
+UI-only editor view to pan without changing the scene revision. Right-drag
+empty space or environment geometry and require orbit around the current
+observation center without changing revision or selection. Require a short
+right-click at or below 5 px to clear transient selection and a longer drag to
+preserve it. Direct left-drag on an editable entity must still commit only that
+entity in one revision. The compact and expanded Shot Preview must retain their
+independent persistent-camera behavior.
+
+Require a nonblank studio canvas and Shot Preview, no incoherent overlap, and
+no unexpected console or page errors. Visual taste remains a human approval
+boundary.
+
+### Latest fresh evidence - 2026-08-06
+
+The focused editor-control suite passed 6 files with 22 tests. The direct-drag,
+workspace-layout, and independent shot-camera regression group passed 11 files
+with 86 tests. The public release and capability contract group passed 3 files
+with 153 tests.
+
+The large generic scene at `http://127.0.0.1:4317/` rendered a nonblank studio
+and compact Shot Preview at 1280 x 720. Empty-space left-drag visibly changed
+the editor view while the authoritative footer remained at revision 111. A
+short right-click cleared the selected actor while the revision remained 111.
+In an isolated temporary generic instance, direct left-drag moved only the
+blocking cube and advanced revision 0 to revision 1; the following short
+right-click cleared selection without advancing revision 1. Both browser pages
+reported no console warnings or errors.
+
+The browser automation surface could not inject a held right-button drag, so
+the real right-drag orbit gesture remains an explicit human acceptance check.
+Automated coverage verifies the mapping constant and OrbitControls prop wiring,
+the exact 5 px clear boundary, above-threshold and return-to-origin orbit
+classification, centralized pointer lifecycle, and joint-drag input ownership.
+The browser verified mounted left-pan and short right-click paths.
+
+The final `pnpm verify` run passed schema generation, TypeScript, 97 test files
+with 1,941 tests, the separate workspace e2e file with 1 test, ESLint, and the
+production Vite build. The public audit scanned 292 files with zero findings
+and reported only Apache-2.0, BSD-3-Clause, ISC, and MIT dependency license
+names. The generic-output audit also scanned 292 files with zero findings.
+Vite emitted only the existing non-blocking large-chunk advisory.
+
+## v0.9.0 direct studio manipulation gates
+
+Run the current release gate from the repository root:
+
+```powershell
+pnpm verify
+git diff --check
+```
+
+Require application 0.9.0 with capability contract 2, bridge protocol 1,
+workspace routing 1, and SceneSpec/ScenePatch/IntentReport version 6. No schema
+or generated-schema change is expected for this release. The public audit must
+remain clean, and `.pnpm-store/` must remain untracked local cache only.
+
+In the real browser, verify a generic scene containing at least two cameras,
+one actor, one prop, and one workflow-locked editable entity. From a distant
+studio view, double-click the actor and require deterministic framing without
+changing any shot camera. Drag its torso, focus a limb in green, and drag that
+limb from front and side editor viewpoints; require one entity transform or one
+canonical joint change per completed gesture. Double-click the prop and each
+camera, verify focus framing and explicit active-camera switching, and confirm
+that the compact preview always shows only the active shot camera. Exercise
+arrow/Page movement, right-click clear, `Escape`, workflow/user locks, undo,
+redo, stale-draft cancellation, expanded free camera rotation, and optional
+explicit target orbit.
+
+Require a nonblank studio canvas and compact Shot Preview at desktop and
+compact widths, no incoherent overlap, no unexpected console/page errors, and
+one connected browser-rendered 1920 x 1080 PNG export with scene ID, revision,
+dimensions, SHA-256, and warning codes checked. Visual taste and final framing
+remain a human approval boundary.
+
+### Latest fresh evidence - 2026-08-05
+
+The direct studio implementation was exercised in the local browser at
+`http://127.0.0.1:4317`. The studio canvas and compact Shot Preview rendered
+simultaneously. Double-click focus framed actors, props, and camera proxies;
+entity focus used the red treatment; actor-part focus used green; right-click
+cleared focus without opening the browser context menu. Whole-entity drag,
+editor-view-relative keyboard movement, workflow-lock preservation, and
+user-lock mutation blocking were covered. A focused limb drag projected into
+the compact preview and authored only the selected canonical joint.
+
+The final `pnpm verify` run passed schema generation, TypeScript, 95 test files
+with 1,929 tests, the separate workspace e2e file with 1 test, ESLint, and the
+production Vite build. The public audit scanned 286 files with zero findings
+and reported only Apache-2.0, BSD-3-Clause, ISC, and MIT dependency license
+names. Vite emitted only the existing non-blocking large-chunk advisory.
+
 ## v0.8.0 refined white mannequin gates
 
 Run the asset, renderer, compatibility, and public checks before the full

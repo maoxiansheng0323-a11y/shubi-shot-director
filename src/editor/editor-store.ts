@@ -18,6 +18,14 @@ import {
   loadSceneFile,
 } from "./scene-files";
 import { userFacingError } from "./error-messages";
+import {
+  clearStudioFocus,
+  createStudioFocusState,
+  focusStudioEntity,
+  reconcileStudioFocus,
+  type StudioFocusState,
+} from "./studio-selection";
+import type { CanonicalPuppetJointId } from "../domain/actor-joints";
 
 export type EditorToolMode = "select" | "translate" | "rotate";
 
@@ -35,6 +43,9 @@ export interface EditorStoreState {
   error: string | null;
   connectionStatus: SceneConnectionStatus;
   selectedEntityId: string | null;
+  focusedEntityId: string | null;
+  focusedActorJointId: CanonicalPuppetJointId | null;
+  focusRequestVersion: number;
   toolMode: EditorToolMode;
   lastSceneEvent: SceneEventSummary | null;
   initialize: () => () => void;
@@ -42,6 +53,10 @@ export interface EditorStoreState {
   refresh: () => Promise<SceneSpec | null>;
   clearError: () => void;
   setSelectedEntityId: (entityId: string | null) => void;
+  focusEntity: (entityId: string) => void;
+  focusActorJoint: (jointId: CanonicalPuppetJointId | null) => void;
+  clearStudioFocus: () => void;
+  reconcileStudioFocus: (previousScene: SceneSpec | null, nextScene: SceneSpec) => void;
   setToolMode: (mode: EditorToolMode) => void;
   applyPatch: (patch: ScenePatch) => Promise<SceneSpec>;
   undo: () => Promise<SceneSpec | null>;
@@ -125,6 +140,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
   let pendingMutations = 0;
   let saveQueue: Promise<void> = Promise.resolve();
 
+  const currentFocusState = (): StudioFocusState => {
+    const state = get();
+    return {
+      selectedEntityId: state.selectedEntityId,
+      focusedEntityId: state.focusedEntityId,
+      focusedActorJointId: state.focusedActorJointId,
+      focusRequestVersion: state.focusRequestVersion,
+    };
+  };
+
   const commitUpdate = (
     update: SceneSessionUpdate,
     requestEpoch?: number,
@@ -151,17 +176,22 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     serverStateEpoch += 1;
     set((state) => {
       const scene = incomingScene ?? state.scene;
-      const selectedEntityId =
-        state.selectedEntityId === null ||
-        scene?.entities.some(
-          (entity) => entity.id === state.selectedEntityId,
-        )
-          ? state.selectedEntityId
-          : null;
+      const focus = scene
+        ? reconcileStudioFocus(
+            {
+              selectedEntityId: state.selectedEntityId,
+              focusedEntityId: state.focusedEntityId,
+              focusedActorJointId: state.focusedActorJointId,
+              focusRequestVersion: state.focusRequestVersion,
+            },
+            currentScene,
+            scene,
+          )
+        : createStudioFocusState();
       return {
         scene,
         history: update.history,
-        selectedEntityId,
+        ...focus,
         error: null,
       };
     });
@@ -257,13 +287,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           scene,
           loading: false,
           lastSceneEvent: summarizeSceneEvent(event),
-          selectedEntityId:
-            state.selectedEntityId === null ||
-            scene.entities.some(
-              (entity) => entity.id === state.selectedEntityId,
-            )
-              ? state.selectedEntityId
-              : null,
+          ...reconcileStudioFocus(
+            {
+              selectedEntityId: state.selectedEntityId,
+              focusedEntityId: state.focusedEntityId,
+              focusedActorJointId: state.focusedActorJointId,
+              focusRequestVersion: state.focusRequestVersion,
+            },
+            currentScene,
+            scene,
+          ),
         }));
         void refreshSnapshot({
           generation,
@@ -325,7 +358,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     isMutating: false,
     error: null,
     connectionStatus: "idle",
-    selectedEntityId: null,
+    ...createStudioFocusState(),
     toolMode: "select",
     lastSceneEvent: null,
 
@@ -365,14 +398,40 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     setSelectedEntityId: (entityId) => {
       const scene = get().scene;
+      if (entityId === null) {
+        set(clearStudioFocus(currentFocusState()));
+        return;
+      }
+      const entity = scene?.entities.find((candidate) => candidate.id === entityId);
+      if (!entity) return;
       set({
-        selectedEntityId:
-          entityId === null ||
-          scene?.entities.some((entity) => entity.id === entityId)
-            ? entityId
-            : null,
+        ...clearStudioFocus(currentFocusState()),
+        selectedEntityId: entity.id,
       });
     },
+
+    focusEntity: (entityId) => {
+      const scene = get().scene;
+      if (!scene) return;
+      set(focusStudioEntity(currentFocusState(), scene, entityId));
+    },
+
+    focusActorJoint: (jointId) => {
+      const scene = get().scene;
+      const focused = scene?.entities.find(
+        (entity) => entity.id === get().focusedEntityId,
+      );
+      if (!focused || focused.kind !== "actor") {
+        set({ focusedActorJointId: null });
+        return;
+      }
+      set({ focusedActorJointId: jointId });
+    },
+
+    clearStudioFocus: () => set(clearStudioFocus(currentFocusState())),
+
+    reconcileStudioFocus: (previousScene, nextScene) =>
+      set(reconcileStudioFocus(currentFocusState(), previousScene, nextScene)),
 
     setToolMode: (toolMode) => set({ toolMode }),
 

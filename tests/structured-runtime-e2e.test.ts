@@ -681,7 +681,7 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
   expect(data).toEqual(expect.objectContaining({
     service: "shubi-shot-director",
     capabilitiesContractVersion: 2,
-    applicationVersion: "0.8.0",
+    applicationVersion: "0.9.2",
     bridgeProtocolVersion: 1,
     workspaceRoutingVersion: 1,
     sceneSchemaVersion: 6,

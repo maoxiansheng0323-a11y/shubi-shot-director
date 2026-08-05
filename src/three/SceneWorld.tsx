@@ -3,9 +3,10 @@ import {
   PerspectiveCamera,
   TransformControls,
 } from "@react-three/drei";
-import type { ThreeEvent } from "@react-three/fiber";
+import { useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   createContext,
+  useCallback,
   useEffect,
   useContext,
   useLayoutEffect,
@@ -36,6 +37,18 @@ import {
   type SpatialPreviewProjection,
 } from "../editor/spatial-preview";
 import {
+  beginGroundDrag,
+  beginJointDrag,
+  canBeginDirectEntityDrag,
+  shouldCommitDirectEntityDrag,
+  updateGroundDrag,
+  updateJointDrag,
+  type GroundDragCapture,
+  type StudioJointDragCapture,
+} from "../editor/studio-interaction-math";
+import { subscribeStudioPointerCancellation } from "../editor/studio-pointer-events";
+import { hasStudioPointerExceededDragThreshold } from "../editor/studio-selection";
+import {
   deriveHiddenShotWallBoxKey,
   shotWallBoxKey,
 } from "../editor/shot-wall-visibility";
@@ -45,8 +58,10 @@ import {
   type JsonValue,
   type SceneEntity,
   type SceneSpec,
+  type QuaternionTuple,
   type TransformSpec,
 } from "../domain/scene-schema";
+import type { CanonicalPuppetJointId } from "../domain/actor-joints";
 import {
   RefinedMannequin,
   type RefinedPrimitiveRenderDescriptor,
@@ -56,7 +71,28 @@ export interface SceneWorldProps {
   scene: SceneSpec;
   view: "editor" | "shot";
   selectedEntityId: string | null;
+  focusedEntityId?: string | null;
+  focusedActorJointId?: CanonicalPuppetJointId | null;
+  actorJointOverrides?: Readonly<
+    Record<string, Partial<Record<CanonicalPuppetJointId, QuaternionTuple>>>
+  >;
   onSelectEntity: (entityId: string | null) => void;
+  onFocusEntity?: (entityId: string) => void;
+  onFocusActorJoint?: (jointId: CanonicalPuppetJointId) => void;
+  onActorJointStart?: (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+  ) => void;
+  onActorJointDraft?: (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+    rotation: QuaternionTuple,
+  ) => void;
+  onActorJointCommit?: (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+    rotation: QuaternionTuple,
+  ) => void | Promise<void>;
   selectedRegionId?: string | null;
   onSelectRegion?: (regionId: string) => void;
   spatialPreview?: SpatialPreviewProjection;
@@ -72,6 +108,7 @@ export interface SceneWorldProps {
     transform: TransformSpec,
   ) => void;
   onTransformStart?: (entityId: string) => void;
+  onTransformCancel?: (entityId: string) => void;
   onTransformCommit?: (
     entityId: string,
     transform: TransformSpec,
@@ -135,15 +172,39 @@ interface PointerMoveCompatibleControls {
   }) => void;
 }
 
-const SelectionEdges = ({ selected }: { selected: boolean }) =>
+interface ThreePointerCaptureTarget {
+  hasPointerCapture: (pointerId: number) => boolean;
+  setPointerCapture: (pointerId: number) => void;
+  releasePointerCapture: (pointerId: number) => void;
+}
+
+interface ToggleableEditorCameraControls {
+  enabled: boolean;
+}
+
+const pointerCaptureTarget = (
+  event: ThreeEvent<PointerEvent>,
+): ThreePointerCaptureTarget =>
+  event.currentTarget as unknown as ThreePointerCaptureTarget;
+
+const SelectionEdges = ({
+  selected,
+  color = "#9fd0ff",
+}: {
+  selected: boolean;
+  color?: string;
+}) =>
   selected ? (
     <Edges
       threshold={18}
-      color="#9fd0ff"
+      color={color}
       scale={1.015}
       renderOrder={20}
     />
   ) : null;
+
+const EntityFocusContext = createContext(false);
+const ActorJointFocusContext = createContext<CanonicalPuppetJointId | null>(null);
 
 interface GrayMeshProps {
   color: string;
@@ -173,6 +234,8 @@ const GrayMesh = ({
   opacity,
 }: GrayMeshProps) => {
   const inheritedOpacity = useContext(EntityOpacityContext);
+  const focused = useContext(EntityFocusContext);
+  const focusedJointId = useContext(ActorJointFocusContext);
   const resolvedOpacity = opacity ?? inheritedOpacity;
   return (
     <mesh
@@ -185,14 +248,17 @@ const GrayMesh = ({
     >
       {children}
       <meshStandardMaterial
-        color={selected ? "#a9c8e8" : color}
+        color={focusedJointId ? "#4ade80" : focused ? "#ef6a6a" : selected ? "#a9c8e8" : color}
         roughness={0.84}
         metalness={0.02}
         transparent={resolvedOpacity < 0.99}
         opacity={resolvedOpacity}
         depthWrite={resolvedOpacity >= 0.99}
       />
-      <SelectionEdges selected={selected} />
+      <SelectionEdges
+        selected={selected || focused || focusedJointId !== null}
+        color={focusedJointId ? "#4ade80" : focused ? "#ef4444" : undefined}
+      />
     </mesh>
   );
 };
@@ -287,6 +353,7 @@ const SpatialRegionFloor = ({
       rotation={[Math.PI / 2, 0, 0]}
       receiveShadow
       onClick={(event) => {
+        if (event.delta > 2) return;
         event.stopPropagation();
         onSelect?.(region.id);
       }}
@@ -487,11 +554,52 @@ const ActorRigPrimitiveMesh = ({
   primitive,
   color,
   selected,
+  focusedActorJointId,
+  onFocusActorJoint,
+  actorId,
+  currentJointRotation,
+  onActorJointStart,
+  onActorJointDraft,
+  onActorJointCommit,
 }: {
   primitive: ActorRigPrimitive;
   color: string;
   selected: boolean;
+  focusedActorJointId: CanonicalPuppetJointId | null;
+  onFocusActorJoint?: (jointId: CanonicalPuppetJointId) => void;
+  actorId?: string;
+  currentJointRotation?: QuaternionTuple;
+  onActorJointStart?: SceneWorldProps["onActorJointStart"];
+  onActorJointDraft?: SceneWorldProps["onActorJointDraft"];
+  onActorJointCommit?: SceneWorldProps["onActorJointCommit"];
 }) => {
+  const jointId = primitiveToJointId(primitive.id);
+  const canFocusJoint = jointId !== null && onFocusActorJoint !== undefined;
+  const jointDragRef = useRef<StudioJointDragCapture | null>(null);
+  const jointPointerIdRef = useRef<number | null>(null);
+  const editorCameraControls = useThree(
+    (state) => state.controls,
+  ) as unknown as ToggleableEditorCameraControls | null;
+
+  useEffect(
+    () => () => {
+      if (jointPointerIdRef.current !== null && editorCameraControls) {
+        editorCameraControls.enabled = true;
+      }
+    },
+    [editorCameraControls],
+  );
+
+  const cancelJointDrag = (event: ThreeEvent<PointerEvent>): void => {
+    if (jointPointerIdRef.current !== event.pointerId) return;
+    jointPointerIdRef.current = null;
+    jointDragRef.current = null;
+    const capturedTarget = pointerCaptureTarget(event);
+    if (capturedTarget.hasPointerCapture(event.pointerId)) {
+      capturedTarget.releasePointerCapture(event.pointerId);
+    }
+    if (editorCameraControls) editorCameraControls.enabled = true;
+  };
   let geometry: ReactNode;
   switch (primitive.kind) {
     case "sphere":
@@ -555,21 +663,111 @@ const ActorRigPrimitiveMesh = ({
     <group
       position={primitive.frame.position}
       quaternion={primitive.frame.rotation}
+      onPointerDown={
+        canFocusJoint
+          ? (event) => {
+              event.stopPropagation();
+              if (event.button !== 0 || !actorId || !currentJointRotation) return;
+              onFocusActorJoint(jointId);
+              jointDragRef.current = beginJointDrag(
+                jointId,
+                currentJointRotation,
+                [event.nativeEvent.clientX, event.nativeEvent.clientY],
+              );
+              jointPointerIdRef.current = event.pointerId;
+              pointerCaptureTarget(event).setPointerCapture(event.pointerId);
+              if (editorCameraControls) editorCameraControls.enabled = false;
+              onActorJointStart?.(actorId, jointId);
+            }
+          : undefined
+      }
+      onPointerMove={
+        canFocusJoint
+          ? (event) => {
+              const capture = jointDragRef.current;
+              if (
+                !capture ||
+                !actorId ||
+                jointPointerIdRef.current !== event.pointerId
+              ) {
+                return;
+              }
+              event.stopPropagation();
+              onActorJointDraft?.(
+                actorId,
+                jointId,
+                updateJointDrag(capture, [
+                  event.nativeEvent.clientX,
+                  event.nativeEvent.clientY,
+                ]),
+              );
+            }
+          : undefined
+      }
+      onPointerUp={
+        canFocusJoint
+          ? (event) => {
+              const capture = jointDragRef.current;
+              if (
+                !capture ||
+                !actorId ||
+                jointPointerIdRef.current !== event.pointerId
+              ) {
+                return;
+              }
+              jointPointerIdRef.current = null;
+              jointDragRef.current = null;
+              const capturedTarget = pointerCaptureTarget(event);
+              if (capturedTarget.hasPointerCapture(event.pointerId)) {
+                capturedTarget.releasePointerCapture(event.pointerId);
+              }
+              if (editorCameraControls) editorCameraControls.enabled = true;
+              event.stopPropagation();
+              onActorJointCommit?.(
+                actorId,
+                jointId,
+                updateJointDrag(capture, [
+                  event.nativeEvent.clientX,
+                  event.nativeEvent.clientY,
+                ]),
+              );
+            }
+          : undefined
+      }
+      onPointerCancel={cancelJointDrag}
+      onLostPointerCapture={(event) => {
+        if (jointPointerIdRef.current !== event.pointerId) return;
+        jointPointerIdRef.current = null;
+        jointDragRef.current = null;
+        if (editorCameraControls) editorCameraControls.enabled = true;
+      }}
+      onClick={
+        canFocusJoint
+          ? (event) => {
+              event.stopPropagation();
+              onFocusActorJoint(jointId);
+            }
+          : undefined
+      }
     >
-      <GrayMesh
-        color={primitive.id === "face" && !selected ? "#aab4bf" : color}
-        selected={selected}
-        position={primitive.center}
-        scale={
-          primitive.kind === "profile"
-            ? [1, 1, primitive.depthScale]
-            : primitive.kind === "ellipsoid"
-              ? [...primitive.radii]
-              : undefined
-        }
+      <ActorJointFocusContext.Provider
+        value={focusedActorJointId === jointId ? jointId : null}
       >
-        {geometry}
-      </GrayMesh>
+        <GrayMesh
+          color={primitive.id === "face" && !selected ? "#aab4bf" : color}
+          selected={selected}
+          position={primitive.center}
+          scale={
+            primitive.kind === "profile"
+              ? [1, 1, primitive.depthScale]
+              : primitive.kind === "ellipsoid"
+                ? [...primitive.radii]
+                : undefined
+          }
+        >
+          {geometry}
+        </GrayMesh>
+      </ActorJointFocusContext.Provider>
     </group>
   );
 };
@@ -578,12 +776,47 @@ const MannequinActor = ({
   scene,
   actor,
   selected,
+  focusedActorJointId = null,
+  onFocusActorJoint,
+  actorJointOverride,
+  onActorJointStart,
+  onActorJointDraft,
+  onActorJointCommit,
 }: {
   scene: SceneSpec;
   actor: AnyActorEntity;
   selected: boolean;
+  focusedActorJointId?: CanonicalPuppetJointId | null;
+  onFocusActorJoint?: (jointId: CanonicalPuppetJointId) => void;
+  actorJointOverride?: Partial<Record<CanonicalPuppetJointId, QuaternionTuple>>;
+  onActorJointStart?: SceneWorldProps["onActorJointStart"];
+  onActorJointDraft?: SceneWorldProps["onActorJointDraft"];
+  onActorJointCommit?: SceneWorldProps["onActorJointCommit"];
 }) => {
-  const projection = resolveActorProjection(scene, actor);
+  const effectiveActor = actorJointOverride
+    ? {
+        ...actor,
+        pose: {
+          ...actor.pose,
+          joints: { ...actor.pose.joints, ...actorJointOverride },
+        },
+      }
+    : actor;
+  const projection = actorJointOverride
+    ? resolveActorProjection(scene, effectiveActor)
+    : resolveActorProjection(scene, actor);
+  const primitiveProps = (primitive: ActorRigPrimitive) => {
+    const jointId = primitiveToJointId(primitive.id);
+    return {
+      actorId: actor.id,
+      currentJointRotation: jointId
+        ? effectiveActor.pose.joints[jointId]
+        : undefined,
+      onActorJointStart,
+      onActorJointDraft,
+      onActorJointCommit,
+    };
+  };
   const procedural = (
     <>
       {projection.primitives.map((primitive) => (
@@ -592,17 +825,23 @@ const MannequinActor = ({
           primitive={primitive}
           color={actor.color}
           selected={selected}
+          focusedActorJointId={focusedActorJointId}
+          onFocusActorJoint={onFocusActorJoint}
+          {...primitiveProps(primitive)}
         />
       ))}
     </>
   );
   const renderProcedural = (primitive: ActorRigPrimitive) => (
-    <ActorRigPrimitiveMesh
-      key={primitive.id}
-      primitive={primitive}
-      color={actor.color}
-      selected={selected}
-    />
+      <ActorRigPrimitiveMesh
+        key={primitive.id}
+        primitive={primitive}
+        color={actor.color}
+        selected={selected}
+        focusedActorJointId={focusedActorJointId}
+        onFocusActorJoint={onFocusActorJoint}
+        {...primitiveProps(primitive)}
+      />
   );
   const renderRefined = ({
     primitive,
@@ -653,17 +892,45 @@ const CameraProxy = ({
   </>
 );
 
+const primitiveToJointId = (
+  primitiveId: ActorRigPrimitive["id"],
+): CanonicalPuppetJointId | null => {
+  if (primitiveId === "pelvis" || primitiveId === "torso" || primitiveId === "neck" || primitiveId === "head") return null;
+  if (primitiveId === "upper_arm_l" || primitiveId === "shoulder_l") return "upper_arm_l";
+  if (primitiveId === "forearm_l" || primitiveId === "elbow_l") return "forearm_l";
+  if (primitiveId === "hand_l") return "hand_l";
+  if (primitiveId === "upper_arm_r" || primitiveId === "shoulder_r") return "upper_arm_r";
+  if (primitiveId === "forearm_r" || primitiveId === "elbow_r") return "forearm_r";
+  if (primitiveId === "hand_r") return "hand_r";
+  if (primitiveId === "upper_leg_l" || primitiveId === "hip_l") return "upper_leg_l";
+  if (primitiveId === "lower_leg_l" || primitiveId === "knee_l") return "lower_leg_l";
+  if (primitiveId === "foot_l") return "foot_l";
+  if (primitiveId === "upper_leg_r" || primitiveId === "hip_r") return "upper_leg_r";
+  if (primitiveId === "lower_leg_r" || primitiveId === "knee_r") return "lower_leg_r";
+  if (primitiveId === "foot_r") return "foot_r";
+  return null;
+};
+
 const EntityProjection = ({
   scene,
   entity,
   view,
   selected,
+  focused,
+  focusedActorJointId,
+  actorJointOverride,
   opacity = 1,
   onSelectEntity,
+  onFocusEntity,
+  onFocusActorJoint,
+  onActorJointStart,
+  onActorJointDraft,
+  onActorJointCommit,
   toolMode = "select",
   snapEnabled = true,
   transformOverride,
   onTransformStart,
+  onTransformCancel,
   onTransformDraft,
   onTransformCommit,
   transformDomElement,
@@ -672,12 +939,21 @@ const EntityProjection = ({
   entity: SceneEntity;
   view: SceneWorldProps["view"];
   selected: boolean;
+  focused: boolean;
+  focusedActorJointId?: CanonicalPuppetJointId | null;
+  actorJointOverride?: Partial<Record<CanonicalPuppetJointId, QuaternionTuple>>;
   opacity?: number;
   onSelectEntity: SceneWorldProps["onSelectEntity"];
+  onFocusEntity?: SceneWorldProps["onFocusEntity"];
+  onFocusActorJoint?: SceneWorldProps["onFocusActorJoint"];
+  onActorJointStart?: SceneWorldProps["onActorJointStart"];
+  onActorJointDraft?: SceneWorldProps["onActorJointDraft"];
+  onActorJointCommit?: SceneWorldProps["onActorJointCommit"];
   toolMode?: SceneWorldProps["toolMode"];
   snapEnabled?: boolean;
   transformOverride?: TransformSpec;
   onTransformStart?: SceneWorldProps["onTransformStart"];
+  onTransformCancel?: SceneWorldProps["onTransformCancel"];
   onTransformDraft?: SceneWorldProps["onTransformDraft"];
   onTransformCommit?: SceneWorldProps["onTransformCommit"];
   transformDomElement?: HTMLElement;
@@ -685,11 +961,56 @@ const EntityProjection = ({
   const groupRef = useRef<Group>(null!);
   const controlsRef =
     useRef<ComponentRef<typeof TransformControls>>(null);
+  const editorCameraControls = useThree(
+    (state) => state.controls,
+  ) as unknown as ToggleableEditorCameraControls | null;
+  const directDragRef = useRef<{
+    pointerId: number;
+    capture: GroundDragCapture;
+    startPointerPx: readonly [number, number];
+    moved: boolean;
+  } | null>(null);
+  const onTransformCancelRef = useRef(onTransformCancel);
+  onTransformCancelRef.current = onTransformCancel;
   const showTransformControls =
     selected &&
     view === "editor" &&
-    entity.lockMode === "none" &&
-    toolMode !== "select";
+    entity.lockMode !== "user" &&
+    (toolMode !== "select" || focused);
+  const transformMode = toolMode === "rotate" ? "rotate" : "translate";
+  const setEditorCameraControlsEnabled = (enabled: boolean): void => {
+    if (view === "editor" && editorCameraControls) {
+      editorCameraControls.enabled = enabled;
+    }
+  };
+
+  const cancelDirectDrag = useCallback(
+    (pointerId: number): void => {
+      const active = directDragRef.current;
+      if (!active || active.pointerId !== pointerId) return;
+      directDragRef.current = null;
+      if (view === "editor" && editorCameraControls) {
+        editorCameraControls.enabled = true;
+      }
+      if (active.moved) {
+        onTransformCancelRef.current?.(entity.id);
+      }
+    },
+    [editorCameraControls, entity.id, view],
+  );
+
+  useEffect(() => {
+    if (!transformDomElement) return;
+    const unsubscribe = subscribeStudioPointerCancellation(
+      transformDomElement.ownerDocument,
+      cancelDirectDrag,
+    );
+    return () => {
+      unsubscribe();
+      const active = directDragRef.current;
+      if (active) cancelDirectDrag(active.pointerId);
+    };
+  }, [cancelDirectDrag, transformDomElement]);
 
   useEffect(() => {
     if (!showTransformControls || !transformDomElement) {
@@ -738,6 +1059,104 @@ const EntityProjection = ({
     event.stopPropagation();
     onSelectEntity(entity.id);
   };
+  const onDoubleClick = (event: ThreeEvent<MouseEvent>): void => {
+    if (view !== "editor") return;
+    event.stopPropagation();
+    onFocusEntity?.(entity.id);
+  };
+  const onPointerDown = (event: ThreeEvent<PointerEvent>): void => {
+    if (
+      !canBeginDirectEntityDrag({
+        view,
+        button: event.button,
+        toolMode,
+        lockMode: entity.lockMode,
+        entityKind: entity.kind,
+      })
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    onSelectEntity(entity.id);
+    const floorY = entity.transform.positionM[1];
+    const capture = beginGroundDrag(
+      entity.transform.positionM,
+      {
+        originM: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
+        directionM: [
+          event.ray.direction.x,
+          event.ray.direction.y,
+          event.ray.direction.z,
+        ],
+      },
+      floorY,
+    );
+    if (!capture) return;
+    directDragRef.current = {
+      pointerId: event.pointerId,
+      capture,
+      startPointerPx: [event.nativeEvent.clientX, event.nativeEvent.clientY],
+      moved: false,
+    };
+    pointerCaptureTarget(event).setPointerCapture(event.pointerId);
+    setEditorCameraControlsEnabled(false);
+  };
+  const onPointerMove = (event: ThreeEvent<PointerEvent>): void => {
+    const active = directDragRef.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    if (
+      !active.moved &&
+      !hasStudioPointerExceededDragThreshold(active.startPointerPx, [
+        event.nativeEvent.clientX,
+        event.nativeEvent.clientY,
+      ])
+    ) {
+      return;
+    }
+    const nextPosition = updateGroundDrag(active.capture, {
+      originM: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
+      directionM: [
+        event.ray.direction.x,
+        event.ray.direction.y,
+        event.ray.direction.z,
+      ],
+    });
+    if (!nextPosition) return;
+    if (!active.moved) {
+      active.moved = true;
+      onTransformStart?.(entity.id);
+    }
+    event.stopPropagation();
+    onTransformDraft?.(entity.id, {
+      ...entity.transform,
+      positionM: nextPosition,
+    });
+  };
+  const onPointerUp = (event: ThreeEvent<PointerEvent>): void => {
+    const active = directDragRef.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    directDragRef.current = null;
+    const capturedTarget = pointerCaptureTarget(event);
+    if (capturedTarget.hasPointerCapture(event.pointerId)) {
+      capturedTarget.releasePointerCapture(event.pointerId);
+    }
+    setEditorCameraControlsEnabled(true);
+    const nextPosition = updateGroundDrag(active.capture, {
+      originM: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
+      directionM: [
+        event.ray.direction.x,
+        event.ray.direction.y,
+        event.ray.direction.z,
+      ],
+    });
+    event.stopPropagation();
+    if (nextPosition && shouldCommitDirectEntityDrag(active.moved)) {
+      void onTransformCommit?.(entity.id, {
+        ...entity.transform,
+        positionM: nextPosition,
+      });
+    }
+  };
 
   const selectedInEditor = selected && view === "editor";
   let content: ReactNode;
@@ -764,6 +1183,14 @@ const EntityProjection = ({
           scene={scene}
           actor={entity}
           selected={selectedInEditor}
+          focusedActorJointId={focused ? focusedActorJointId : null}
+          onFocusActorJoint={
+            focused ? onFocusActorJoint : undefined
+          }
+          actorJointOverride={actorJointOverride}
+          onActorJointStart={focused ? onActorJointStart : undefined}
+          onActorJointDraft={focused ? onActorJointDraft : undefined}
+          onActorJointCommit={focused ? onActorJointCommit : undefined}
         />
       );
       break;
@@ -794,16 +1221,29 @@ const EntityProjection = ({
         name={`entity-${entity.id}`}
         {...entityTransformProps(transformOverride ?? entity.transform)}
         onClick={onSelect}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={(event) => {
+          const capturedTarget = pointerCaptureTarget(event);
+          if (capturedTarget.hasPointerCapture(event.pointerId)) {
+            capturedTarget.releasePointerCapture(event.pointerId);
+          }
+          cancelDirectDrag(event.pointerId);
+        }}
+        onDoubleClick={onDoubleClick}
       >
-        <EntityOpacityContext.Provider value={opacity}>
-          {content}
-        </EntityOpacityContext.Provider>
+        <EntityFocusContext.Provider value={focused}>
+          <EntityOpacityContext.Provider value={opacity}>
+            {content}
+          </EntityOpacityContext.Provider>
+        </EntityFocusContext.Provider>
       </group>
       {showTransformControls ? (
         <TransformControls
           ref={controlsRef}
           object={groupRef}
-          mode={toolMode}
+          mode={transformMode}
           space={toolMode === "rotate" ? "local" : "world"}
           translationSnap={snapEnabled ? 0.1 : null}
           rotationSnap={snapEnabled ? Math.PI / 36 : null}
@@ -827,7 +1267,15 @@ export const SceneWorld = ({
   scene,
   view,
   selectedEntityId,
+  focusedEntityId = null,
+  focusedActorJointId = null,
+  actorJointOverrides,
   onSelectEntity,
+  onFocusEntity,
+  onFocusActorJoint,
+  onActorJointStart,
+  onActorJointDraft,
+  onActorJointCommit,
   selectedRegionId = null,
   onSelectRegion,
   spatialPreview,
@@ -837,6 +1285,7 @@ export const SceneWorld = ({
   transformOverrides,
   shotCameraTransform,
   onTransformStart,
+  onTransformCancel,
   onTransformDraft,
   onTransformCommit,
   transformDomElement,
@@ -846,7 +1295,7 @@ export const SceneWorld = ({
       spatialPreview ??
       deriveSpatialPreview(
         scene.spatialLayout,
-        view === "shot" ? "shot" : previewMode,
+        view === "shot" ? "overview" : previewMode,
         selectedRegionId,
       ),
     [
@@ -880,7 +1329,9 @@ export const SceneWorld = ({
   return (
     <group
       name={`scene-world-${scene.revision}-${view}`}
-      onPointerMissed={() => onSelectEntity(null)}
+      onPointerMissed={(event) => {
+        if (event.button === 0) onSelectEntity(null);
+      }}
     >
       <ambientLight intensity={1.35} />
       <hemisphereLight args={["#f4f7fb", "#46505d", 1.25]} />
@@ -923,12 +1374,27 @@ export const SceneWorld = ({
             entity={entity}
             view={view}
             selected={entity.id === selectedEntityId}
+            focused={entity.id === focusedEntityId}
+            focusedActorJointId={
+              entity.id === focusedEntityId ? focusedActorJointId : null
+            }
+            actorJointOverride={
+              entity.kind === "actor" ? actorJointOverrides?.[entity.id] : undefined
+            }
             opacity={opacity}
             onSelectEntity={onSelectEntity}
+            onFocusEntity={onFocusEntity}
+            onFocusActorJoint={
+              entity.id === focusedEntityId ? onFocusActorJoint : undefined
+            }
+            onActorJointStart={onActorJointStart}
+            onActorJointDraft={onActorJointDraft}
+            onActorJointCommit={onActorJointCommit}
             toolMode={toolMode}
             snapEnabled={snapEnabled}
             transformOverride={transformOverrides?.[entity.id]}
             onTransformStart={onTransformStart}
+            onTransformCancel={onTransformCancel}
             onTransformDraft={onTransformDraft}
             onTransformCommit={onTransformCommit}
             transformDomElement={transformDomElement}

@@ -123,13 +123,61 @@ After explicit user confirmation, author one atomic ScenePatch with `preserveLoc
 
 The intermediate none state exists only on the Patch working clone; it is never a separate revision, event, or saved state. If protection is intentionally removed, omit the final relock. A separate temporary unlock Patch is forbidden. `preserveLock: false` without explicit lock-mode transitions is not authorization.
 
+## Manage the studio directly
+
+1. Treat the main browser viewport as one graybox studio. The editor camera is
+   UI-only and never becomes a scene camera, `activeCameraId`, saved field,
+   Patch operation, or export camera. Overview and Local are editor filters;
+   the compact preview independently shows the current active shot camera.
+2. On empty studio space, left-drag pans the editor view, right-drag orbits
+   around its current observation center, and the wheel zooms. Direct
+   left-drag on an editable entity takes priority over view panning. A short
+   right-click that stays within the 5 px studio drag threshold clears
+   transient selection; a longer right-drag orbits without clearing it. These
+   editor-view gestures never write `SceneSpec` or alter a shot camera.
+3. Click an actor, prop, or camera once for ordinary selection. Double-click to
+   frame it at a deterministic editing scale and enter red entity focus.
+   A short right-click or `Escape` clears transient focus. Double-clicking a
+   shot camera also activates it for the compact preview; selecting a camera in
+   the compact selector does not change studio selection or focus.
+4. Drag a focused actor's torso or pelvis to move the whole entity. Drag a
+   focused prop or camera proxy the same way. Arrow keys move a focused entity
+   relative to the editor view; `PageUp` and `PageDown` move along world Y.
+   Workflow locks use `preserveLock: true`; user locks remain inspectable but
+   cannot create mutation drafts until explicitly unlocked.
+5. After an actor is focused, click a supported body segment to enter green
+   actor-part focus. Dragging that segment from the current editor viewpoint
+   authors one existing `actor.pose.joints.set` operation for one canonical
+   joint. It is view-relative and does not infer IK or edit multiple joints.
+6. Treat each completed entity gesture, held-key sequence, or joint gesture as
+   one Patch, one revision, and one undo step. Editor camera, selection, focus,
+   selected joint, preview expansion, and live drafts remain UI state. Cancel a
+   stale or conflicting draft and re-author from the newest snapshot; never
+   retry an old absolute draft against a newer revision.
+
 ## Adjust the final camera directly
 
-1. When it is visible and eligible, Shot Preview automatically owns camera navigation; no activation toggle is required. Select and focus the active camera when the preview opens.
-2. Use left drag for image plane camera translation while preserving camera direction. Use right drag to orbit 360 degrees around the automatic primary composition or keep-visible target while continuing to look at it. Use the wheel to change focal length in millimeters without changing camera position.
-3. Use the six-button movement pad or `ArrowUp` and `ArrowDown` for forward and backward movement, `ArrowLeft` and `ArrowRight` for camera-relative lateral movement, and `PageUp` and `PageDown` for world-Y movement. Hold `Shift` for fast keyboard steps or `Alt` for precision steps. Use `Escape` to cancel the current draft.
-4. Treat each completed drag, held-key sequence, or wheel sequence as one Patch, one revision, and one undo step. Draft transforms and focal lengths remain UI state and must block export until committed. Cancel a stale draft if the scene changes externally; never retry it against a newer revision.
-5. For a workflow-locked camera, commit the gesture with `preserveLock: true` and require it to remain `workflow`; do not ask for authorization. User locks remain a stop-and-ask condition: disable direct camera controls until the user explicitly confirms the protected change.
+1. Open the compact preview or its explicit expand control when the active shot
+   camera needs refinement. Expanded Shot Preview is the authoritative camera
+   navigation and export surface; no activation toggle is required.
+2. Use left drag for image plane camera translation while preserving camera
+   direction. Right drag rotates freely in place by default. Select an explicit
+   visible actor or prop target only when target orbit is wanted; the runtime
+   must never invent a target from composition constraints. Use the wheel to
+   change focal length in millimeters without changing camera position.
+3. Use the six-button movement pad or `ArrowUp` and `ArrowDown` for forward and
+   backward movement, `ArrowLeft` and `ArrowRight` for camera-relative lateral
+   movement, and `PageUp` and `PageDown` for world-Y movement. Hold `Shift` for
+   fast keyboard steps or `Alt` for precision steps. Use `Escape` to cancel the
+   current draft.
+4. Treat each completed drag, held-key sequence, or wheel sequence as one Patch,
+   one revision, and one undo step. Draft transforms and focal lengths remain
+   UI state and must block export until committed. Cancel a stale draft if the
+   scene changes externally; never retry it against a newer revision.
+5. For a workflow-locked camera, commit the gesture with `preserveLock: true`
+   and require it to remain `workflow`; do not ask for authorization. User locks
+   remain a stop-and-ask condition: disable direct camera controls until the
+   user explicitly confirms the protected change.
 
 ## Export a perspective reference
 

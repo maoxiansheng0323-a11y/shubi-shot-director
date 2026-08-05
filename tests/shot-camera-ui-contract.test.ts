@@ -1,8 +1,27 @@
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { createDefaultScene } from "../src/domain/default-scene";
+import { ShotCameraNavigation } from "../src/editor/ShotCameraNavigation";
 
 const readSource = (relativePath: string): string =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
+
+const renderNavigation = (
+  scene = createDefaultScene(),
+  disabled = false,
+): string =>
+  renderToStaticMarkup(
+    createElement(ShotCameraNavigation, {
+      scene,
+      disabled,
+      onUnlockUserProtectedCamera: () => undefined,
+      onDraftChange: () => undefined,
+      onCommitTransform: async () => undefined,
+      onCommitFocalLength: async () => undefined,
+    }),
+  );
 
 describe("shot camera navigation UI contract", () => {
   it("owns Shot Preview input without a hidden activation mode", () => {
@@ -61,6 +80,158 @@ describe("shot camera navigation UI contract", () => {
       .toBeLessThan(pointerDown.indexOf('camera.lockMode === "user"'));
   });
 
+  it("renders a controlled explicit target selector that defaults to free rotation", () => {
+    const markup = renderNavigation();
+
+    expect(markup).toContain("Target lock");
+    expect(markup).toContain(
+      'aria-label="Right-drag orbit target"',
+    );
+    expect(markup).toContain("Off (free rotation)");
+    expect(markup).toContain("Generic actor");
+    expect(markup).toContain("Blocking cube");
+
+    const source = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+    expect(source).toContain(
+      "useState<string | null>(null)",
+    );
+    expect(source).toContain("listShotOrbitTargets(scene)");
+    expect(source).toContain('value={targetEntityId ?? ""}');
+  });
+
+  it("builds target options only from the stable visible actor and prop list", () => {
+    const scene = createDefaultScene();
+    const actor = scene.entities.find(
+      (entity) => entity.kind === "actor",
+    );
+    const prop = scene.entities.find(
+      (entity) => entity.kind === "prop",
+    );
+    if (!actor || !prop) throw new Error("Missing target fixtures.");
+    actor.visible = false;
+    scene.entities.push({
+      ...structuredClone(prop),
+      id: "prop_generic_2",
+      label: "Second prop",
+    });
+
+    const markup = renderNavigation(scene);
+
+    expect(markup).not.toContain("Generic actor");
+    expect(markup.indexOf("Blocking cube")).toBeLessThan(
+      markup.indexOf("Second prop"),
+    );
+    expect(markup).not.toContain("Room shell");
+    expect(markup).not.toContain("Shot camera");
+  });
+
+  it("captures target and pan references at pointer-down and does not retarget mid-drag", () => {
+    const source = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+    const pointerDown = source.slice(
+      source.indexOf("const handlePointerDown"),
+      source.indexOf("const handlePointerMove"),
+    );
+    const pointerMove = source.slice(
+      source.indexOf("const handlePointerMove"),
+      source.indexOf("const finishPointerGesture"),
+    );
+
+    expect(pointerDown).toContain("resolveShotOrbitTargetCenter");
+    expect(pointerDown).toContain("deriveShotPanReferenceDistance");
+    expect(pointerDown).toContain("targetEntityId:");
+    expect(pointerDown).toContain("targetM:");
+    expect(pointerDown).toContain("panReferenceDistanceM:");
+    expect(pointerMove).toContain("rotateShotCameraFree");
+    expect(pointerMove).toContain("orbitShotCamera");
+    expect(pointerMove).toContain("gesture.targetEntityId");
+    expect(pointerMove).toContain("gesture.targetM");
+    expect(pointerMove).toContain("gesture.panReferenceDistanceM");
+    expect(pointerMove).not.toContain("resolveShotOrbitTargetCenter");
+    expect(pointerMove).not.toContain("deriveShotPanReferenceDistance");
+  });
+
+  it("reconciles target validity independently from revision draft cancellation", () => {
+    const source = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+
+    expect(source).toContain("reconcileShotOrbitTargetId");
+    expect(source).toContain("previous.sceneId");
+    expect(source).toContain("previous.cameraId");
+    expect(source).toContain("expectedOwnRevisionRef.current === scene.revision");
+    expect(source).toMatch(
+      /reconcileShotOrbitTargetId[\s\S]*expectedOwnRevisionRef\.current === scene\.revision/u,
+    );
+  });
+
+  it("disables target changes while any navigation input owns the session", () => {
+    expect(renderNavigation(createDefaultScene(), true)).toMatch(
+      /<select[^>]*aria-label="Right-drag orbit target"[^>]*disabled=""/u,
+    );
+
+    const source = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+    expect(source).toContain(
+      'const navigationInputBusy = inputOwnerRef.current !== "idle"',
+    );
+    expect(source).toMatch(
+      /const targetSelectorDisabled =[\s\S]{0,160}controlsDisabled \|\| navigationInputBusy/u,
+    );
+    expect(source).toContain("disabled={targetSelectorDisabled}");
+    expect(source).toContain("isEditableTarget(event.target)");
+  });
+
+  it("keeps shot navigation independent from studio selection and automatic targets", () => {
+    const navigation = readSource(
+      "src/editor/ShotCameraNavigation.tsx",
+    );
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
+
+    expect(navigation).not.toContain("onSelectCamera");
+    expect(navigation).not.toContain("deriveShotOrbitTarget");
+    expect(navigation).not.toContain("type ShotOrbitTarget");
+    expect(navigation).not.toContain("orbitTargetRef");
+    expect(workspace).not.toContain("onSelectCamera={onSelect}");
+  });
+
+  it("keeps the target selector in the compact camera control band", () => {
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
+    const styles = readSource("src/styles.css");
+
+    expect(styles).toContain(".shot-camera-target-control");
+    expect(styles).toMatch(
+      /\.shot-camera-controls\s*\{[\s\S]*?flex-wrap:\s*nowrap[\s\S]*?overflow-x:\s*auto[\s\S]*?overflow-y:\s*hidden/u,
+    );
+    expect(styles).toMatch(
+      /\.shot-preview-image\s*\{[\s\S]*?position:\s*relative[\s\S]*?aspect-ratio:\s*16\s*\/\s*9/u,
+    );
+    expect(styles).toMatch(
+      /\.shot-camera-controls\s*\{[\s\S]*?position:\s*static[\s\S]*?grid-row:\s*2/u,
+    );
+    expect(styles).toMatch(
+      /\.shot-camera-surface\s*\{[\s\S]*?grid-area:\s*1\s*\/\s*1\s*\/\s*2\s*\/\s*2/u,
+    );
+    expect(styles).toMatch(
+      /\.shot-camera-(?:move-pad|focal-readout|target-control|lock-notice)[\s\S]*?flex:\s*0\s+0\s+auto/u,
+    );
+    expect(workspace).toContain('alignSelf: "end"');
+    expect(workspace).toContain('justifySelf: "end"');
+    expect(workspace).toContain('width: "min(42%, 560px)"');
+    expect(workspace).toContain('data-shot-preview-expanded');
+    expect(styles).toContain(
+      '.shot-preview-panel[data-shot-preview-expanded="true"]',
+    );
+    const controlsRule = styles.match(
+      /\.shot-camera-controls\s*\{([\s\S]*?)\}/u,
+    )?.[1];
+    expect(controlsRule).not.toMatch(/position:\s*absolute/u);
+  });
+
   it("offers six explicit one-click camera movement controls", () => {
     const source = readSource(
       "src/editor/ShotCameraNavigation.tsx",
@@ -78,7 +249,9 @@ describe("shot camera navigation UI contract", () => {
     }
     expect(source).toContain("moveShotCameraByKey(baseCamera, key, {})");
     expect(source).toContain("createShotCameraGestureSession(scene, camera.id)");
-    expect(source).toContain("disabled={controlsDisabled || draft?.pending}");
+    expect(source).toContain(
+      "disabled={controlsDisabled || navigationInputBusy}",
+    );
   });
 
   it("offers an in-preview unlock action when the camera is user protected", () => {
@@ -139,6 +312,7 @@ describe("shot camera navigation UI contract", () => {
     expect(workspace).toContain("onCameraDraftChange");
     expect(app).toContain("preserveLock: true");
     expect(app).toContain("cameraDraftActive");
-    expect(app).toMatch(/exportDisabled[\s\S]*cameraDraftActive/u);
+    expect(app).toContain("const hasLocalDraft = cameraDraftActive");
+    expect(app).toMatch(/exportDisabled[\s\S]*hasLocalDraft/u);
   });
 });

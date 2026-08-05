@@ -103,6 +103,22 @@ export const createCameraLensPatch = (
     options.preserveLock ?? false,
   );
 
+export const createActiveCameraPatch = (
+  scene: SceneSpec,
+  cameraId: string,
+): ScenePatch | null => {
+  const camera = scene.entities.find((entity) => entity.id === cameraId);
+  if (camera?.kind !== "camera" || scene.activeCameraId === cameraId) {
+    return null;
+  }
+  return createOperationsPatch(scene, "active_camera", [
+    {
+      op: "scene.active-camera.set",
+      cameraId,
+    },
+  ]);
+};
+
 export const createLockModePatch = (
   scene: SceneSpec,
   entityId: string,
@@ -147,14 +163,21 @@ export const createActorJointPatch = (
   actorId: string,
   jointId: CanonicalPuppetJointId,
   rotation: QuaternionTuple,
+  options: ManualPatchOptions = {},
 ): ScenePatch =>
-  createOperationsPatch(scene, "actor_joint", [
-    {
-      op: "actor.pose.joints.set",
-      actorId,
-      updates: { [jointId]: rotation },
-    },
-  ]);
+  createOperationsPatch(
+    scene,
+    "actor_joint",
+    [
+      {
+        op: "actor.pose.joints.set",
+        actorId,
+        updates: { [jointId]: rotation },
+      },
+    ],
+    "manual",
+    options.preserveLock ?? false,
+  );
 
 export const createActorVariantPatch = (
   scene: SceneSpec,

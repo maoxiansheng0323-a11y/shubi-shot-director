@@ -10,16 +10,22 @@ import type {
   CameraEntity,
   SceneSpec,
   TransformSpec,
+  Vec3,
 } from "../domain/scene-schema";
 import {
   adjustShotFocalLength,
-  deriveShotOrbitTarget,
+  deriveShotPanReferenceDistance,
   moveShotCameraByKey,
   orbitShotCamera,
   panShotCamera,
+  rotateShotCameraFree,
   type ShotNavigationKey,
-  type ShotOrbitTarget,
 } from "./shot-camera-navigation";
+import {
+  listShotOrbitTargets,
+  reconcileShotOrbitTargetId,
+  resolveShotOrbitTargetCenter,
+} from "./shot-camera-target-lock";
 import {
   createShotCameraGestureSession,
   decideShotCameraGesture,
@@ -38,7 +44,6 @@ export interface ShotCameraDraft {
 export interface ShotCameraNavigationProps {
   scene: SceneSpec;
   disabled: boolean;
-  onSelectCamera: (cameraId: string) => void;
   onUnlockUserProtectedCamera: () => void | Promise<void>;
   onDraftChange: (draft: ShotCameraDraft | null) => void;
   onCommitTransform: (
@@ -58,6 +63,10 @@ interface PointerGesture {
   startY: number;
   camera: CameraEntity;
   session: ShotCameraGestureSession;
+  targetEntityId: string | null;
+  targetM: Vec3 | null;
+  panReferenceDistanceM: number;
+  transform: TransformSpec | null;
 }
 
 interface TransformGesture {
@@ -71,6 +80,15 @@ interface FocalGesture {
   session: ShotCameraGestureSession;
   focalLengthMm: number;
 }
+
+type ShotCameraInputOwner =
+  | "idle"
+  | "pointer"
+  | "wheel"
+  | "key"
+  | "commit";
+
+type TransformCommitOwner = "idle" | "pointer" | "key";
 
 const navigationKeys = new Set<ShotNavigationKey>([
   "ArrowUp",
@@ -121,13 +139,18 @@ const activeCameraFrom = (scene: SceneSpec): CameraEntity | null =>
 export const ShotCameraNavigation = ({
   scene,
   disabled,
-  onSelectCamera,
   onUnlockUserProtectedCamera,
   onDraftChange,
   onCommitTransform,
   onCommitFocalLength,
 }: ShotCameraNavigationProps) => {
   const camera = useMemo(() => activeCameraFrom(scene), [scene]);
+  const targetOptions = useMemo(
+    () => listShotOrbitTargets(scene),
+    [scene],
+  );
+  const [targetEntityId, setTargetEntityId] =
+    useState<string | null>(null);
   const [draft, setDraft] = useState<ShotCameraDraft | null>(null);
   const [dragging, setDragging] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -136,7 +159,9 @@ export const ShotCameraNavigation = ({
   const wheelGestureRef = useRef<FocalGesture | null>(null);
   const heldKeysRef = useRef(new Set<ShotNavigationKey>());
   const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const orbitTargetRef = useRef<ShotOrbitTarget | null>(null);
+  const inputOwnerRef = useRef<ShotCameraInputOwner>("idle");
+  const commitGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
   const expectedOwnRevisionRef = useRef<number | null>(null);
   const previousSceneRef = useRef({
     sceneId: scene.sceneId,
@@ -146,6 +171,9 @@ export const ShotCameraNavigation = ({
 
   const publishDraft = useCallback(
     (nextDraft: ShotCameraDraft | null): void => {
+      if (!mountedRef.current) {
+        return;
+      }
       setDraft(nextDraft);
       onDraftChange(nextDraft);
     },
@@ -182,6 +210,8 @@ export const ShotCameraNavigation = ({
     keyGestureRef.current = null;
     wheelGestureRef.current = null;
     heldKeysRef.current.clear();
+    commitGenerationRef.current += 1;
+    inputOwnerRef.current = "idle";
     expectedOwnRevisionRef.current = null;
     setDragging(false);
     publishDraft(null);
@@ -203,7 +233,13 @@ export const ShotCameraNavigation = ({
   };
 
   const commitTransform = useCallback(
-    async (gesture: TransformGesture): Promise<void> => {
+    async (
+      gesture: TransformGesture,
+      owner: TransformCommitOwner,
+    ): Promise<void> => {
+      if (inputOwnerRef.current !== owner) {
+        return;
+      }
       if (
         decideShotCameraGesture(
           gesture.session,
@@ -211,9 +247,12 @@ export const ShotCameraNavigation = ({
           gesture.camera.id,
         ).status !== "commit"
       ) {
+        inputOwnerRef.current = "idle";
         publishDraft(null);
         return;
       }
+      inputOwnerRef.current = "commit";
+      const commitGeneration = ++commitGenerationRef.current;
       expectedOwnRevisionRef.current = gesture.session.baseRevision + 1;
       publishDraft({
         cameraId: gesture.camera.id,
@@ -225,11 +264,24 @@ export const ShotCameraNavigation = ({
           gesture.session,
           gesture.transform,
         );
-        rememberAcceptedRevision(gesture.session, accepted);
+        if (
+          mountedRef.current &&
+          commitGenerationRef.current === commitGeneration
+        ) {
+          rememberAcceptedRevision(gesture.session, accepted);
+        }
       } catch {
-        expectedOwnRevisionRef.current = null;
+        if (commitGenerationRef.current === commitGeneration) {
+          expectedOwnRevisionRef.current = null;
+        }
       } finally {
-        publishDraft(null);
+        if (
+          mountedRef.current &&
+          commitGenerationRef.current === commitGeneration
+        ) {
+          inputOwnerRef.current = "idle";
+          publishDraft(null);
+        }
       }
     },
     [onCommitTransform, publishDraft, scene],
@@ -237,6 +289,9 @@ export const ShotCameraNavigation = ({
 
   const commitFocalLength = useCallback(
     async (gesture: FocalGesture): Promise<void> => {
+      if (inputOwnerRef.current !== "wheel") {
+        return;
+      }
       if (
         decideShotCameraGesture(
           gesture.session,
@@ -244,9 +299,12 @@ export const ShotCameraNavigation = ({
           gesture.camera.id,
         ).status !== "commit"
       ) {
+        inputOwnerRef.current = "idle";
         publishDraft(null);
         return;
       }
+      inputOwnerRef.current = "commit";
+      const commitGeneration = ++commitGenerationRef.current;
       expectedOwnRevisionRef.current = gesture.session.baseRevision + 1;
       publishDraft({
         cameraId: gesture.camera.id,
@@ -258,11 +316,24 @@ export const ShotCameraNavigation = ({
           gesture.session,
           gesture.focalLengthMm,
         );
-        rememberAcceptedRevision(gesture.session, accepted);
+        if (
+          mountedRef.current &&
+          commitGenerationRef.current === commitGeneration
+        ) {
+          rememberAcceptedRevision(gesture.session, accepted);
+        }
       } catch {
-        expectedOwnRevisionRef.current = null;
+        if (commitGenerationRef.current === commitGeneration) {
+          expectedOwnRevisionRef.current = null;
+        }
       } finally {
-        publishDraft(null);
+        if (
+          mountedRef.current &&
+          commitGenerationRef.current === commitGeneration
+        ) {
+          inputOwnerRef.current = "idle";
+          publishDraft(null);
+        }
       }
     },
     [onCommitFocalLength, publishDraft, scene],
@@ -275,9 +346,20 @@ export const ShotCameraNavigation = ({
       revision: scene.revision,
       cameraId: scene.activeCameraId,
     };
+    const reconciledTargetEntityId = reconcileShotOrbitTargetId(
+      scene,
+      scene.activeCameraId,
+      {
+        sceneId: previous.sceneId,
+        activeCameraId: previous.cameraId,
+        entityId: targetEntityId,
+      },
+    );
+    if (reconciledTargetEntityId !== targetEntityId) {
+      setTargetEntityId(reconciledTargetEntityId);
+    }
     if (!camera || disabled || camera.lockMode === "user") {
       cancelGestures();
-      orbitTargetRef.current = null;
       return;
     }
     const cameraChanged =
@@ -285,11 +367,6 @@ export const ShotCameraNavigation = ({
       previous.cameraId !== scene.activeCameraId;
     if (cameraChanged) {
       cancelGestures();
-      orbitTargetRef.current = null;
-    }
-    if (!orbitTargetRef.current) {
-      orbitTargetRef.current = deriveShotOrbitTarget(scene, camera);
-      onSelectCamera(camera.id);
       requestAnimationFrame(focusSurface);
       return;
     }
@@ -301,22 +378,27 @@ export const ShotCameraNavigation = ({
       return;
     }
     cancelGestures();
-    orbitTargetRef.current = deriveShotOrbitTarget(scene, camera);
   }, [
     camera,
     cancelGestures,
     disabled,
-    onSelectCamera,
     scene,
+    targetEntityId,
   ]);
 
   useEffect(
-    () => () => {
-      if (wheelTimerRef.current !== null) {
-        clearTimeout(wheelTimerRef.current);
-      }
-      releaseCapturedPointer();
-      onDraftChange(null);
+    () => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+        commitGenerationRef.current += 1;
+        if (wheelTimerRef.current !== null) {
+          clearTimeout(wheelTimerRef.current);
+        }
+        releaseCapturedPointer();
+        inputOwnerRef.current = "idle";
+        onDraftChange(null);
+      };
     },
     [onDraftChange, releaseCapturedPointer],
   );
@@ -331,6 +413,7 @@ export const ShotCameraNavigation = ({
       disabled ||
       !camera ||
       camera.lockMode === "user" ||
+      inputOwnerRef.current !== "idle" ||
       (event.button !== 0 && event.button !== 2) ||
       isEditableTarget(event.target)
     ) {
@@ -338,9 +421,17 @@ export const ShotCameraNavigation = ({
     }
     event.preventDefault();
     focusSurface();
-    onSelectCamera(camera.id);
-    cancelGestures();
+    inputOwnerRef.current = "pointer";
     const baseCamera = cloneCamera(camera);
+    const selectedTargetM = targetEntityId
+      ? resolveShotOrbitTargetCenter(scene, targetEntityId)
+      : null;
+    const capturedTargetEntityId = selectedTargetM
+      ? targetEntityId
+      : null;
+    if (targetEntityId && !selectedTargetM) {
+      setTargetEntityId(null);
+    }
     pointerGestureRef.current = {
       pointerId: event.pointerId,
       button: event.button,
@@ -348,6 +439,14 @@ export const ShotCameraNavigation = ({
       startY: event.clientY,
       camera: baseCamera,
       session: createShotCameraGestureSession(scene, camera.id),
+      targetEntityId: capturedTargetEntityId,
+      targetM: selectedTargetM,
+      panReferenceDistanceM: deriveShotPanReferenceDistance(
+        scene,
+        baseCamera,
+        selectedTargetM,
+      ),
+      transform: null,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
@@ -357,8 +456,11 @@ export const ShotCameraNavigation = ({
     event: PointerEvent<HTMLDivElement>,
   ): void => {
     const gesture = pointerGestureRef.current;
-    const target = orbitTargetRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId || !target) {
+    if (
+      inputOwnerRef.current !== "pointer" ||
+      !gesture ||
+      gesture.pointerId !== event.pointerId
+    ) {
       return;
     }
     event.preventDefault();
@@ -370,11 +472,14 @@ export const ShotCameraNavigation = ({
       gesture.button === 0
         ? panShotCamera(
             gesture.camera,
-            target.targetM,
+            gesture.panReferenceDistanceM,
             delta,
             event.currentTarget.clientHeight,
           )
-        : orbitShotCamera(gesture.camera, target.targetM, delta);
+        : gesture.targetEntityId && gesture.targetM
+          ? orbitShotCamera(gesture.camera, gesture.targetM, delta)
+          : rotateShotCameraFree(gesture.camera, delta);
+    gesture.transform = transform;
     publishDraft({
       cameraId: gesture.camera.id,
       transform,
@@ -387,7 +492,11 @@ export const ShotCameraNavigation = ({
     commit: boolean,
   ): void => {
     const gesture = pointerGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) {
+    if (
+      inputOwnerRef.current !== "pointer" ||
+      !gesture ||
+      gesture.pointerId !== event.pointerId
+    ) {
       return;
     }
     event.preventDefault();
@@ -396,15 +505,18 @@ export const ShotCameraNavigation = ({
     }
     pointerGestureRef.current = null;
     setDragging(false);
-    const transform = draft?.transform;
-    if (commit && transform) {
-      void commitTransform({
-        camera: gesture.camera,
-        session: gesture.session,
-        transform,
-      });
+    if (commit && gesture.transform) {
+      void commitTransform(
+        {
+          camera: gesture.camera,
+          session: gesture.session,
+          transform: gesture.transform,
+        },
+        "pointer",
+      );
     } else {
       gesture.session.cancelled = true;
+      inputOwnerRef.current = "idle";
       publishDraft(null);
     }
   };
@@ -416,11 +528,16 @@ export const ShotCameraNavigation = ({
         !camera ||
         camera.lockMode === "user" ||
         isEditableTarget(event.target) ||
-        event.deltaY === 0
+        event.deltaY === 0 ||
+        (inputOwnerRef.current !== "idle" &&
+          inputOwnerRef.current !== "wheel")
       ) {
         return;
       }
       event.preventDefault();
+      if (inputOwnerRef.current === "idle") {
+        inputOwnerRef.current = "wheel";
+      }
       const gesture =
         wheelGestureRef.current ?? {
           camera: cloneCamera(camera),
@@ -447,6 +564,9 @@ export const ShotCameraNavigation = ({
         wheelGestureRef.current = null;
         if (finalGesture) {
           void commitFocalLength(finalGesture);
+        } else if (inputOwnerRef.current === "wheel") {
+          inputOwnerRef.current = "idle";
+          publishDraft(null);
         }
       }, WHEEL_COMMIT_DELAY_MS);
     },
@@ -465,9 +585,8 @@ export const ShotCameraNavigation = ({
   const handleKeyDown = useCallback((event: globalThis.KeyboardEvent): void => {
     if (event.key === "Escape") {
       if (
-        pointerGestureRef.current ||
-        keyGestureRef.current ||
-        wheelGestureRef.current
+        inputOwnerRef.current !== "idle" &&
+        inputOwnerRef.current !== "commit"
       ) {
         event.preventDefault();
         cancelGestures();
@@ -483,7 +602,16 @@ export const ShotCameraNavigation = ({
     ) {
       return;
     }
+    if (
+      inputOwnerRef.current !== "idle" &&
+      inputOwnerRef.current !== "key"
+    ) {
+      return;
+    }
     event.preventDefault();
+    if (inputOwnerRef.current === "idle") {
+      inputOwnerRef.current = "key";
+    }
     heldKeysRef.current.add(event.key);
     const gesture =
       keyGestureRef.current ?? {
@@ -506,6 +634,7 @@ export const ShotCameraNavigation = ({
 
   const handleKeyUp = useCallback((event: globalThis.KeyboardEvent): void => {
     if (
+      inputOwnerRef.current !== "key" ||
       !isNavigationKey(event.key) ||
       !heldKeysRef.current.has(event.key)
     ) {
@@ -519,7 +648,10 @@ export const ShotCameraNavigation = ({
     const gesture = keyGestureRef.current;
     keyGestureRef.current = null;
     if (gesture) {
-      void commitTransform(gesture);
+      void commitTransform(gesture, "key");
+    } else {
+      inputOwnerRef.current = "idle";
+      publishDraft(null);
     }
   }, [commitTransform]);
 
@@ -538,17 +670,22 @@ export const ShotCameraNavigation = ({
 
   const controlsDisabled =
     disabled || !camera || camera.lockMode === "user";
+  const navigationInputBusy = inputOwnerRef.current !== "idle";
+  const targetSelectorDisabled =
+    controlsDisabled || navigationInputBusy;
   const nudgeCamera = (key: ShotNavigationKey): void => {
-    if (controlsDisabled || !camera || draft?.pending) {
+    if (controlsDisabled || !camera || inputOwnerRef.current !== "idle") {
       return;
     }
-    onSelectCamera(camera.id);
     const baseCamera = cloneCamera(camera);
-    void commitTransform({
-      camera: baseCamera,
-      session: createShotCameraGestureSession(scene, camera.id),
-      transform: moveShotCameraByKey(baseCamera, key, {}),
-    });
+    void commitTransform(
+      {
+        camera: baseCamera,
+        session: createShotCameraGestureSession(scene, camera.id),
+        transform: moveShotCameraByKey(baseCamera, key, {}),
+      },
+      "idle",
+    );
   };
 
   const focalLengthMm =
@@ -570,7 +707,7 @@ export const ShotCameraNavigation = ({
             className="shot-camera-nudge is-forward"
             aria-label="镜头前移"
             title="镜头前移"
-            disabled={controlsDisabled || draft?.pending}
+            disabled={controlsDisabled || navigationInputBusy}
             onClick={() => nudgeCamera("ArrowUp")}
           >
             ↑
@@ -580,7 +717,7 @@ export const ShotCameraNavigation = ({
             className="shot-camera-nudge is-backward"
             aria-label="镜头后移"
             title="镜头后移"
-            disabled={controlsDisabled || draft?.pending}
+            disabled={controlsDisabled || navigationInputBusy}
             onClick={() => nudgeCamera("ArrowDown")}
           >
             ↓
@@ -590,7 +727,7 @@ export const ShotCameraNavigation = ({
             className="shot-camera-nudge is-left"
             aria-label="镜头左移"
             title="镜头左移"
-            disabled={controlsDisabled || draft?.pending}
+            disabled={controlsDisabled || navigationInputBusy}
             onClick={() => nudgeCamera("ArrowLeft")}
           >
             ←
@@ -600,7 +737,7 @@ export const ShotCameraNavigation = ({
             className="shot-camera-nudge is-right"
             aria-label="镜头右移"
             title="镜头右移"
-            disabled={controlsDisabled || draft?.pending}
+            disabled={controlsDisabled || navigationInputBusy}
             onClick={() => nudgeCamera("ArrowRight")}
           >
             →
@@ -610,7 +747,7 @@ export const ShotCameraNavigation = ({
             className="shot-camera-nudge is-up"
             aria-label="镜头上移"
             title="镜头上移"
-            disabled={controlsDisabled || draft?.pending}
+            disabled={controlsDisabled || navigationInputBusy}
             onClick={() => nudgeCamera("PageUp")}
           >
             ⇧
@@ -620,7 +757,7 @@ export const ShotCameraNavigation = ({
             className="shot-camera-nudge is-down"
             aria-label="镜头下移"
             title="镜头下移"
-            disabled={controlsDisabled || draft?.pending}
+            disabled={controlsDisabled || navigationInputBusy}
             onClick={() => nudgeCamera("PageDown")}
           >
             ⇩
@@ -629,6 +766,25 @@ export const ShotCameraNavigation = ({
         <output className="shot-camera-focal-readout">
           {focalLengthMm.toFixed(1)} mm
         </output>
+        <label className="shot-camera-target-control">
+          <span>Target lock</span>
+          <select
+            aria-label="Right-drag orbit target"
+            data-shot-navigation-exempt
+            value={targetEntityId ?? ""}
+            disabled={targetSelectorDisabled}
+            onChange={(event) =>
+              setTargetEntityId(event.currentTarget.value || null)
+            }
+          >
+            <option value="">Off (free rotation)</option>
+            {targetOptions.map((option) => (
+              <option key={option.entityId} value={option.entityId}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {camera?.lockMode === "user" ? (
           <div className="shot-camera-lock-notice" role="status">
             <span>镜头已被用户保护</span>

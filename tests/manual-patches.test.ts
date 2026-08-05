@@ -6,6 +6,7 @@ import {
   createActorJointPatch,
   createActorLimbPresencePatch,
   createActorVariantPatch,
+  createActiveCameraPatch,
   createCameraLensPatch,
   createLockModePatch,
   nextManualLockMode,
@@ -25,6 +26,49 @@ import {
 } from "./helpers/actor-blueprint-fixtures";
 
 describe("manual editor patches", () => {
+  it("creates exactly one active-camera operation for another camera", () => {
+    const scene = createDefaultScene();
+    const activeCamera = scene.entities.find(
+      (entity) => entity.kind === "camera",
+    );
+    if (activeCamera?.kind !== "camera") {
+      throw new Error("Active camera fixture is missing.");
+    }
+    const secondCamera = {
+      ...structuredClone(activeCamera),
+      id: "camera_shot_2",
+      label: "Second shot camera",
+      lockMode: "user" as const,
+    };
+    scene.entities.push(secondCamera);
+
+    const patch = createActiveCameraPatch(scene, secondCamera.id);
+
+    expect(patch).not.toBeNull();
+    expect(scenePatchSchema.parse(patch)).toMatchObject({
+      schemaVersion: PATCH_SCHEMA_VERSION,
+      sceneId: scene.sceneId,
+      baseRevision: scene.revision,
+      source: "manual",
+      preserveLock: false,
+      operations: [
+        {
+          op: "scene.active-camera.set",
+          cameraId: secondCamera.id,
+        },
+      ],
+    });
+    expect(patch?.operations).toHaveLength(1);
+  });
+
+  it("does not create an active-camera patch for a no-op or non-camera", () => {
+    const scene = createDefaultScene();
+
+    expect(createActiveCameraPatch(scene, scene.activeCameraId)).toBeNull();
+    expect(createActiveCameraPatch(scene, "actor_generic_1")).toBeNull();
+    expect(createActiveCameraPatch(scene, "camera_missing_1")).toBeNull();
+  });
+
   it("creates one authoritative actor variant operation", () => {
     const scene: SceneSpec = sceneSpecSchema.parse(createDefaultScene());
     scene.entities = scene.entities.filter(

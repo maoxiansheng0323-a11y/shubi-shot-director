@@ -35,6 +35,7 @@ import {
   nextManualLockMode,
   transformsEqual,
 } from "./editor/manual-patches";
+import { commitStudioActorJoint } from "./editor/studio-entity-commands";
 import { applyActorLimbPresenceCommand } from "./editor/limb-presence-command";
 import {
   paneAfterSceneSelection,
@@ -42,6 +43,7 @@ import {
 } from "./editor/compact-workspace";
 import { CompactWorkspaceTabs } from "./editor/CompactWorkspaceTabs";
 import { ViewportWorkspace } from "./editor/ViewportWorkspace";
+import { activateShotCamera } from "./editor/active-camera-command";
 import {
   commitShotCameraFocalLength,
   commitShotCameraTransform,
@@ -79,6 +81,7 @@ export const App = () => {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [previewMode, setPreviewMode] =
     useState<SpatialPreviewMode>("overview");
+  const [shotPreviewExpanded, setShotPreviewExpanded] = useState(false);
   const [focusedRegionId, setFocusedRegionId] =
     useState<string | null>(null);
   const [compactPane, setCompactPane] =
@@ -100,12 +103,28 @@ export const App = () => {
   const selectedEntityId = useEditorStore(
     (state) => state.selectedEntityId,
   );
+  const focusedEntityId = useEditorStore(
+    (state) => state.focusedEntityId,
+  );
+  const focusedActorJointId = useEditorStore(
+    (state) => state.focusedActorJointId,
+  );
+  const focusRequestVersion = useEditorStore(
+    (state) => state.focusRequestVersion,
+  );
   const toolMode = useEditorStore((state) => state.toolMode);
   const lastSceneEvent = useEditorStore(
     (state) => state.lastSceneEvent,
   );
   const setSelectedEntityId = useEditorStore(
     (state) => state.setSelectedEntityId,
+  );
+  const focusEntity = useEditorStore((state) => state.focusEntity);
+  const focusActorJoint = useEditorStore(
+    (state) => state.focusActorJoint,
+  );
+  const clearStudioFocus = useEditorStore(
+    (state) => state.clearStudioFocus,
   );
   const setToolMode = useEditorStore((state) => state.setToolMode);
   const undo = useEditorStore((state) => state.undo);
@@ -132,7 +151,7 @@ export const App = () => {
       if (
         !currentScene ||
         !entity ||
-        entity.lockMode !== "none"
+        entity.lockMode === "user"
       ) {
         return;
       }
@@ -158,11 +177,35 @@ export const App = () => {
             currentScene,
             entityId,
             constrainedTransform,
+            { preserveLock: entity.lockMode === "workflow" },
           ),
         );
       } catch {
         // The store already exposes the server's readable error in the UI.
       }
+    },
+    [],
+  );
+
+  const commitActorJoint = useCallback(
+    async (
+      actorId: string,
+      jointId: CanonicalPuppetJointId,
+      rotation: QuaternionTuple,
+    ): Promise<void> => {
+      const state = useEditorStore.getState();
+      const actor = state.scene?.entities.find(
+        (entity) => entity.id === actorId,
+      );
+      if (!state.scene || actor?.kind !== "actor" || actor.lockMode === "user") {
+        return;
+      }
+      await commitStudioActorJoint(
+        () => ({ scene: state.scene, applyPatch: state.applyPatch }),
+        actorId,
+        jointId,
+        rotation,
+      );
     },
     [],
   );
@@ -682,9 +725,10 @@ export const App = () => {
   );
   const interactionDisabled =
     loading || isMutating || connectionStatus !== "connected";
+  const hasLocalDraft = cameraDraftActive;
   const exportDisabled =
     exporting ||
-    cameraDraftActive ||
+    hasLocalDraft ||
     interactionDisabled ||
     !exporterReady ||
     activeCamera?.kind !== "camera";
@@ -864,9 +908,9 @@ export const App = () => {
           onChange={(pane) => {
             setCompactPane(pane);
             if (pane === "shot") {
-              setPreviewMode("shot");
-            } else if (pane === "editor" && previewMode === "shot") {
-              setPreviewMode("overview");
+              setShotPreviewExpanded(true);
+            } else if (pane === "editor") {
+              setShotPreviewExpanded(false);
             }
           }}
         />
@@ -899,8 +943,15 @@ export const App = () => {
           <ViewportWorkspace
             scene={scene}
             selectedId={selectedEntityId}
+            focusedEntityId={focusedEntityId}
+            focusedActorJointId={focusedActorJointId}
+            focusRequestVersion={focusRequestVersion}
             onSelect={(entityId) => {
-              setSelectedEntityId(entityId);
+              if (entityId === null) {
+                clearStudioFocus();
+              } else {
+                setSelectedEntityId(entityId);
+              }
               const membership =
                 scene.spatialLayout?.memberships.find(
                   (candidate) => candidate.entityId === entityId,
@@ -909,9 +960,24 @@ export const App = () => {
                 setFocusedRegionId(membership.regionId);
               }
             }}
+            onFocusEntity={(entityId) => {
+              focusEntity(entityId);
+              const membership = scene.spatialLayout?.memberships.find(
+                (candidate) => candidate.entityId === entityId,
+              );
+              if (membership) {
+                setFocusedRegionId(membership.regionId);
+              }
+              setCompactPane("editor");
+            }}
+            onFocusActorJoint={(jointId) => {
+              focusActorJoint(jointId);
+            }}
+            onClearFocus={clearStudioFocus}
             toolMode={interactionDisabled ? "select" : toolMode}
             snapEnabled={snapEnabled}
             onCommitTransform={commitTransform}
+            onCommitActorJoint={commitActorJoint}
             interactionDisabled={interactionDisabled}
             onUnlockUserProtectedCamera={toggleActiveCameraLock}
             onCommitCameraTransform={commitFinalCameraTransform}
@@ -919,14 +985,24 @@ export const App = () => {
             onCameraDraftChange={handleCameraDraftChange}
             registerExporter={registerExporter}
             previewMode={previewMode}
+            shotPreviewExpanded={shotPreviewExpanded}
             focusedRegionId={focusedRegionId}
             onPreviewModeChange={(mode) => {
               setPreviewMode(mode);
-              if (mode === "shot") {
-                setCompactPane("shot");
-              } else if (compactPane === "shot") {
+              if (compactPane === "shot") {
                 setCompactPane("editor");
               }
+            }}
+            onShotPreviewExpandedChange={(expanded) => {
+              setShotPreviewExpanded(expanded);
+              setCompactPane(expanded ? "shot" : "editor");
+            }}
+            onActivateShotCamera={async (cameraId) => {
+              setShotPreviewExpanded(false);
+              await activateShotCamera(
+                () => useEditorStore.getState(),
+                cameraId,
+              );
             }}
             onFocusedRegionChange={(regionId) => {
               setFocusedRegionId(regionId);
