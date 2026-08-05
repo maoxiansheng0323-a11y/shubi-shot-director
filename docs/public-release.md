@@ -4,7 +4,7 @@ This repository can be prepared as public source, but its internal Git history
 is not the publication artifact. Development-only checkpoints remain private;
 GitHub receives only a verified, history-free source snapshot.
 
-## Fixed v0.9.0 publication parameters
+## Fixed v0.9.2 publication parameters
 
 - Repository: `shubi-shot-director`
 - Repository name: `shubi-shot-director`
@@ -12,7 +12,7 @@ GitHub receives only a verified, history-free source snapshot.
 - Existing public repository: `maoxiansheng0323-a11y/shubi-shot-director`
 - Visibility: `public`
 - Default branch: `main`
-- Release version: `v0.9.0`
+- Release version: `v0.9.2`
 - License: `MIT`
 - Package publication: disabled; keep `package.json` at `private: true` and do not publish to npm.
 
@@ -80,16 +80,16 @@ or private marker is present. Then commit and tag only from the public checkout:
 
 ```powershell
 git add --all
-git commit -m "Release v0.9.0"
-git tag -a v0.9.0 -m "Shubi Shot Director v0.9.0"
+git commit -m "Release v0.9.2"
+git tag -a v0.9.2 -m "Shubi Shot Director v0.9.2"
 git push origin main
-git push origin v0.9.0
+git push origin v0.9.2
 ```
 
 Create the public announcement from the committed reusable release notes:
 
 ```powershell
-gh release create v0.9.0 --repo maoxiansheng0323-a11y/shubi-shot-director --title "Shubi Shot Director v0.9.0" --notes-file docs/releases/v0.9.0.md
+gh release create v0.9.2 --repo maoxiansheng0323-a11y/shubi-shot-director --title "Shubi Shot Director v0.9.2" --notes-file docs/releases/v0.9.2.md
 ```
 
 Finally verify the remote `main` SHA, annotated tag target, published Release,

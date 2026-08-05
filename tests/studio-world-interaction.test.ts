@@ -6,19 +6,62 @@ const readSource = (relativePath: string): string =>
   readFileSync(resolve(process.cwd(), relativePath), "utf8");
 
 describe("studio world interaction contract", () => {
-  it("keeps entity focus and context-menu clearing in the editor projection", () => {
+  it("keeps entity focus in the editor projection", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     expect(source).toContain("onDoubleClick={onDoubleClick}");
-    expect(source).toContain("onContextMenu={onContextMenu}");
     expect(source).toContain('focused ? "#ef6a6a"');
     expect(source).toContain('focused ? "#ef4444"');
   });
 
+  it("classifies right-click clearing only at the editor surface", () => {
+    const controller = readSource(
+      "src/editor/StudioInteractionController.tsx",
+    );
+    const world = readSource("src/three/SceneWorld.tsx");
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
+
+    for (const eventName of [
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "pointercancel",
+      "lostpointercapture",
+      "pointerleave",
+      "contextmenu",
+    ]) {
+      expect(controller).toContain(
+        `surface.addEventListener("${eventName}"`,
+      );
+    }
+    expect(world).not.toContain("onContextMenu={onContextMenu}");
+    expect(world).not.toContain("onContextMenu={(event)");
+    expect(workspace).not.toContain("onContextMenu={(event)");
+    expect(workspace).toContain(
+      "Editor viewport. Left-drag to pan, right-drag to orbit, and scroll to zoom.",
+    );
+  });
+
   it("routes limb pointer movement through a temporary joint draft", () => {
     const source = readSource("src/three/SceneWorld.tsx");
+    const jointSection = source.slice(
+      source.indexOf("const ActorRigPrimitiveMesh"),
+      source.indexOf("const MannequinActor"),
+    );
     expect(source).toContain("beginJointDrag");
     expect(source).toContain("onActorJointDraft");
     expect(source).toContain('focusedActorJointId === jointId');
+    expect(jointSection).toContain("jointPointerIdRef");
+    expect(jointSection).toContain("setPointerCapture(event.pointerId)");
+    expect(jointSection).toContain("releasePointerCapture(event.pointerId)");
+    expect(jointSection).toContain("editorCameraControls.enabled = false");
+    expect(jointSection).toContain("editorCameraControls.enabled = true");
+    expect(jointSection).toContain("onLostPointerCapture");
+  });
+
+  it("keeps right-button misses out of the ordinary empty-space selection path", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    expect(source).toContain("onPointerMissed={(event) => {");
+    expect(source).toContain("if (event.button === 0) onSelectEntity(null);");
   });
 
   it("keeps user protection blocking while workflow locks remain editable", () => {
@@ -34,6 +77,7 @@ describe("studio world interaction contract", () => {
     expect(source).toContain("shouldApplyEditorCameraFrame");
     expect(source).toContain("initialFrameRef");
     expect(source).toContain("frameRequestVersion");
+    expect(source).toContain("mouseButtons={EDITOR_VIEW_MOUSE_BUTTONS}");
     expect(source).not.toContain("position={frame.positionM}");
     expect(source).not.toContain("target={frame.targetM}");
   });

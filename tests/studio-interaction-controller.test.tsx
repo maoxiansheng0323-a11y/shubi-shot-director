@@ -105,4 +105,64 @@ describe("studio interaction controller", () => {
     expect(escape.preventDefault).toHaveBeenCalledOnce();
     expect(clear).toHaveBeenCalledOnce();
   });
+
+  it("clears on a short right click but preserves selection after right-drag orbit", () => {
+    const scene = createDefaultScene();
+    const surface = new TestSurface();
+    const clear = vi.fn();
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(
+        <StudioInteractionController
+          scene={scene}
+          surface={surface as unknown as HTMLElement}
+          selectedEntityId="prop_block_1"
+          focusedEntityId="prop_block_1"
+          editorViewDirection={[0, 0, -1]}
+          onCommitTransform={vi.fn()}
+          onClearFocus={clear}
+        >
+          <div />
+        </StudioInteractionController>,
+      );
+    });
+    renderers.push(renderer);
+
+    const pointer = (
+      type: "pointerdown" | "pointermove" | "pointerup",
+      clientX: number,
+      pointerId: number,
+    ): void => {
+      const event = {
+        button: 2,
+        buttons: type === "pointerup" ? 0 : 2,
+        clientX,
+        clientY: 10,
+        pointerId,
+      } as unknown as PointerEvent;
+      act(() => surface.listeners.get(type)?.(event));
+    };
+
+    pointer("pointerdown", 10, 7);
+    pointer("pointermove", 15, 7);
+    const contextMenu = {
+      preventDefault: vi.fn(),
+    } as unknown as MouseEvent;
+    act(() => surface.listeners.get("contextmenu")?.(contextMenu));
+    expect(contextMenu.preventDefault).toHaveBeenCalledOnce();
+    expect(clear).not.toHaveBeenCalled();
+    pointer("pointerup", 15, 7);
+    expect(clear).toHaveBeenCalledOnce();
+
+    pointer("pointerdown", 10, 8);
+    pointer("pointermove", 16, 8);
+    pointer("pointerup", 16, 8);
+    expect(clear).toHaveBeenCalledOnce();
+
+    pointer("pointerdown", 10, 9);
+    pointer("pointermove", 16, 9);
+    pointer("pointermove", 10, 9);
+    pointer("pointerup", 10, 9);
+    expect(clear).toHaveBeenCalledOnce();
+  });
 });

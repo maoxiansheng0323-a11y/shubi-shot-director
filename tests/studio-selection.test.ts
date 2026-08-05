@@ -61,6 +61,29 @@ describe("studio selection and focus", () => {
     ).toBe("double-click");
   });
 
+  it("treats a short right click as clear and a right drag as orbit", () => {
+    expect(
+      classifyStudioPointer({
+        button: 2,
+        down: [10, 10],
+        up: [15, 10],
+        elapsedMs: 40,
+        previousClickAtMs: null,
+        nowMs: 100,
+      }),
+    ).toBe("clear");
+    expect(
+      classifyStudioPointer({
+        button: 2,
+        down: [10, 10],
+        up: [16, 10],
+        elapsedMs: 40,
+        previousClickAtMs: null,
+        nowMs: 100,
+      }),
+    ).toBe("orbit");
+  });
+
   it("clears all transient focus and reconciles scene replacement or missing entities", () => {
     const scene = createDefaultScene();
     const focused = focusStudioEntity(

@@ -197,7 +197,6 @@ type EditorSceneProps = Pick<
   | "onSelect"
   | "onFocusEntity"
   | "onFocusActorJoint"
-  | "onClearFocus"
   | "toolMode"
   | "snapEnabled"
   | "previewMode"
@@ -217,7 +216,6 @@ const EditorScene = ({
   onSelect,
   onFocusEntity = () => undefined,
   onFocusActorJoint = () => undefined,
-  onClearFocus = () => undefined,
   toolMode,
   snapEnabled,
   transformOverrides,
@@ -294,7 +292,6 @@ const EditorScene = ({
         onSelectEntity={onSelect}
         onFocusEntity={onFocusEntity}
         onFocusActorJoint={onFocusActorJoint}
-        onClearFocus={onClearFocus}
         onActorJointStart={onActorJointStart}
         onActorJointDraft={onActorJointDraft}
         onActorJointCommit={onActorJointCommit}
@@ -736,12 +733,8 @@ export const ViewportWorkspace = ({
           pointerEvents: isShotPreviewExpanded ? "none" : "auto",
         }}
         data-testid="editor-viewport"
-        aria-label="Editor viewport. Drag to orbit, right-drag to pan, and scroll to zoom."
+        aria-label="Editor viewport. Left-drag to pan, right-drag to orbit, and scroll to zoom."
         tabIndex={0}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          onClearFocus();
-        }}
       >
         <p style={labelStyle} aria-hidden="true">
           {previewMode === "local"
@@ -770,7 +763,6 @@ export const ViewportWorkspace = ({
               onSelect={onSelect}
               onFocusEntity={onFocusEntity}
               onFocusActorJoint={onFocusActorJoint}
-              onClearFocus={onClearFocus}
               toolMode={toolMode}
               snapEnabled={snapEnabled}
               previewMode={previewMode === "local" ? "local" : "overview"}

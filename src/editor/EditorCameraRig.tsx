@@ -3,8 +3,17 @@ import {
   PerspectiveCamera,
 } from "@react-three/drei";
 import { useLayoutEffect, useRef, type ComponentRef } from "react";
-import type { PerspectiveCamera as ThreePerspectiveCamera } from "three";
+import {
+  MOUSE,
+  type PerspectiveCamera as ThreePerspectiveCamera,
+} from "three";
 import type { EditorCameraFrame } from "./studio-interaction-math";
+
+export const EDITOR_VIEW_MOUSE_BUTTONS = {
+  LEFT: MOUSE.PAN,
+  MIDDLE: MOUSE.DOLLY,
+  RIGHT: MOUSE.ROTATE,
+} as const;
 
 export interface EditorCameraRigProps {
   frame: EditorCameraFrame;
@@ -86,6 +95,7 @@ export const EditorCameraRig = ({
         dampingFactor={0.08}
         minDistance={0.5}
         maxDistance={80}
+        mouseButtons={EDITOR_VIEW_MOUSE_BUTTONS}
       />
     </>
   );

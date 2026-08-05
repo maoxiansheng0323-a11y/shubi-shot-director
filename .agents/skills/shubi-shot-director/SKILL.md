@@ -129,21 +129,27 @@ The intermediate none state exists only on the Patch working clone; it is never 
    UI-only and never becomes a scene camera, `activeCameraId`, saved field,
    Patch operation, or export camera. Overview and Local are editor filters;
    the compact preview independently shows the current active shot camera.
-2. Click an actor, prop, or camera once for ordinary selection. Double-click to
+2. On empty studio space, left-drag pans the editor view, right-drag orbits
+   around its current observation center, and the wheel zooms. Direct
+   left-drag on an editable entity takes priority over view panning. A short
+   right-click that stays within the 5 px studio drag threshold clears
+   transient selection; a longer right-drag orbits without clearing it. These
+   editor-view gestures never write `SceneSpec` or alter a shot camera.
+3. Click an actor, prop, or camera once for ordinary selection. Double-click to
    frame it at a deterministic editing scale and enter red entity focus.
-   Right-click or `Escape` clears transient focus. Double-clicking a shot camera
-   also activates it for the compact preview; selecting a camera in the compact
-   selector does not change studio selection or focus.
-3. Drag a focused actor's torso or pelvis to move the whole entity. Drag a
+   A short right-click or `Escape` clears transient focus. Double-clicking a
+   shot camera also activates it for the compact preview; selecting a camera in
+   the compact selector does not change studio selection or focus.
+4. Drag a focused actor's torso or pelvis to move the whole entity. Drag a
    focused prop or camera proxy the same way. Arrow keys move a focused entity
    relative to the editor view; `PageUp` and `PageDown` move along world Y.
    Workflow locks use `preserveLock: true`; user locks remain inspectable but
    cannot create mutation drafts until explicitly unlocked.
-4. After an actor is focused, click a supported body segment to enter green
+5. After an actor is focused, click a supported body segment to enter green
    actor-part focus. Dragging that segment from the current editor viewpoint
    authors one existing `actor.pose.joints.set` operation for one canonical
    joint. It is view-relative and does not infer IK or edit multiple joints.
-5. Treat each completed entity gesture, held-key sequence, or joint gesture as
+6. Treat each completed entity gesture, held-key sequence, or joint gesture as
    one Patch, one revision, and one undo step. Editor camera, selection, focus,
    selected joint, preview expansion, and live drafts remain UI state. Cancel a
    stale or conflicting draft and re-author from the newest snapshot; never

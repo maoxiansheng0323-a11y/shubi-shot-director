@@ -16,7 +16,7 @@ export type StudioPointerClassification =
   | "double-click"
   | "drag"
   | "clear"
-  | "pan";
+  | "orbit";
 
 export interface StudioPointerClassificationInput {
   button: 0 | 2;
@@ -53,7 +53,7 @@ export const classifyStudioPointer = ({
   nowMs,
 }: StudioPointerClassificationInput): StudioPointerClassification => {
   const moved = hasStudioPointerExceededDragThreshold(down, up);
-  if (button === 2) return moved ? "pan" : "clear";
+  if (button === 2) return moved ? "orbit" : "clear";
   if (moved) return "drag";
   if (
     elapsedMs <= STUDIO_DOUBLE_CLICK_MS &&

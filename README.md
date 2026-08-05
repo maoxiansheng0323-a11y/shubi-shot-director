@@ -8,7 +8,7 @@ Shubi Shot Director is a local, browser-based 3D graybox camera-previsualization
 
 **[Watch the 49-second launch demo](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/shubi-shot-director-launch-demo.mp4)** · [Exported PNG](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/final-perspective.png) · [English subtitles](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.en.srt) · [中文字幕](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.zh-CN.srt)
 
-Current release contract: [v0.9.0 release notes](docs/releases/v0.9.0.md).
+Current release contract: [v0.9.2 release notes](docs/releases/v0.9.2.md).
 
 Shubi Shot Director is open-source graybox camera previs: it turns natural-language shot intent into a structured, editable 3D scene, shows the actual final camera through the real browser Shot Preview, and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
 
@@ -121,10 +121,14 @@ The successful export response includes the `sceneId`, revision, dimensions, SHA
 
 - Treat the main viewport as the studio. `整体总览` and `局部预览` are editor
   filters; the compact active-camera `镜头预览` stays visible independently.
+- On empty studio space, left-drag pans the UI-only editor view, right-drag
+  orbits around its current observation center, and the wheel zooms. A short
+  right-click clears transient selection; moving beyond the 5 px drag
+  threshold orbits without clearing it. Direct left-drag on an editable entity
+  takes priority over view panning.
 - Select an actor, prop, or camera once for ordinary selection. Double-click it
-  to frame the editor camera and enter red entity focus; right-click or
-  `Escape` clears focus. Double-clicking a shot camera also makes it the active
-  preview camera.
+  to frame the editor camera and enter red entity focus; `Escape` also clears
+  focus. Double-clicking a shot camera also makes it the active preview camera.
 - Drag a focused actor's torso or pelvis to move the whole entity. With an
   actor focused, click a supported limb to enter green part focus, then drag
   that limb from the current editor viewpoint to author one joint. Props and
@@ -255,7 +259,7 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Verified platform
 
-The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.9.0 verification evidence is recorded in [`docs/releases/v0.9.0.md`](docs/releases/v0.9.0.md). macOS and Linux are not claimed as verified for v0.9.0.
+The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.9.2 verification evidence is recorded in [`docs/releases/v0.9.2.md`](docs/releases/v0.9.2.md). macOS and Linux are not claimed as verified for v0.9.2.
 
 ## Origin & Maintainer
 

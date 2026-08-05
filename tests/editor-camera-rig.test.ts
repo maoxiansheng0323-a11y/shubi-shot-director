@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { shouldApplyEditorCameraFrame } from "../src/editor/EditorCameraRig";
+import { MOUSE } from "three";
+import {
+  EDITOR_VIEW_MOUSE_BUTTONS,
+  shouldApplyEditorCameraFrame,
+} from "../src/editor/EditorCameraRig";
 
 describe("editor camera frame application", () => {
+  it("maps studio mouse buttons to pan, dolly, and orbit", () => {
+    expect(EDITOR_VIEW_MOUSE_BUTTONS).toEqual({
+      LEFT: MOUSE.PAN,
+      MIDDLE: MOUSE.DOLLY,
+      RIGHT: MOUSE.ROTATE,
+    });
+  });
+
   it("applies the initial frame exactly once", () => {
     expect(
       shouldApplyEditorCameraFrame({
