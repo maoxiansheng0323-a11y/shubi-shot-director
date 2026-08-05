@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultScene } from "../src/domain/default-scene";
 import {
+  beginGroundDrag,
+  beginJointDrag,
   editorGroundAxes,
   frameSelectedBound,
   followFocusedCenter,
+  intersectGroundPlane,
+  moveEntityByEditorKey,
   resolveEntityWorldBound,
+  updateGroundDrag,
+  updateJointDrag,
 } from "../src/editor/studio-interaction-math";
 
 describe("studio interaction math", () => {
@@ -51,5 +57,33 @@ describe("studio interaction math", () => {
     expect(axes.forward).toEqual([1 / Math.sqrt(10), 0, -3 / Math.sqrt(10)]);
     expect(axes.right[1]).toBe(0);
     expect(Math.hypot(axes.right[0], axes.right[2])).toBeCloseTo(1);
+  });
+
+  it("preserves the pointer offset during ground-plane dragging", () => {
+    const ray = { originM: [0, 2, 2] as [number, number, number], directionM: [0, -1, -1] as [number, number, number] };
+    expect(intersectGroundPlane(ray, 0)).toEqual([0, 0, 0]);
+    const capture = beginGroundDrag([2, 0, 3], ray, 0);
+    expect(capture).not.toBeNull();
+    const nextRay = { originM: [1, 2, 2] as [number, number, number], directionM: [0, -1, -1] as [number, number, number] };
+    expect(updateGroundDrag(capture!, nextRay)).toEqual([3, 0, 3]);
+  });
+
+  it("moves in editor-relative axes with modifier step precedence", () => {
+    const transform = {
+      positionM: [0, 1, 0] as [number, number, number],
+      rotation: [0, 0, 0, 1] as [number, number, number, number],
+      scale: [1, 1, 1] as [number, number, number],
+    };
+    const view = [0, 0, -1] as [number, number, number];
+    expect(moveEntityByEditorKey(transform, "ArrowUp", view, {} ).positionM).toEqual([0, 1, -0.1]);
+    expect(moveEntityByEditorKey(transform, "ArrowRight", view, { shiftKey: true }).positionM).toEqual([0.5, 1, 0]);
+    expect(moveEntityByEditorKey(transform, "PageUp", view, { altKey: true }).positionM).toEqual([0, 1.02, 0]);
+  });
+
+  it("turns a limb drag into one normalized local joint rotation", () => {
+    const capture = beginJointDrag("upper_arm_r", [0, 0, 0, 1], [10, 10]);
+    const rotation = updateJointDrag(capture, [30, 0]);
+    expect(rotation[1]).not.toBe(0);
+    expect(Math.hypot(...rotation)).toBeCloseTo(1);
   });
 });

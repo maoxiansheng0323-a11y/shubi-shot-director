@@ -1,6 +1,16 @@
 import { actorVisibleRigBounds } from "../domain/actor-visible-bounds";
-import { transformPoint } from "../domain/scene-math";
-import type { SceneSpec, TransformSpec, Vec3 } from "../domain/scene-schema";
+import {
+  multiplyQuaternions,
+  quaternionFromEulerDegrees,
+  transformPoint,
+} from "../domain/scene-math";
+import type {
+  QuaternionTuple,
+  SceneSpec,
+  TransformSpec,
+  Vec3,
+} from "../domain/scene-schema";
+import type { CanonicalPuppetJointId } from "../domain/actor-joints";
 
 export interface EntityWorldBound {
   centerM: Vec3;
@@ -15,6 +25,27 @@ export interface EditorCameraFrame {
 export interface EditorGroundAxes {
   forward: Vec3;
   right: Vec3;
+}
+
+export interface StudioPointerRay {
+  originM: Vec3;
+  directionM: Vec3;
+}
+
+export interface GroundDragCapture {
+  floorY: number;
+  offsetM: Vec3;
+}
+
+export interface MovementKeyModifiers {
+  shiftKey?: boolean;
+  altKey?: boolean;
+}
+
+export interface StudioJointDragCapture {
+  jointId: CanonicalPuppetJointId;
+  startPointerPx: readonly [number, number];
+  startRotation: QuaternionTuple;
 }
 
 const vectorLength = (value: Vec3): number =>
@@ -163,4 +194,109 @@ export const editorGroundAxes = (viewDirection: Vec3): EditorGroundAxes => {
   const forward = normalized([viewDirection[0], 0, viewDirection[2]]);
   const right = normalized([-forward[2], 0, forward[0]]);
   return { forward, right };
+};
+
+export const intersectGroundPlane = (
+  ray: StudioPointerRay,
+  floorY: number,
+): Vec3 | null => {
+  const denominator = ray.directionM[1];
+  if (!Number.isFinite(denominator) || Math.abs(denominator) < 1e-8) return null;
+  const distance = (floorY - ray.originM[1]) / denominator;
+  if (!Number.isFinite(distance) || distance < 0) return null;
+  return [
+    ray.originM[0] + ray.directionM[0] * distance,
+    floorY,
+    ray.originM[2] + ray.directionM[2] * distance,
+  ];
+};
+
+export const beginGroundDrag = (
+  entityPositionM: Vec3,
+  pointerRay: StudioPointerRay,
+  floorY: number,
+): GroundDragCapture | null => {
+  const hit = intersectGroundPlane(pointerRay, floorY);
+  if (!hit) return null;
+  return {
+    floorY,
+    offsetM: [
+      entityPositionM[0] - hit[0],
+      entityPositionM[1] - floorY,
+      entityPositionM[2] - hit[2],
+    ],
+  };
+};
+
+export const updateGroundDrag = (
+  capture: GroundDragCapture,
+  pointerRay: StudioPointerRay,
+): Vec3 | null => {
+  const hit = intersectGroundPlane(pointerRay, capture.floorY);
+  if (!hit) return null;
+  return [
+    hit[0] + capture.offsetM[0],
+    capture.floorY + capture.offsetM[1],
+    hit[2] + capture.offsetM[2],
+  ];
+};
+
+export const moveEntityByEditorKey = (
+  transform: TransformSpec,
+  key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "PageUp" | "PageDown",
+  viewDirection: Vec3,
+  modifiers: MovementKeyModifiers,
+): TransformSpec => {
+  const step = modifiers.altKey ? 0.02 : modifiers.shiftKey ? 0.5 : 0.1;
+  const axes = editorGroundAxes(viewDirection);
+  const delta: Vec3 = [0, 0, 0];
+  if (key === "ArrowUp") {
+    delta[0] = axes.forward[0] * step;
+    delta[2] = axes.forward[2] * step;
+  } else if (key === "ArrowDown") {
+    delta[0] = -axes.forward[0] * step;
+    delta[2] = -axes.forward[2] * step;
+  } else if (key === "ArrowLeft") {
+    delta[0] = -axes.right[0] * step;
+    delta[2] = -axes.right[2] * step;
+  } else if (key === "ArrowRight") {
+    delta[0] = axes.right[0] * step;
+    delta[2] = axes.right[2] * step;
+  } else if (key === "PageUp") {
+    delta[1] = step;
+  } else if (key === "PageDown") {
+    delta[1] = -step;
+  }
+  return {
+    ...transform,
+    positionM: [
+      transform.positionM[0] + delta[0],
+      transform.positionM[1] + delta[1],
+      transform.positionM[2] + delta[2],
+    ],
+  };
+};
+
+export const beginJointDrag = (
+  jointId: CanonicalPuppetJointId,
+  startRotation: QuaternionTuple,
+  pointerPx: readonly [number, number],
+): StudioJointDragCapture => ({
+  jointId,
+  startPointerPx: pointerPx,
+  startRotation,
+});
+
+export const updateJointDrag = (
+  capture: StudioJointDragCapture,
+  pointerPx: readonly [number, number],
+): QuaternionTuple => {
+  const deltaX = pointerPx[0] - capture.startPointerPx[0];
+  const deltaY = pointerPx[1] - capture.startPointerPx[1];
+  const dragRotation = quaternionFromEulerDegrees([
+    -deltaY * 0.55,
+    deltaX * 0.55,
+    0,
+  ]);
+  return multiplyQuaternions(dragRotation, capture.startRotation);
 };

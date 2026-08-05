@@ -14,6 +14,7 @@ import {
 import { snapTransformToContact } from "../domain/contact-constraints";
 import type {
   CameraEntity,
+  QuaternionTuple,
   SceneSpec,
   TransformSpec,
 } from "../domain/scene-schema";
@@ -23,6 +24,7 @@ import {
 } from "./ShotCameraNavigation";
 import { CompactShotPreviewControls } from "./CompactShotPreviewControls";
 import { EditorCameraRig } from "./EditorCameraRig";
+import { StudioInteractionController } from "./StudioInteractionController";
 import type { ShotCameraGestureSession } from "./shot-camera-session";
 import {
   createTransformDragSession,
@@ -35,6 +37,16 @@ import {
   type SpatialPreviewMode,
   type SpatialPreviewProjection,
 } from "./spatial-preview";
+import {
+  frameSelectedBound,
+  resolveEntityWorldBound,
+} from "./studio-interaction-math";
+import type { CanonicalPuppetJointId } from "../domain/actor-joints";
+import {
+  createStudioEntityGestureSession,
+  decideStudioEntityGesture,
+  type StudioEntityGestureSession,
+} from "./studio-gesture-session";
 import { SceneWorld, ShotCamera } from "../three/SceneWorld";
 import {
   ShotExporter,
@@ -44,12 +56,23 @@ import {
 export interface ViewportWorkspaceProps {
   scene: SceneSpec;
   selectedId: string | null;
+  focusedEntityId?: string | null;
+  focusedActorJointId?: CanonicalPuppetJointId | null;
+  focusRequestVersion?: number;
   onSelect: (entityId: string | null) => void;
+  onFocusEntity?: (entityId: string) => void;
+  onFocusActorJoint?: (jointId: CanonicalPuppetJointId) => void;
+  onClearFocus?: () => void;
   toolMode: "select" | "translate" | "rotate";
   snapEnabled: boolean;
   onCommitTransform: (
     entityId: string,
     transform: TransformSpec,
+  ) => void | Promise<void>;
+  onCommitActorJoint?: (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+    rotation: QuaternionTuple,
   ) => void | Promise<void>;
   registerExporter: (exporter: ShotExporterHandle | null) => void;
   previewMode: SpatialPreviewMode | "shot";
@@ -168,7 +191,13 @@ type EditorSceneProps = Pick<
   ViewportWorkspaceProps,
   | "scene"
   | "selectedId"
+  | "focusedEntityId"
+  | "focusedActorJointId"
+  | "focusRequestVersion"
   | "onSelect"
+  | "onFocusEntity"
+  | "onFocusActorJoint"
+  | "onClearFocus"
   | "toolMode"
   | "snapEnabled"
   | "previewMode"
@@ -182,7 +211,13 @@ type EditorSceneProps = Pick<
 const EditorScene = ({
   scene,
   selectedId,
+  focusedEntityId = null,
+  focusedActorJointId = null,
+  focusRequestVersion = 0,
   onSelect,
+  onFocusEntity = () => undefined,
+  onFocusActorJoint = () => undefined,
+  onClearFocus = () => undefined,
   toolMode,
   snapEnabled,
   transformOverrides,
@@ -194,17 +229,45 @@ const EditorScene = ({
   focusedRegionId,
   onFocusedRegionChange,
   spatialPreview,
-}: EditorSceneProps) => (
-  <>
-    <color attach="background" args={["#1c222b"]} />
-    <EditorCameraRig
-      frame={{
-        positionM: spatialPreview.camera.position,
-        targetM: spatialPreview.camera.target,
-      }}
-      domElement={editorDomElement ?? undefined}
-    />
-    <Grid
+  actorJointOverrides,
+  onActorJointStart,
+  onActorJointDraft,
+  onActorJointCommit,
+}: EditorSceneProps) => {
+  const frame = useMemo(() => {
+    const focusedBound = focusedEntityId
+      ? resolveEntityWorldBound(scene, focusedEntityId, transformOverrides)
+      : null;
+    const viewDirection = [
+      spatialPreview.camera.target[0] - spatialPreview.camera.position[0],
+      spatialPreview.camera.target[1] - spatialPreview.camera.position[1],
+      spatialPreview.camera.target[2] - spatialPreview.camera.position[2],
+    ] as [number, number, number];
+    return focusedBound
+      ? frameSelectedBound(focusedBound, viewDirection, 50, 16 / 9) ?? {
+          positionM: spatialPreview.camera.position,
+          targetM: spatialPreview.camera.target,
+        }
+      : {
+          positionM: spatialPreview.camera.position,
+          targetM: spatialPreview.camera.target,
+        };
+  }, [
+    focusRequestVersion,
+    focusedEntityId,
+    scene,
+    spatialPreview.camera.position,
+    spatialPreview.camera.target,
+    transformOverrides,
+  ]);
+  return (
+    <>
+      <color attach="background" args={["#1c222b"]} />
+      <EditorCameraRig
+        frame={frame}
+        domElement={editorDomElement ?? undefined}
+      />
+      <Grid
       position={[0, 0.002, 0]}
       args={[40, 40]}
       cellSize={0.25}
@@ -216,30 +279,57 @@ const EditorScene = ({
       fadeDistance={35}
       fadeStrength={1}
       infiniteGrid
-    />
-    <axesHelper args={[2]} />
-    <SceneWorld
-      scene={scene}
-      view="editor"
-      selectedEntityId={selectedId}
-      onSelectEntity={onSelect}
-      selectedRegionId={focusedRegionId}
-      onSelectRegion={onFocusedRegionChange}
-      spatialPreview={spatialPreview}
-      previewMode={previewMode}
-      toolMode={toolMode}
-      snapEnabled={snapEnabled}
-      transformOverrides={transformOverrides}
-      onTransformStart={onTransformStart}
-      onTransformDraft={onTransformDraft}
-      onTransformCommit={onTransformCommit}
-      transformDomElement={editorDomElement ?? undefined}
-    />
-  </>
-);
+      />
+      <axesHelper args={[2]} />
+      <SceneWorld
+        scene={scene}
+        view="editor"
+        selectedEntityId={selectedId}
+        focusedEntityId={focusedEntityId}
+        focusedActorJointId={focusedActorJointId}
+        actorJointOverrides={actorJointOverrides}
+        onSelectEntity={onSelect}
+        onFocusEntity={onFocusEntity}
+        onFocusActorJoint={onFocusActorJoint}
+        onClearFocus={onClearFocus}
+        onActorJointStart={onActorJointStart}
+        onActorJointDraft={onActorJointDraft}
+        onActorJointCommit={onActorJointCommit}
+        selectedRegionId={focusedRegionId}
+        onSelectRegion={onFocusedRegionChange}
+        spatialPreview={spatialPreview}
+        previewMode={previewMode}
+        toolMode={toolMode}
+        snapEnabled={snapEnabled}
+        transformOverrides={transformOverrides}
+        onTransformStart={onTransformStart}
+        onTransformDraft={onTransformDraft}
+        onTransformCommit={onTransformCommit}
+        transformDomElement={editorDomElement ?? undefined}
+      />
+    </>
+  );
+};
 
 interface DraftSceneProps {
   spatialPreview: SpatialPreviewProjection;
+  actorJointOverrides?: Readonly<
+    Record<string, Partial<Record<CanonicalPuppetJointId, QuaternionTuple>>>
+  >;
+  onActorJointStart?: (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+  ) => void;
+  onActorJointDraft?: (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+    rotation: QuaternionTuple,
+  ) => void;
+  onActorJointCommit?: (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+    rotation: QuaternionTuple,
+  ) => void | Promise<void>;
   transformOverrides?: Readonly<
     Record<string, TransformSpec | undefined>
   >;
@@ -315,10 +405,17 @@ const ShotScene = ({
 export const ViewportWorkspace = ({
   scene,
   selectedId,
+  focusedEntityId = null,
+  focusedActorJointId = null,
+  focusRequestVersion = 0,
   onSelect,
+  onFocusEntity = () => undefined,
+  onFocusActorJoint = () => undefined,
+  onClearFocus = () => undefined,
   toolMode,
   snapEnabled,
   onCommitTransform,
+  onCommitActorJoint = () => undefined,
   registerExporter,
   previewMode,
   shotPreviewExpanded = false,
@@ -342,9 +439,15 @@ export const ViewportWorkspace = ({
     entityId: string;
     transform: TransformSpec;
   } | null>(null);
+  const [draftActorJoint, setDraftActorJoint] = useState<{
+    actorId: string;
+    jointId: CanonicalPuppetJointId;
+    rotation: QuaternionTuple;
+  } | null>(null);
   const [shotCameraDraft, setShotCameraDraft] =
     useState<ShotCameraDraft | null>(null);
   const dragSessionRef = useRef<TransformDragSession | null>(null);
+  const jointGestureSessionRef = useRef<StudioEntityGestureSession | null>(null);
   const isShotPreviewExpanded = shotPreviewExpanded || previewMode === "shot";
 
   const handleShotCameraDraftChange = useCallback(
@@ -366,6 +469,7 @@ export const ViewportWorkspace = ({
 
   useEffect(() => {
     setDraftTransform(null);
+    setDraftActorJoint(null);
     const dragSession = dragSessionRef.current;
     if (
       dragSession &&
@@ -375,7 +479,16 @@ export const ViewportWorkspace = ({
     ) {
       dragSession.cancelled = true;
     }
-  }, [scene.sceneId, scene.revision, selectedId]);
+    const jointSession = jointGestureSessionRef.current;
+    if (
+      jointSession &&
+      (jointSession.sceneId !== scene.sceneId ||
+        jointSession.baseRevision !== scene.revision ||
+        jointSession.focusedEntityId !== focusedEntityId)
+    ) {
+      jointSession.cancelled = true;
+    }
+  }, [focusedEntityId, scene.sceneId, scene.revision, selectedId]);
 
   const transformOverrides = useMemo(
     () =>
@@ -392,6 +505,26 @@ export const ViewportWorkspace = ({
         focusedRegionId,
       ),
     [focusedRegionId, previewMode, scene.spatialLayout],
+  );
+  const actorJointOverrides = useMemo(
+    () =>
+      draftActorJoint
+        ? {
+            [draftActorJoint.actorId]: {
+              [draftActorJoint.jointId]: draftActorJoint.rotation,
+            },
+          }
+        : undefined,
+    [draftActorJoint],
+  );
+  const editorViewDirection = useMemo(
+    () =>
+      [
+        spatialPreview.camera.target[0] - spatialPreview.camera.position[0],
+        spatialPreview.camera.target[1] - spatialPreview.camera.position[1],
+        spatialPreview.camera.target[2] - spatialPreview.camera.position[2],
+      ] as [number, number, number],
+    [spatialPreview.camera.position, spatialPreview.camera.target],
   );
 
   useEffect(() => {
@@ -453,6 +586,55 @@ export const ViewportWorkspace = ({
     } finally {
       setDraftTransform(null);
     }
+  };
+
+  const handleActorJointDraft = (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+    rotation: QuaternionTuple,
+  ): void => {
+    const decision = decideStudioEntityGesture(
+      jointGestureSessionRef.current,
+      scene,
+      actorId,
+    );
+    if (decision.status !== "commit") return;
+    setDraftActorJoint({ actorId, jointId, rotation });
+  };
+
+  const handleActorJointStart = (
+    actorId: string,
+    _jointId: CanonicalPuppetJointId,
+  ): void => {
+    const actor = scene.entities.find((entity) => entity.id === actorId);
+    if (actor?.kind !== "actor") return;
+    jointGestureSessionRef.current = createStudioEntityGestureSession(
+      scene,
+      actorId,
+      "actor",
+      focusedEntityId ?? actorId,
+    );
+  };
+
+  const handleActorJointCommit = async (
+    actorId: string,
+    jointId: CanonicalPuppetJointId,
+    rotation: QuaternionTuple,
+  ): Promise<void> => {
+    const decision = decideStudioEntityGesture(
+      jointGestureSessionRef.current,
+      scene,
+      actorId,
+    );
+    jointGestureSessionRef.current = null;
+    setDraftActorJoint(null);
+    if (decision.status !== "commit") {
+      if (decision.status === "conflict") {
+        useEditorStore.getState().reportTransformConflict();
+      }
+      return;
+    }
+    await onCommitActorJoint(actorId, jointId, rotation);
   };
 
   return (
@@ -540,6 +722,11 @@ export const ViewportWorkspace = ({
         }}
         data-testid="editor-viewport"
         aria-label="Editor viewport. Drag to orbit, right-drag to pan, and scroll to zoom."
+        tabIndex={0}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onClearFocus();
+        }}
       >
         <p style={labelStyle} aria-hidden="true">
           {previewMode === "local"
@@ -549,22 +736,43 @@ export const ViewportWorkspace = ({
               : "Editor View"}
         </p>
         <View id="editor-three-view" style={viewStyle} index={2}>
-          <EditorScene
+          <StudioInteractionController
             scene={scene}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            toolMode={toolMode}
-            snapEnabled={snapEnabled}
-            previewMode={previewMode === "local" ? "local" : "overview"}
-            focusedRegionId={focusedRegionId}
-            onFocusedRegionChange={onFocusedRegionChange}
-            transformOverrides={transformOverrides}
-            spatialPreview={spatialPreview}
-            onTransformStart={handleTransformStart}
-            onTransformDraft={handleTransformDraft}
-            onTransformCommit={handleTransformCommit}
-            editorDomElement={editorDomElement}
-          />
+            surface={editorDomElement}
+            selectedEntityId={selectedId}
+            focusedEntityId={focusedEntityId}
+            editorViewDirection={editorViewDirection}
+            disabled={interactionDisabled}
+            onCommitTransform={onCommitTransform}
+            onClearFocus={onClearFocus}
+          >
+            <EditorScene
+              scene={scene}
+              selectedId={selectedId}
+              focusedEntityId={focusedEntityId}
+              focusedActorJointId={focusedActorJointId}
+              focusRequestVersion={focusRequestVersion}
+              onSelect={onSelect}
+              onFocusEntity={onFocusEntity}
+              onFocusActorJoint={onFocusActorJoint}
+              onClearFocus={onClearFocus}
+              toolMode={toolMode}
+              snapEnabled={snapEnabled}
+              previewMode={previewMode === "local" ? "local" : "overview"}
+              focusedRegionId={focusedRegionId}
+              onFocusedRegionChange={onFocusedRegionChange}
+              transformOverrides={transformOverrides}
+              actorJointOverrides={actorJointOverrides}
+              spatialPreview={spatialPreview}
+              onTransformStart={handleTransformStart}
+              onTransformDraft={handleTransformDraft}
+              onTransformCommit={handleTransformCommit}
+              onActorJointStart={handleActorJointStart}
+              onActorJointDraft={handleActorJointDraft}
+              onActorJointCommit={handleActorJointCommit}
+              editorDomElement={editorDomElement}
+            />
+          </StudioInteractionController>
         </View>
       </section>
 

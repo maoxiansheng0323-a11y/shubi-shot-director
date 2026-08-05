@@ -18,6 +18,7 @@ describe("persistent studio workspace layout contract", () => {
     expect(source).toContain("shotPreviewExpanded");
     expect(source).toContain("CompactShotPreviewControls");
     expect(source).toContain("onActivateShotCamera");
+    expect(source).toContain("onContextMenu={(event) => {");
     expect(controls).toContain('data-studio-keyboard-exclusion');
   });
 

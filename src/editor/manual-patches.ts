@@ -163,14 +163,21 @@ export const createActorJointPatch = (
   actorId: string,
   jointId: CanonicalPuppetJointId,
   rotation: QuaternionTuple,
+  options: ManualPatchOptions = {},
 ): ScenePatch =>
-  createOperationsPatch(scene, "actor_joint", [
-    {
-      op: "actor.pose.joints.set",
-      actorId,
-      updates: { [jointId]: rotation },
-    },
-  ]);
+  createOperationsPatch(
+    scene,
+    "actor_joint",
+    [
+      {
+        op: "actor.pose.joints.set",
+        actorId,
+        updates: { [jointId]: rotation },
+      },
+    ],
+    "manual",
+    options.preserveLock ?? false,
+  );
 
 export const createActorVariantPatch = (
   scene: SceneSpec,
