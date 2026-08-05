@@ -32,6 +32,30 @@ export interface StudioPointerRay {
   directionM: Vec3;
 }
 
+export interface DirectEntityDragEligibility {
+  view: "editor" | "shot";
+  button: number;
+  toolMode: "select" | "translate" | "rotate";
+  lockMode: "none" | "workflow" | "user";
+  entityKind: "environment" | "actor" | "prop" | "camera";
+}
+
+export const canBeginDirectEntityDrag = ({
+  view,
+  button,
+  toolMode,
+  lockMode,
+  entityKind,
+}: DirectEntityDragEligibility): boolean =>
+  view === "editor" &&
+  button === 0 &&
+  toolMode === "select" &&
+  lockMode !== "user" &&
+  entityKind !== "environment";
+
+export const shouldCommitDirectEntityDrag = (moved: boolean): boolean =>
+  moved;
+
 export interface GroundDragCapture {
   floorY: number;
   offsetM: Vec3;

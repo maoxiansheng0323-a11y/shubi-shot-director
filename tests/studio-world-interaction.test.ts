@@ -24,7 +24,37 @@ describe("studio world interaction contract", () => {
   it("keeps user protection blocking while workflow locks remain editable", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     const app = readSource("src/App.tsx");
-    expect(source).toContain('entity.lockMode === "user"');
+    expect(source).toContain("canBeginDirectEntityDrag");
+    expect(source).toContain("lockMode: entity.lockMode");
     expect(app).toContain('entity.lockMode === "workflow"');
+  });
+
+  it("keeps the editor camera imperative between explicit focus requests", () => {
+    const source = readSource("src/editor/EditorCameraRig.tsx");
+    expect(source).toContain("shouldApplyEditorCameraFrame");
+    expect(source).toContain("initialFrameRef");
+    expect(source).toContain("frameRequestVersion");
+    expect(source).not.toContain("position={frame.positionM}");
+    expect(source).not.toContain("target={frame.targetM}");
+  });
+
+  it("captures entity drags, applies the shared threshold, and cancels through DOM events", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    expect(source).toContain("event.currentTarget as unknown");
+    expect(source).toContain(
+      "pointerCaptureTarget(event).setPointerCapture(event.pointerId)",
+    );
+    expect(source).toContain("capturedTarget.releasePointerCapture(event.pointerId)");
+    expect(source).toContain("setEditorCameraControlsEnabled(false)");
+    expect(source).toContain("setEditorCameraControlsEnabled(true)");
+    expect(source).toContain("hasStudioPointerExceededDragThreshold");
+    expect(source).toContain("startPointerPx");
+    expect(source).toContain("subscribeStudioPointerCancellation");
+    expect(source).toContain("onTransformCancelRef.current?.(entity.id)");
+    expect(source).not.toContain("event.nativeEvent.currentTarget as HTMLElement");
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
+    expect(workspace).toContain("await onCommitTransform(entityId, transform);");
+    expect(workspace).toContain("onSelect(entityId);");
+    expect(workspace).toContain("onTransformCancel={handleTransformCancel}");
   });
 });

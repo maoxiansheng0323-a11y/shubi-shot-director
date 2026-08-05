@@ -3,9 +3,10 @@ import {
   PerspectiveCamera,
   TransformControls,
 } from "@react-three/drei";
-import type { ThreeEvent } from "@react-three/fiber";
+import { useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   createContext,
+  useCallback,
   useEffect,
   useContext,
   useLayoutEffect,
@@ -38,11 +39,15 @@ import {
 import {
   beginGroundDrag,
   beginJointDrag,
+  canBeginDirectEntityDrag,
+  shouldCommitDirectEntityDrag,
   updateGroundDrag,
   updateJointDrag,
   type GroundDragCapture,
   type StudioJointDragCapture,
 } from "../editor/studio-interaction-math";
+import { subscribeStudioPointerCancellation } from "../editor/studio-pointer-events";
+import { hasStudioPointerExceededDragThreshold } from "../editor/studio-selection";
 import {
   deriveHiddenShotWallBoxKey,
   shotWallBoxKey,
@@ -104,6 +109,7 @@ export interface SceneWorldProps {
     transform: TransformSpec,
   ) => void;
   onTransformStart?: (entityId: string) => void;
+  onTransformCancel?: (entityId: string) => void;
   onTransformCommit?: (
     entityId: string,
     transform: TransformSpec,
@@ -166,6 +172,21 @@ interface PointerMoveCompatibleControls {
     button: number;
   }) => void;
 }
+
+interface ThreePointerCaptureTarget {
+  hasPointerCapture: (pointerId: number) => boolean;
+  setPointerCapture: (pointerId: number) => void;
+  releasePointerCapture: (pointerId: number) => void;
+}
+
+interface ToggleableEditorCameraControls {
+  enabled: boolean;
+}
+
+const pointerCaptureTarget = (
+  event: ThreeEvent<PointerEvent>,
+): ThreePointerCaptureTarget =>
+  event.currentTarget as unknown as ThreePointerCaptureTarget;
 
 const SelectionEdges = ({
   selected,
@@ -333,6 +354,7 @@ const SpatialRegionFloor = ({
       rotation={[Math.PI / 2, 0, 0]}
       receiveShadow
       onClick={(event) => {
+        if (event.delta > 2) return;
         event.stopPropagation();
         onSelect?.(region.id);
       }}
@@ -861,6 +883,7 @@ const EntityProjection = ({
   snapEnabled = true,
   transformOverride,
   onTransformStart,
+  onTransformCancel,
   onTransformDraft,
   onTransformCommit,
   transformDomElement,
@@ -884,6 +907,7 @@ const EntityProjection = ({
   snapEnabled?: boolean;
   transformOverride?: TransformSpec;
   onTransformStart?: SceneWorldProps["onTransformStart"];
+  onTransformCancel?: SceneWorldProps["onTransformCancel"];
   onTransformDraft?: SceneWorldProps["onTransformDraft"];
   onTransformCommit?: SceneWorldProps["onTransformCommit"];
   transformDomElement?: HTMLElement;
@@ -891,17 +915,56 @@ const EntityProjection = ({
   const groupRef = useRef<Group>(null!);
   const controlsRef =
     useRef<ComponentRef<typeof TransformControls>>(null);
+  const editorCameraControls = useThree(
+    (state) => state.controls,
+  ) as unknown as ToggleableEditorCameraControls | null;
   const directDragRef = useRef<{
     pointerId: number;
     capture: GroundDragCapture;
+    startPointerPx: readonly [number, number];
     moved: boolean;
   } | null>(null);
+  const onTransformCancelRef = useRef(onTransformCancel);
+  onTransformCancelRef.current = onTransformCancel;
   const showTransformControls =
     selected &&
     view === "editor" &&
     entity.lockMode !== "user" &&
     (toolMode !== "select" || focused);
   const transformMode = toolMode === "rotate" ? "rotate" : "translate";
+  const setEditorCameraControlsEnabled = (enabled: boolean): void => {
+    if (view === "editor" && editorCameraControls) {
+      editorCameraControls.enabled = enabled;
+    }
+  };
+
+  const cancelDirectDrag = useCallback(
+    (pointerId: number): void => {
+      const active = directDragRef.current;
+      if (!active || active.pointerId !== pointerId) return;
+      directDragRef.current = null;
+      if (view === "editor" && editorCameraControls) {
+        editorCameraControls.enabled = true;
+      }
+      if (active.moved) {
+        onTransformCancelRef.current?.(entity.id);
+      }
+    },
+    [editorCameraControls, entity.id, view],
+  );
+
+  useEffect(() => {
+    if (!transformDomElement) return;
+    const unsubscribe = subscribeStudioPointerCancellation(
+      transformDomElement.ownerDocument,
+      cancelDirectDrag,
+    );
+    return () => {
+      unsubscribe();
+      const active = directDragRef.current;
+      if (active) cancelDirectDrag(active.pointerId);
+    };
+  }, [cancelDirectDrag, transformDomElement]);
 
   useEffect(() => {
     if (!showTransformControls || !transformDomElement) {
@@ -963,12 +1026,13 @@ const EntityProjection = ({
   };
   const onPointerDown = (event: ThreeEvent<PointerEvent>): void => {
     if (
-      view !== "editor" ||
-      !focused ||
-      toolMode !== "select" ||
-      event.button !== 0 ||
-      entity.lockMode === "user" ||
-      entity.kind === "environment"
+      !canBeginDirectEntityDrag({
+        view,
+        button: event.button,
+        toolMode,
+        lockMode: entity.lockMode,
+        entityKind: entity.kind,
+      })
     ) {
       return;
     }
@@ -991,15 +1055,24 @@ const EntityProjection = ({
     directDragRef.current = {
       pointerId: event.pointerId,
       capture,
+      startPointerPx: [event.nativeEvent.clientX, event.nativeEvent.clientY],
       moved: false,
     };
-    const pointerTarget = event.nativeEvent.currentTarget as HTMLElement | null;
-    pointerTarget?.setPointerCapture?.(event.pointerId);
-    onTransformStart?.(entity.id);
+    pointerCaptureTarget(event).setPointerCapture(event.pointerId);
+    setEditorCameraControlsEnabled(false);
   };
   const onPointerMove = (event: ThreeEvent<PointerEvent>): void => {
     const active = directDragRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
+    if (
+      !active.moved &&
+      !hasStudioPointerExceededDragThreshold(active.startPointerPx, [
+        event.nativeEvent.clientX,
+        event.nativeEvent.clientY,
+      ])
+    ) {
+      return;
+    }
     const nextPosition = updateGroundDrag(active.capture, {
       originM: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
       directionM: [
@@ -1009,7 +1082,10 @@ const EntityProjection = ({
       ],
     });
     if (!nextPosition) return;
-    active.moved = true;
+    if (!active.moved) {
+      active.moved = true;
+      onTransformStart?.(entity.id);
+    }
     event.stopPropagation();
     onTransformDraft?.(entity.id, {
       ...entity.transform,
@@ -1020,6 +1096,11 @@ const EntityProjection = ({
     const active = directDragRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
     directDragRef.current = null;
+    const capturedTarget = pointerCaptureTarget(event);
+    if (capturedTarget.hasPointerCapture(event.pointerId)) {
+      capturedTarget.releasePointerCapture(event.pointerId);
+    }
+    setEditorCameraControlsEnabled(true);
     const nextPosition = updateGroundDrag(active.capture, {
       originM: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
       directionM: [
@@ -1029,7 +1110,7 @@ const EntityProjection = ({
       ],
     });
     event.stopPropagation();
-    if (nextPosition) {
+    if (nextPosition && shouldCommitDirectEntityDrag(active.moved)) {
       void onTransformCommit?.(entity.id, {
         ...entity.transform,
         positionM: nextPosition,
@@ -1103,8 +1184,12 @@ const EntityProjection = ({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={() => {
-          directDragRef.current = null;
+        onPointerCancel={(event) => {
+          const capturedTarget = pointerCaptureTarget(event);
+          if (capturedTarget.hasPointerCapture(event.pointerId)) {
+            capturedTarget.releasePointerCapture(event.pointerId);
+          }
+          cancelDirectDrag(event.pointerId);
         }}
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
@@ -1162,6 +1247,7 @@ export const SceneWorld = ({
   transformOverrides,
   shotCameraTransform,
   onTransformStart,
+  onTransformCancel,
   onTransformDraft,
   onTransformCommit,
   transformDomElement,
@@ -1274,6 +1360,7 @@ export const SceneWorld = ({
             snapEnabled={snapEnabled}
             transformOverride={transformOverrides?.[entity.id]}
             onTransformStart={onTransformStart}
+            onTransformCancel={onTransformCancel}
             onTransformDraft={onTransformDraft}
             onTransformCommit={onTransformCommit}
             transformDomElement={transformDomElement}

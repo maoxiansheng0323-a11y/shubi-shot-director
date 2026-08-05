@@ -30,7 +30,7 @@ export interface StudioPointerClassificationInput {
 const isEditableEntity = (entity: SceneEntity): boolean =>
   entity.kind === "actor" || entity.kind === "prop" || entity.kind === "camera";
 
-const isWithinDragThreshold = (
+export const hasStudioPointerExceededDragThreshold = (
   down: readonly [number, number],
   up: readonly [number, number],
 ): boolean =>
@@ -52,7 +52,7 @@ export const classifyStudioPointer = ({
   previousClickAtMs,
   nowMs,
 }: StudioPointerClassificationInput): StudioPointerClassification => {
-  const moved = isWithinDragThreshold(down, up);
+  const moved = hasStudioPointerExceededDragThreshold(down, up);
   if (button === 2) return moved ? "pan" : "clear";
   if (moved) return "drag";
   if (

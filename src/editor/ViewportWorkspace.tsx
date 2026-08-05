@@ -222,6 +222,7 @@ const EditorScene = ({
   snapEnabled,
   transformOverrides,
   onTransformStart,
+  onTransformCancel,
   onTransformDraft,
   onTransformCommit,
   editorDomElement,
@@ -265,6 +266,8 @@ const EditorScene = ({
       <color attach="background" args={["#1c222b"]} />
       <EditorCameraRig
         frame={frame}
+        frameRequestVersion={focusRequestVersion}
+        shouldFrame={focusedEntityId !== null}
         domElement={editorDomElement ?? undefined}
       />
       <Grid
@@ -303,6 +306,7 @@ const EditorScene = ({
         snapEnabled={snapEnabled}
         transformOverrides={transformOverrides}
         onTransformStart={onTransformStart}
+        onTransformCancel={onTransformCancel}
         onTransformDraft={onTransformDraft}
         onTransformCommit={onTransformCommit}
         transformDomElement={editorDomElement ?? undefined}
@@ -338,6 +342,7 @@ interface DraftSceneProps {
     transform: TransformSpec,
   ) => void;
   onTransformStart?: (entityId: string) => void;
+  onTransformCancel?: (entityId: string) => void;
   onTransformCommit?: (
     entityId: string,
     transform: TransformSpec,
@@ -563,6 +568,15 @@ export const ViewportWorkspace = ({
     setDraftTransform(null);
   };
 
+  const handleTransformCancel = useCallback((entityId: string): void => {
+    if (dragSessionRef.current?.entityId === entityId) {
+      dragSessionRef.current = null;
+    }
+    setDraftTransform((current) =>
+      current?.entityId === entityId ? null : current,
+    );
+  }, []);
+
   const handleTransformCommit = async (
     entityId: string,
     transform: TransformSpec,
@@ -581,6 +595,7 @@ export const ViewportWorkspace = ({
     }
     try {
       await onCommitTransform(entityId, transform);
+      onSelect(entityId);
     } catch {
       // The authoritative store exposes the readable mutation error.
     } finally {
@@ -765,6 +780,7 @@ export const ViewportWorkspace = ({
               actorJointOverrides={actorJointOverrides}
               spatialPreview={spatialPreview}
               onTransformStart={handleTransformStart}
+              onTransformCancel={handleTransformCancel}
               onTransformDraft={handleTransformDraft}
               onTransformCommit={handleTransformCommit}
               onActorJointStart={handleActorJointStart}

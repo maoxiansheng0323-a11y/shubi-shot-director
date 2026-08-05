@@ -6,6 +6,7 @@ import {
   classifyStudioPointer,
   createStudioFocusState,
   focusStudioEntity,
+  hasStudioPointerExceededDragThreshold,
   reconcileStudioFocus,
   clearStudioFocus,
 } from "../src/editor/studio-selection";
@@ -32,6 +33,12 @@ describe("studio selection and focus", () => {
   it("classifies movement above threshold as drag and a close second click as focus", () => {
     expect(STUDIO_POINTER_DRAG_THRESHOLD_PX).toBe(5);
     expect(STUDIO_DOUBLE_CLICK_MS).toBe(300);
+    expect(hasStudioPointerExceededDragThreshold([10, 10], [15, 10])).toBe(
+      false,
+    );
+    expect(hasStudioPointerExceededDragThreshold([10, 10], [16, 10])).toBe(
+      true,
+    );
     expect(
       classifyStudioPointer({
         button: 0,

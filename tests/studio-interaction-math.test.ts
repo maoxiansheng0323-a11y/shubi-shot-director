@@ -3,6 +3,8 @@ import { createDefaultScene } from "../src/domain/default-scene";
 import {
   beginGroundDrag,
   beginJointDrag,
+  canBeginDirectEntityDrag,
+  shouldCommitDirectEntityDrag,
   editorGroundAxes,
   frameSelectedBound,
   followFocusedCenter,
@@ -14,6 +16,32 @@ import {
 } from "../src/editor/studio-interaction-math";
 
 describe("studio interaction math", () => {
+  it("allows ordinary editor selection to begin an entity drag", () => {
+    expect(
+      canBeginDirectEntityDrag({
+        view: "editor",
+        button: 0,
+        toolMode: "select",
+        lockMode: "none",
+        entityKind: "prop",
+      }),
+    ).toBe(true);
+    expect(
+      canBeginDirectEntityDrag({
+        view: "editor",
+        button: 0,
+        toolMode: "select",
+        lockMode: "user",
+        entityKind: "prop",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not submit a transform for a click without movement", () => {
+    expect(shouldCommitDirectEntityDrag(false)).toBe(false);
+    expect(shouldCommitDirectEntityDrag(true)).toBe(true);
+  });
+
   it("resolves finite actor, prop, and camera bounds", () => {
     const scene = createDefaultScene();
     for (const entityId of [
