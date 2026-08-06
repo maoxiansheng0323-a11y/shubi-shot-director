@@ -31,6 +31,18 @@ describe("persistent studio workspace layout contract", () => {
     expect(source).toContain('data-testid="shot-preview"');
   });
 
+  it("renders the overlapping shot view after the editor view", () => {
+    const source = readSource("src/editor/ViewportWorkspace.tsx");
+    const shotPriority = Number(
+      source.match(/<View id="shot-three-view"[^>]*index=\{(\d+)\}/u)?.[1],
+    );
+    const editorPriority = Number(
+      source.match(/<View id="editor-three-view"[^>]*index=\{(\d+)\}/u)?.[1],
+    );
+
+    expect(shotPriority).toBeGreaterThan(editorPriority);
+  });
+
   it("does not couple compact workspace tabs to the shot spatial mode", () => {
     const source = readSource("src/App.tsx");
     expect(source).not.toContain('setPreviewMode("shot")');
