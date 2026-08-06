@@ -1,9 +1,10 @@
 import { actorVisibleRigBounds } from "../domain/actor-visible-bounds";
 import {
   multiplyQuaternions,
-  quaternionFromEulerDegrees,
+  rotateVector,
   transformPoint,
 } from "../domain/scene-math";
+import { Quaternion, Vector3 } from "three";
 import type {
   QuaternionTuple,
   SceneSpec,
@@ -68,6 +69,24 @@ export const canBeginDirectEntityDrag = (
 export const shouldCommitDirectEntityDrag = (moved: boolean): boolean =>
   moved;
 
+export interface StudioTransformControlsVisibility {
+  selected: boolean;
+  view: "editor" | "shot";
+  lockMode: "none" | "workflow" | "user";
+  toolMode: "select" | "translate" | "rotate";
+}
+
+export const shouldShowStudioTransformControls = ({
+  selected,
+  view,
+  lockMode,
+  toolMode,
+}: StudioTransformControlsVisibility): boolean =>
+  selected &&
+  view === "editor" &&
+  lockMode !== "user" &&
+  toolMode !== "select";
+
 export interface GroundDragCapture {
   floorY: number;
   offsetM: Vec3;
@@ -82,11 +101,18 @@ export interface StudioJointDragCapture {
   jointId: CanonicalPuppetJointId;
   startPointerPx: readonly [number, number];
   startRotation: QuaternionTuple;
+  axes: StudioRotationDragAxes;
 }
 
 export interface StudioEntityRotationDragCapture {
   startPointerPx: readonly [number, number];
   startRotation: QuaternionTuple;
+  axes: StudioRotationDragAxes;
+}
+
+export interface StudioRotationDragAxes {
+  right: Vec3;
+  up: Vec3;
 }
 
 const vectorLength = (value: Vec3): number =>
@@ -322,35 +348,81 @@ export const beginJointDrag = (
   jointId: CanonicalPuppetJointId,
   startRotation: QuaternionTuple,
   pointerPx: readonly [number, number],
+  axes: StudioRotationDragAxes,
 ): StudioJointDragCapture => ({
   jointId,
   startPointerPx: pointerPx,
   startRotation,
+  axes,
 });
 
 export const beginEntityRotationDrag = (
   startRotation: QuaternionTuple,
   pointerPx: readonly [number, number],
+  axes: StudioRotationDragAxes,
 ): StudioEntityRotationDragCapture => ({
   startPointerPx: pointerPx,
   startRotation,
+  axes,
 });
+
+export const rotationDragAxesInLocalSpace = (
+  axes: StudioRotationDragAxes,
+  parentWorldRotation: QuaternionTuple,
+): StudioRotationDragAxes => {
+  const inverseParent: QuaternionTuple = [
+    -parentWorldRotation[0],
+    -parentWorldRotation[1],
+    -parentWorldRotation[2],
+    parentWorldRotation[3],
+  ];
+  return {
+    right: normalized(rotateVector(axes.right, inverseParent)),
+    up: normalized(rotateVector(axes.up, inverseParent)),
+  };
+};
+
+const quaternionFromAxisDegrees = (
+  axis: Vec3,
+  degrees: number,
+): QuaternionTuple => {
+  const normalizedAxis = normalized(axis);
+  const rotation = new Quaternion().setFromAxisAngle(
+    new Vector3(...normalizedAxis),
+    (degrees * Math.PI) / 180,
+  );
+  return [rotation.x, rotation.y, rotation.z, rotation.w];
+};
+
+const updateScreenRelativeRotationDrag = (
+  capture: StudioEntityRotationDragCapture | StudioJointDragCapture,
+  pointerPx: readonly [number, number],
+  direction: 1 | -1,
+): QuaternionTuple => {
+  const deltaX = pointerPx[0] - capture.startPointerPx[0];
+  const deltaY = pointerPx[1] - capture.startPointerPx[1];
+  const horizontal = quaternionFromAxisDegrees(
+    capture.axes.up,
+    deltaX * 0.55 * direction,
+  );
+  const vertical = quaternionFromAxisDegrees(
+    capture.axes.right,
+    deltaY * 0.55 * direction,
+  );
+  return multiplyQuaternions(
+    multiplyQuaternions(horizontal, vertical),
+    capture.startRotation,
+  );
+};
 
 export const updateEntityRotationDrag = (
   capture: StudioEntityRotationDragCapture,
   pointerPx: readonly [number, number],
-): QuaternionTuple => {
-  const deltaX = pointerPx[0] - capture.startPointerPx[0];
-  const deltaY = pointerPx[1] - capture.startPointerPx[1];
-  const dragRotation = quaternionFromEulerDegrees([
-    -deltaY * 0.55,
-    deltaX * 0.55,
-    0,
-  ]);
-  return multiplyQuaternions(dragRotation, capture.startRotation);
-};
+): QuaternionTuple =>
+  updateScreenRelativeRotationDrag(capture, pointerPx, -1);
 
 export const updateJointDrag = (
   capture: StudioJointDragCapture,
   pointerPx: readonly [number, number],
-): QuaternionTuple => updateEntityRotationDrag(capture, pointerPx);
+): QuaternionTuple =>
+  updateScreenRelativeRotationDrag(capture, pointerPx, 1);

@@ -51,11 +51,10 @@ describe("studio world interaction contract", () => {
     expect(source).toContain("onActorJointDraft");
     expect(source).toContain('focusedActorJointId === jointId');
     expect(jointSection).toContain("jointPointerIdRef");
-    expect(jointSection).toContain("setPointerCapture(event.pointerId)");
-    expect(jointSection).toContain("releasePointerCapture(event.pointerId)");
+    expect(jointSection).toContain("bindJointDocumentListeners");
+    expect(jointSection).not.toContain("setPointerCapture(event.pointerId)");
     expect(jointSection).toContain("editorCameraControls.enabled = false");
     expect(jointSection).toContain("editorCameraControls.enabled = true");
-    expect(jointSection).toContain("onLostPointerCapture");
   });
 
   it("maps the visible head to the neck joint for direct rotation", () => {
@@ -106,6 +105,11 @@ describe("studio world interaction contract", () => {
     );
   });
 
+  it("does not request a second editor-camera frame for a joint on the focused actor", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    expect(source).toContain("if (!focused) onFocusEntity?.(entity.id);");
+  });
+
   it("does not commit a joint patch until the part drag crosses the threshold", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     const jointSection = source.slice(
@@ -118,6 +122,21 @@ describe("studio world interaction contract", () => {
     expect(jointSection).toContain("if (active.moved)");
   });
 
+  it("finishes a joint gesture from document pointer events after leaving the mesh", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    const jointSection = source.slice(
+      source.indexOf("const ActorRigPrimitiveMesh"),
+      source.indexOf("const MannequinActor"),
+    );
+    expect(jointSection).toContain("jointDocumentCleanupRef");
+    expect(jointSection).toContain(
+      'ownerDocument.addEventListener("pointermove", handleDocumentPointerMove, true);',
+    );
+    expect(jointSection).toContain(
+      'ownerDocument.addEventListener("pointerup", handleDocumentPointerUp, true);',
+    );
+  });
+
   it("routes focused camera proxy dragging through rotation capture", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     expect(source).toContain("directEntityDragMode");
@@ -128,7 +147,9 @@ describe("studio world interaction contract", () => {
   it("keeps right-button misses out of the ordinary empty-space selection path", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     expect(source).toContain("onPointerMissed={(event) => {");
-    expect(source).toContain("if (event.button === 0) onSelectEntity(null);");
+    expect(source).toContain(
+      'if (view === "editor" && event.button === 0) onSelectEntity(null);',
+    );
   });
 
   it("keeps user protection blocking while workflow locks remain editable", () => {

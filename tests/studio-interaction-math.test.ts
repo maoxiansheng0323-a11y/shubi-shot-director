@@ -7,12 +7,14 @@ import {
   canBeginDirectEntityDrag,
   directEntityDragMode,
   shouldCommitDirectEntityDrag,
+  shouldShowStudioTransformControls,
   editorGroundAxes,
   frameSelectedBound,
   followFocusedCenter,
   intersectGroundPlane,
   moveEntityByEditorKey,
   resolveEntityWorldBound,
+  rotationDragAxesInLocalSpace,
   updateGroundDrag,
   updateEntityRotationDrag,
   updateJointDrag,
@@ -43,11 +45,41 @@ describe("studio interaction math", () => {
   });
 
   it("turns a focused camera proxy drag into a normalized rotation", () => {
-    const capture = beginEntityRotationDrag([0, 0, 0, 1], [10, 10]);
-    const rotation = updateEntityRotationDrag(capture, [30, 0]);
-    expect(rotation[0]).not.toBe(0);
-    expect(rotation[1]).not.toBe(0);
+    const capture = beginEntityRotationDrag(
+      [0, 0, 0, 1],
+      [10, 10],
+      { right: [1, 0, 0], up: [0, 1, 0] },
+    );
+    const rotation = updateEntityRotationDrag(capture, [30, 10]);
+    expect(rotation[0]).toBeCloseTo(0);
+    expect(rotation[1]).toBeLessThan(0);
     expect(Math.hypot(...rotation)).toBeCloseTo(1);
+  });
+
+  it("rotates a camera around the captured editor-screen axes", () => {
+    const capture = beginEntityRotationDrag(
+      [0, 0, 0, 1],
+      [0, 0],
+      { right: [0, 1, 0], up: [0, 0, -1] },
+    );
+    const horizontal = updateEntityRotationDrag(capture, [20, 0]);
+    const vertical = updateEntityRotationDrag(capture, [0, -20]);
+    expect(horizontal[2]).toBeGreaterThan(0);
+    expect(horizontal[0]).toBeCloseTo(0);
+    expect(vertical[1]).toBeGreaterThan(0);
+    expect(vertical[0]).toBeCloseTo(0);
+  });
+
+  it("converts editor-screen axes into a rotated joint parent's local space", () => {
+    const halfTurn = Math.sqrt(0.5);
+    const axes = rotationDragAxesInLocalSpace(
+      { right: [1, 0, 0], up: [0, 1, 0] },
+      [0, 0, halfTurn, halfTurn],
+    );
+    expect(axes.right[0]).toBeCloseTo(0);
+    expect(axes.right[1]).toBeCloseTo(-1);
+    expect(axes.up[0]).toBeCloseTo(1);
+    expect(axes.up[1]).toBeCloseTo(0);
   });
 
   it("allows ordinary editor selection to begin an entity drag", () => {
@@ -74,6 +106,25 @@ describe("studio interaction math", () => {
   it("does not submit a transform for a click without movement", () => {
     expect(shouldCommitDirectEntityDrag(false)).toBe(false);
     expect(shouldCommitDirectEntityDrag(true)).toBe(true);
+  });
+
+  it("keeps transform gizmos out of direct-manipulation select mode", () => {
+    expect(
+      shouldShowStudioTransformControls({
+        selected: true,
+        view: "editor",
+        lockMode: "none",
+        toolMode: "select",
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowStudioTransformControls({
+        selected: true,
+        view: "editor",
+        lockMode: "none",
+        toolMode: "rotate",
+      }),
+    ).toBe(true);
   });
 
   it("resolves finite actor, prop, and camera bounds", () => {
@@ -143,9 +194,17 @@ describe("studio interaction math", () => {
   });
 
   it("turns a limb drag into one normalized local joint rotation", () => {
-    const capture = beginJointDrag("upper_arm_r", [0, 0, 0, 1], [10, 10]);
+    const capture = beginJointDrag(
+      "upper_arm_r",
+      [0, 0, 0, 1],
+      [10, 10],
+      { right: [1, 0, 0], up: [0, 1, 0] },
+    );
+    const horizontal = updateJointDrag(capture, [30, 10]);
+    const vertical = updateJointDrag(capture, [10, -10]);
+    expect(horizontal[1]).toBeGreaterThan(0);
+    expect(vertical[0]).toBeLessThan(0);
     const rotation = updateJointDrag(capture, [30, 0]);
-    expect(rotation[1]).not.toBe(0);
     expect(Math.hypot(...rotation)).toBeCloseTo(1);
   });
 });
