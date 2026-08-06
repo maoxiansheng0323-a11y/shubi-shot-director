@@ -38,20 +38,32 @@ export interface DirectEntityDragEligibility {
   toolMode: "select" | "translate" | "rotate";
   lockMode: "none" | "workflow" | "user";
   entityKind: "environment" | "actor" | "prop" | "camera";
+  focused?: boolean;
 }
 
-export const canBeginDirectEntityDrag = ({
+export type DirectEntityDragMode = "translate" | "rotate";
+
+export const directEntityDragMode = ({
   view,
   button,
   toolMode,
   lockMode,
   entityKind,
-}: DirectEntityDragEligibility): boolean =>
-  view === "editor" &&
-  button === 0 &&
-  toolMode === "select" &&
-  lockMode !== "user" &&
-  entityKind !== "environment";
+  focused = false,
+}: DirectEntityDragEligibility): DirectEntityDragMode | null => {
+  const eligible =
+    view === "editor" &&
+    button === 0 &&
+    toolMode === "select" &&
+    lockMode !== "user" &&
+    entityKind !== "environment";
+  if (!eligible) return null;
+  return entityKind === "camera" && focused ? "rotate" : "translate";
+};
+
+export const canBeginDirectEntityDrag = (
+  eligibility: DirectEntityDragEligibility,
+): boolean => directEntityDragMode(eligibility) !== null;
 
 export const shouldCommitDirectEntityDrag = (moved: boolean): boolean =>
   moved;
@@ -68,6 +80,11 @@ export interface MovementKeyModifiers {
 
 export interface StudioJointDragCapture {
   jointId: CanonicalPuppetJointId;
+  startPointerPx: readonly [number, number];
+  startRotation: QuaternionTuple;
+}
+
+export interface StudioEntityRotationDragCapture {
   startPointerPx: readonly [number, number];
   startRotation: QuaternionTuple;
 }
@@ -311,8 +328,16 @@ export const beginJointDrag = (
   startRotation,
 });
 
-export const updateJointDrag = (
-  capture: StudioJointDragCapture,
+export const beginEntityRotationDrag = (
+  startRotation: QuaternionTuple,
+  pointerPx: readonly [number, number],
+): StudioEntityRotationDragCapture => ({
+  startPointerPx: pointerPx,
+  startRotation,
+});
+
+export const updateEntityRotationDrag = (
+  capture: StudioEntityRotationDragCapture,
   pointerPx: readonly [number, number],
 ): QuaternionTuple => {
   const deltaX = pointerPx[0] - capture.startPointerPx[0];
@@ -324,3 +349,8 @@ export const updateJointDrag = (
   ]);
   return multiplyQuaternions(dragRotation, capture.startRotation);
 };
+
+export const updateJointDrag = (
+  capture: StudioJointDragCapture,
+  pointerPx: readonly [number, number],
+): QuaternionTuple => updateEntityRotationDrag(capture, pointerPx);

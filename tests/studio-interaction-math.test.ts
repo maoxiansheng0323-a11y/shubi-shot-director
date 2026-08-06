@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultScene } from "../src/domain/default-scene";
 import {
+  beginEntityRotationDrag,
   beginGroundDrag,
   beginJointDrag,
   canBeginDirectEntityDrag,
+  directEntityDragMode,
   shouldCommitDirectEntityDrag,
   editorGroundAxes,
   frameSelectedBound,
@@ -12,10 +14,42 @@ import {
   moveEntityByEditorKey,
   resolveEntityWorldBound,
   updateGroundDrag,
+  updateEntityRotationDrag,
   updateJointDrag,
 } from "../src/editor/studio-interaction-math";
 
 describe("studio interaction math", () => {
+  it("uses rotation instead of translation for a focused camera proxy", () => {
+    expect(
+      directEntityDragMode({
+        view: "editor",
+        button: 0,
+        toolMode: "select",
+        lockMode: "none",
+        entityKind: "camera",
+        focused: true,
+      }),
+    ).toBe("rotate");
+    expect(
+      directEntityDragMode({
+        view: "editor",
+        button: 0,
+        toolMode: "select",
+        lockMode: "none",
+        entityKind: "camera",
+        focused: false,
+      }),
+    ).toBe("translate");
+  });
+
+  it("turns a focused camera proxy drag into a normalized rotation", () => {
+    const capture = beginEntityRotationDrag([0, 0, 0, 1], [10, 10]);
+    const rotation = updateEntityRotationDrag(capture, [30, 0]);
+    expect(rotation[0]).not.toBe(0);
+    expect(rotation[1]).not.toBe(0);
+    expect(Math.hypot(...rotation)).toBeCloseTo(1);
+  });
+
   it("allows ordinary editor selection to begin an entity drag", () => {
     expect(
       canBeginDirectEntityDrag({

@@ -211,9 +211,10 @@ rotation, scale, resolved stature, pose, and active contact. Contact snapping
 continues to own the accepted vertical correction.
 
 A focused prop's rendered body is a whole-entity handle and uses the same
-ground-plane drag by default. A focused camera proxy can be moved the same way.
-Vertical movement and precise axes remain available through the existing
-translation gizmo and Inspector fields.
+ground-plane drag by default. A focused camera proxy instead uses left-drag for
+in-place rotation, while an unfocused camera proxy retains direct ground-plane
+movement. Precise translation and rotation remain available through the
+existing gizmos and Inspector fields.
 
 The drag plane is derived from the current spatial floor when available and
 otherwise uses the scene's default ground Y. Pointer rays intersect that
@@ -275,8 +276,9 @@ visible without introducing persistent renderer state.
 
 ## View-Relative Limb Drag
 
-Dragging a green body segment changes exactly one canonical local joint
-quaternion. The selected segment rotates around its parent joint origin, and
+Pressing and dragging a supported head or limb segment immediately enters green
+part focus and changes exactly one canonical local joint quaternion in that
+same gesture. The selected segment rotates around its parent joint origin, and
 all descendants move through the existing forward-kinematic projection.
 
 At pointer-down the controller captures:

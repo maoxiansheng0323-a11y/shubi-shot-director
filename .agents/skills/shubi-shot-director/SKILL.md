@@ -140,15 +140,19 @@ The intermediate none state exists only on the Patch working clone; it is never 
    A short right-click or `Escape` clears transient focus. Double-clicking a
    shot camera also activates it for the compact preview; selecting a camera in
    the compact selector does not change studio selection or focus.
-4. Drag a focused actor's torso or pelvis to move the whole entity. Drag a
-   focused prop or camera proxy the same way. Arrow keys move a focused entity
+4. Drag a focused actor's torso or pelvis, or a focused prop, to move the whole
+   entity. Left-drag a focused camera proxy to rotate it in place; an unfocused
+   camera proxy retains direct whole-entity movement, and the existing gizmos
+   remain available for precise transforms. Arrow keys move a focused entity
    relative to the editor view; `PageUp` and `PageDown` move along world Y.
    Workflow locks use `preserveLock: true`; user locks remain inspectable but
    cannot create mutation drafts until explicitly unlocked.
-5. After an actor is focused, click a supported body segment to enter green
-   actor-part focus. Dragging that segment from the current editor viewpoint
-   authors one existing `actor.pose.joints.set` operation for one canonical
-   joint. It is view-relative and does not infer IK or edit multiple joints.
+5. Press and drag an actor's head or a supported limb in one gesture, even when
+   the actor was not already focused. Pointer-down immediately focuses both the
+   actor and the green actor part, and the same drag authors one existing
+   `actor.pose.joints.set` operation for one canonical joint. Head, face, and
+   neck geometry all target `neck`. The drag is view-relative and does not
+   infer IK or edit multiple joints.
 6. Treat each completed entity gesture, held-key sequence, or joint gesture as
    one Patch, one revision, and one undo step. Editor camera, selection, focus,
    selected joint, preview expansion, and live drafts remain UI state. Cancel a
