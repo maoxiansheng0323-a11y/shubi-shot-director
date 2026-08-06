@@ -129,11 +129,14 @@ The successful export response includes the `sceneId`, revision, dimensions, SHA
 - Select an actor, prop, or camera once for ordinary selection. Double-click it
   to frame the editor camera and enter red entity focus; `Escape` also clears
   focus. Double-clicking a shot camera also makes it the active preview camera.
-- Drag a focused actor's torso or pelvis to move the whole entity. With an
-  actor focused, click a supported limb to enter green part focus, then drag
-  that limb from the current editor viewpoint to author one joint. Props and
-  camera proxies can be dragged as whole entities. User-protected entities
-  remain inspectable but cannot start mutation drafts.
+- Drag a focused actor's torso or pelvis to move the whole entity. Press and
+  drag an actor's head or a supported limb in one gesture, even before the
+  actor is focused: pointer-down focuses the actor and green part, and the drag
+  authors exactly one joint.
+  Props remain whole-entity drag handles. Left-dragging a focused camera proxy
+  rotates it in place; an unfocused camera proxy can still be moved directly,
+  while the existing gizmos remain available for precise transforms.
+  User-protected entities remain inspectable but cannot start mutation drafts.
 - Use the focused-entity arrow keys for editor-view-relative ground movement
   and `PageUp`/`PageDown` for world-Y movement. Hold `Shift` for fast steps or
   `Alt` for precision steps. `W`, `E`, and `Q` continue to select translate,

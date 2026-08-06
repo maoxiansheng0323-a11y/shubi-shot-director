@@ -26,9 +26,13 @@ UI-only editor view to pan without changing the scene revision. Right-drag
 empty space or environment geometry and require orbit around the current
 observation center without changing revision or selection. Require a short
 right-click at or below 5 px to clear transient selection and a longer drag to
-preserve it. Direct left-drag on an editable entity must still commit only that
-entity in one revision. The compact and expanded Shot Preview must retain their
-independent persistent-camera behavior.
+preserve it. Direct left-drag on an editable actor or prop must still commit
+only that entity in one revision. Focus a camera proxy and require one
+left-drag to change only its rotation. Without pre-focusing the actor,
+press-drag the visible head and one loaded refined limb; require immediate
+actor and green part focus plus exactly one `neck` or mapped limb-joint change
+per gesture. The compact and expanded Shot Preview must retain their independent
+persistent-camera behavior.
 
 Require a nonblank studio canvas and Shot Preview, no incoherent overlap, and
 no unexpected console or page errors. Visual taste remains a human approval
