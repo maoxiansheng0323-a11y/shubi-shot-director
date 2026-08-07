@@ -100,6 +100,7 @@ export interface MovementKeyModifiers {
 export interface StudioJointDragCapture {
   jointId: CanonicalPuppetJointId;
   startPointerPx: readonly [number, number];
+  pivotPointerPx: readonly [number, number];
   startRotation: QuaternionTuple;
   axes: StudioRotationDragAxes;
 }
@@ -113,6 +114,7 @@ export interface StudioEntityRotationDragCapture {
 export interface StudioRotationDragAxes {
   right: Vec3;
   up: Vec3;
+  forward: Vec3;
 }
 
 const vectorLength = (value: Vec3): number =>
@@ -349,9 +351,11 @@ export const beginJointDrag = (
   startRotation: QuaternionTuple,
   pointerPx: readonly [number, number],
   axes: StudioRotationDragAxes,
+  pivotPointerPx: readonly [number, number],
 ): StudioJointDragCapture => ({
   jointId,
   startPointerPx: pointerPx,
+  pivotPointerPx,
   startRotation,
   axes,
 });
@@ -379,6 +383,7 @@ export const rotationDragAxesInLocalSpace = (
   return {
     right: normalized(rotateVector(axes.right, inverseParent)),
     up: normalized(rotateVector(axes.up, inverseParent)),
+    forward: normalized(rotateVector(axes.forward, inverseParent)),
   };
 };
 
@@ -424,5 +429,25 @@ export const updateEntityRotationDrag = (
 export const updateJointDrag = (
   capture: StudioJointDragCapture,
   pointerPx: readonly [number, number],
-): QuaternionTuple =>
-  updateScreenRelativeRotationDrag(capture, pointerPx, 1);
+): QuaternionTuple => {
+  const startX = capture.startPointerPx[0] - capture.pivotPointerPx[0];
+  const startY = capture.startPointerPx[1] - capture.pivotPointerPx[1];
+  const currentX = pointerPx[0] - capture.pivotPointerPx[0];
+  const currentY = pointerPx[1] - capture.pivotPointerPx[1];
+  const startLength = Math.hypot(startX, startY);
+  const currentLength = Math.hypot(currentX, currentY);
+  if (startLength < 1e-4 || currentLength < 1e-4) {
+    return capture.startRotation;
+  }
+  const signedAngleDegrees =
+    (Math.atan2(
+      startX * currentY - startY * currentX,
+      startX * currentX + startY * currentY,
+    ) *
+      180) /
+    Math.PI;
+  return multiplyQuaternions(
+    quaternionFromAxisDegrees(capture.axes.forward, signedAngleDegrees),
+    capture.startRotation,
+  );
+};

@@ -20,7 +20,7 @@ import type {
   Group,
   PerspectiveCamera as ThreePerspectiveCamera,
 } from "three";
-import { DoubleSide, Shape, Vector2 } from "three";
+import { DoubleSide, Shape, Vector2, Vector3 } from "three";
 import {
   resolveActorProjection,
   resolveActorJointParentRotations,
@@ -203,6 +203,7 @@ const editorScreenRotationAxes = (
 ): StudioRotationDragAxes => ({
   right: rotateVector([1, 0, 0], rotation),
   up: rotateVector([0, 1, 0], rotation),
+  forward: rotateVector([0, 0, -1], rotation),
 });
 
 const SelectionEdges = ({
@@ -596,6 +597,7 @@ const ActorRigPrimitiveMesh = ({
   currentJointRotation,
   jointParentRotation,
   actorTransform,
+  editorDomElement,
   onActorJointStart,
   onActorJointDraft,
   onActorJointCommit,
@@ -611,6 +613,7 @@ const ActorRigPrimitiveMesh = ({
   currentJointRotation?: QuaternionTuple;
   jointParentRotation?: QuaternionTuple;
   actorTransform: TransformSpec;
+  editorDomElement?: HTMLElement;
   onActorJointStart?: SceneWorldProps["onActorJointStart"];
   onActorJointDraft?: SceneWorldProps["onActorJointDraft"];
   onActorJointCommit?: SceneWorldProps["onActorJointCommit"];
@@ -744,12 +747,21 @@ const ActorRigPrimitiveMesh = ({
       event.button !== 0 ||
       !actorId ||
       !currentJointRotation ||
-      !jointParentRotation
+      !jointParentRotation ||
+      !editorDomElement ||
+      !event.object.parent
     ) {
       return;
     }
     event.stopPropagation();
     onFocusActorJoint(jointId);
+    const pivotWorld = event.object.parent.getWorldPosition(new Vector3());
+    const pivotNdc = pivotWorld.project(editorCamera);
+    const editorBounds = editorDomElement.getBoundingClientRect();
+    const pivotPointerPx = [
+      editorBounds.left + ((pivotNdc.x + 1) * editorBounds.width) / 2,
+      editorBounds.top + ((1 - pivotNdc.y) * editorBounds.height) / 2,
+    ] as const;
     jointDragRef.current = {
       capture: beginJointDrag(
         jointId,
@@ -767,6 +779,7 @@ const ActorRigPrimitiveMesh = ({
             jointParentRotation,
           ),
         ),
+        pivotPointerPx,
       ),
       moved: false,
     };
@@ -907,6 +920,7 @@ const MannequinActor = ({
   onActorJointStart,
   onActorJointDraft,
   onActorJointCommit,
+  editorDomElement,
 }: {
   scene: SceneSpec;
   actor: AnyActorEntity;
@@ -917,6 +931,7 @@ const MannequinActor = ({
   onActorJointStart?: SceneWorldProps["onActorJointStart"];
   onActorJointDraft?: SceneWorldProps["onActorJointDraft"];
   onActorJointCommit?: SceneWorldProps["onActorJointCommit"];
+  editorDomElement?: HTMLElement;
 }) => {
   const effectiveActor = actorJointOverride
     ? {
@@ -945,6 +960,7 @@ const MannequinActor = ({
         ? jointParentRotations[jointId]
         : undefined,
       actorTransform: effectiveActor.transform,
+      editorDomElement,
       onActorJointStart,
       onActorJointDraft,
       onActorJointCommit,
@@ -1398,6 +1414,7 @@ const EntityProjection = ({
           onActorJointStart={canDirectPoseActor ? onActorJointStart : undefined}
           onActorJointDraft={canDirectPoseActor ? onActorJointDraft : undefined}
           onActorJointCommit={canDirectPoseActor ? onActorJointCommit : undefined}
+          editorDomElement={transformDomElement}
         />
       );
       break;
