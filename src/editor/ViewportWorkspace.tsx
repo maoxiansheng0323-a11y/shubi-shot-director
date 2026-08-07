@@ -693,7 +693,7 @@ export const ViewportWorkspace = ({
             Shot Preview · {scene.output.resolutionPx.width} ×{" "}
             {scene.output.resolutionPx.height}
           </p>
-          <View id="shot-three-view" style={viewStyle} index={1}>
+          <View id="shot-three-view" style={viewStyle} index={2}>
             <ShotScene
               scene={scene}
               selectedId={selectedId}
@@ -743,7 +743,7 @@ export const ViewportWorkspace = ({
               ? "Overview"
               : "Editor View"}
         </p>
-        <View id="editor-three-view" style={viewStyle} index={2}>
+        <View id="editor-three-view" style={viewStyle} index={1}>
           <StudioInteractionController
             scene={scene}
             surface={editorDomElement}

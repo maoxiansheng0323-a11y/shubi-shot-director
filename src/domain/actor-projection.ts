@@ -8,6 +8,10 @@ import {
   type ActorLimbPresence,
 } from "./actor-anatomy";
 import {
+  canonicalPuppetJointIds,
+  type CanonicalPuppetJointId,
+} from "./actor-joints";
+import {
   resolveActorBlueprintInstance,
   type ActorBlueprintMountId,
   type ActorBlueprintSnapshot,
@@ -221,6 +225,10 @@ interface ComputedFrames {
   >;
 }
 
+export type ActorJointParentRotations = Readonly<
+  Record<CanonicalPuppetJointId, QuaternionTuple>
+>;
+
 const computeFrames = (
   actor: AnyActorEntity,
   dimensions: ActorAnatomyDimensions,
@@ -329,6 +337,26 @@ const computeFrames = (
 
   return { pelvis, spine, head, mounts, armFrames, legFrames };
 };
+
+const jointParentRotations = (
+  frames: ComputedFrames,
+): ActorJointParentRotations => ({
+  pelvis: identityRotation,
+  spine: frames.pelvis.rotation,
+  neck: frames.spine.rotation,
+  upper_arm_l: frames.armFrames.l.shoulder.rotation,
+  forearm_l: frames.armFrames.l.upper.rotation,
+  hand_l: frames.armFrames.l.middle.rotation,
+  upper_arm_r: frames.armFrames.r.shoulder.rotation,
+  forearm_r: frames.armFrames.r.upper.rotation,
+  hand_r: frames.armFrames.r.middle.rotation,
+  upper_leg_l: frames.legFrames.l.hip.rotation,
+  lower_leg_l: frames.legFrames.l.upper.rotation,
+  foot_l: frames.legFrames.l.middle.rotation,
+  upper_leg_r: frames.legFrames.r.hip.rotation,
+  lower_leg_r: frames.legFrames.r.upper.rotation,
+  foot_r: frames.legFrames.r.middle.rotation,
+});
 
 const bodyPrimitives = (
   definition: ProjectionDefinition,
@@ -791,6 +819,21 @@ export const resolveActorProjection = (
   actor: AnyActorEntity,
 ): ResolvedActorProjection =>
   resolveProjection(actor, resolveDefinition(scene, actor));
+
+export const resolveActorJointParentRotations = (
+  scene: SceneSpec,
+  actor: AnyActorEntity,
+): ActorJointParentRotations => {
+  const rotations = jointParentRotations(
+    computeFrames(actor, resolveDefinition(scene, actor).dimensions),
+  );
+  for (const jointId of canonicalPuppetJointIds) {
+    if (!rotations[jointId]) {
+      throw new Error(`ACTOR_JOINT_PARENT_ROTATION_MISSING: ${jointId}`);
+    }
+  }
+  return rotations;
+};
 
 export const resolveLegacyActorProjection = (
   actor: LegacyActorEntity,

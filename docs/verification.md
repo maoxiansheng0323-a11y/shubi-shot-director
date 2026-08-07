@@ -4,6 +4,72 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v0.9.3 direct manipulation maintenance gates
+
+Run the focused manipulation checks before the complete release gate:
+
+```powershell
+pnpm exec vitest run tests/editor-camera-rig.test.ts tests/studio-interaction-math.test.ts tests/studio-world-interaction.test.ts tests/studio-workspace-layout.test.tsx tests/compact-shot-preview.test.tsx
+pnpm verify
+node .agents/skills/shubi-shot-director/scripts/audit-generic-output.mjs
+git diff --check
+```
+
+Require application 0.9.3 with capability contract 2, bridge protocol 1,
+workspace routing 1, and SceneSpec/ScenePatch/IntentReport version 6. No schema,
+migration, generated-schema, or dependency change is expected. The public and
+generic-output audits must remain clean, and `.pnpm-store/` must remain
+untracked local cache only.
+
+In a real browser, require a nonblank studio and compact Shot Preview with the
+preview visibly layered above the editor. Focus a camera proxy, left-drag it,
+and require one rotation-only scene revision. Without pre-focusing the actor,
+press-drag the visible head and one loaded refined limb; require immediate
+actor and green part focus, a pointer-following live draft, and exactly one
+`neck` or mapped limb-joint revision after release. Move the pointer outside
+the mesh before release to confirm the document-level gesture continues.
+
+Double-click multiple entities after positioning the editor camera and require
+the view to remain stable instead of repeatedly auto-framing. Zoom outward
+beyond the rearm threshold, then require one later explicit focus request to
+frame again. Head dragging must turn and nod without roll and remain within the
+documented cervical range. Editor camera, selection, focus, live drafts, and
+preview layout must remain transient; expanded Shot Preview and PNG export must
+retain their independent persistent-camera behavior. Require no incoherent
+overlap or unexpected console/page errors. Visual taste remains a human
+approval boundary.
+
+### Fresh evidence - 2026-08-07
+
+The focused direct-manipulation and release-contract group passed 8 files with
+202 tests. After transient real-process failures occurred at varying commands,
+the structured runtime e2e file passed twice on its own and the complete gate
+then passed cleanly. The final `pnpm verify` run passed schema generation,
+TypeScript, 97 test files with 1,963 tests, the separate workspace e2e file
+with 1 test, ESLint, and the production Vite build. The public audit scanned
+293 files with zero findings and reported only Apache-2.0, BSD-3-Clause, ISC,
+and MIT dependency license names. Vite emitted only the existing non-blocking
+large-chunk advisory.
+
+At 1280 x 720, a generic large scene rendered one nonblank 778 x 631 WebGL
+canvas. The 316.67 x 243 compact Shot Preview had `z-index: 3` above the editor
+view's `z-index: 2`, remained usable, and produced no console warning or error.
+An isolated generic Quick Start scene then verified direct interaction without
+touching an existing user session: sidebar selection and editor double-click
+focused the actor without changing revision 1; a direct head drag focused the
+green part, changed only the canonical `neck` quaternion, and committed exactly
+revision 2. The authoritative snapshot kept all other fourteen joint
+quaternions at identity.
+
+At 800 x 900, the shared canvas measured 800 x 769 and the compact Shot Preview
+measured 325.91 x 248.19 with no horizontal overflow or console warning/error.
+Screenshot pixel checks were nonblank: the desktop canvas crop had entropy
+6.553783 with RGB variances 3138.810, 3359.184, and 3492.443; the compact crop
+had entropy 6.363265 with RGB variances 2146.935, 1821.048, and 2027.086.
+Focused camera-proxy rotation, drag thresholds, document-level pointer
+continuation, auto-focus rearming, and cervical clamping retain automated
+coverage; final visual taste remains a human approval boundary.
+
 ## v0.9.2 editor view mouse control gates
 
 Run the focused editor interaction checks before the current release gate:

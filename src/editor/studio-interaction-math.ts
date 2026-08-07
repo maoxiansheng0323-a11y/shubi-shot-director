@@ -1,9 +1,10 @@
 import { actorVisibleRigBounds } from "../domain/actor-visible-bounds";
 import {
   multiplyQuaternions,
-  quaternionFromEulerDegrees,
+  rotateVector,
   transformPoint,
 } from "../domain/scene-math";
+import { Euler, MathUtils, Quaternion, Vector3 } from "three";
 import type {
   QuaternionTuple,
   SceneSpec,
@@ -38,23 +39,53 @@ export interface DirectEntityDragEligibility {
   toolMode: "select" | "translate" | "rotate";
   lockMode: "none" | "workflow" | "user";
   entityKind: "environment" | "actor" | "prop" | "camera";
+  focused?: boolean;
 }
 
-export const canBeginDirectEntityDrag = ({
+export type DirectEntityDragMode = "translate" | "rotate";
+
+export const directEntityDragMode = ({
   view,
   button,
   toolMode,
   lockMode,
   entityKind,
-}: DirectEntityDragEligibility): boolean =>
-  view === "editor" &&
-  button === 0 &&
-  toolMode === "select" &&
-  lockMode !== "user" &&
-  entityKind !== "environment";
+  focused = false,
+}: DirectEntityDragEligibility): DirectEntityDragMode | null => {
+  const eligible =
+    view === "editor" &&
+    button === 0 &&
+    toolMode === "select" &&
+    lockMode !== "user" &&
+    entityKind !== "environment";
+  if (!eligible) return null;
+  return entityKind === "camera" && focused ? "rotate" : "translate";
+};
+
+export const canBeginDirectEntityDrag = (
+  eligibility: DirectEntityDragEligibility,
+): boolean => directEntityDragMode(eligibility) !== null;
 
 export const shouldCommitDirectEntityDrag = (moved: boolean): boolean =>
   moved;
+
+export interface StudioTransformControlsVisibility {
+  selected: boolean;
+  view: "editor" | "shot";
+  lockMode: "none" | "workflow" | "user";
+  toolMode: "select" | "translate" | "rotate";
+}
+
+export const shouldShowStudioTransformControls = ({
+  selected,
+  view,
+  lockMode,
+  toolMode,
+}: StudioTransformControlsVisibility): boolean =>
+  selected &&
+  view === "editor" &&
+  lockMode !== "user" &&
+  toolMode !== "select";
 
 export interface GroundDragCapture {
   floorY: number;
@@ -69,7 +100,21 @@ export interface MovementKeyModifiers {
 export interface StudioJointDragCapture {
   jointId: CanonicalPuppetJointId;
   startPointerPx: readonly [number, number];
+  pivotPointerPx: readonly [number, number];
   startRotation: QuaternionTuple;
+  axes: StudioRotationDragAxes;
+}
+
+export interface StudioEntityRotationDragCapture {
+  startPointerPx: readonly [number, number];
+  startRotation: QuaternionTuple;
+  axes: StudioRotationDragAxes;
+}
+
+export interface StudioRotationDragAxes {
+  right: Vec3;
+  up: Vec3;
+  forward: Vec3;
 }
 
 const vectorLength = (value: Vec3): number =>
@@ -305,22 +350,149 @@ export const beginJointDrag = (
   jointId: CanonicalPuppetJointId,
   startRotation: QuaternionTuple,
   pointerPx: readonly [number, number],
+  axes: StudioRotationDragAxes,
+  pivotPointerPx: readonly [number, number],
 ): StudioJointDragCapture => ({
   jointId,
   startPointerPx: pointerPx,
+  pivotPointerPx,
   startRotation,
+  axes,
 });
 
-export const updateJointDrag = (
+export const beginEntityRotationDrag = (
+  startRotation: QuaternionTuple,
+  pointerPx: readonly [number, number],
+  axes: StudioRotationDragAxes,
+): StudioEntityRotationDragCapture => ({
+  startPointerPx: pointerPx,
+  startRotation,
+  axes,
+});
+
+export const rotationDragAxesInLocalSpace = (
+  axes: StudioRotationDragAxes,
+  parentWorldRotation: QuaternionTuple,
+): StudioRotationDragAxes => {
+  const inverseParent: QuaternionTuple = [
+    -parentWorldRotation[0],
+    -parentWorldRotation[1],
+    -parentWorldRotation[2],
+    parentWorldRotation[3],
+  ];
+  return {
+    right: normalized(rotateVector(axes.right, inverseParent)),
+    up: normalized(rotateVector(axes.up, inverseParent)),
+    forward: normalized(rotateVector(axes.forward, inverseParent)),
+  };
+};
+
+const quaternionFromAxisDegrees = (
+  axis: Vec3,
+  degrees: number,
+): QuaternionTuple => {
+  const normalizedAxis = normalized(axis);
+  const rotation = new Quaternion().setFromAxisAngle(
+    new Vector3(...normalizedAxis),
+    (degrees * Math.PI) / 180,
+  );
+  return [rotation.x, rotation.y, rotation.z, rotation.w];
+};
+
+const clampNeckRotation = (rotation: QuaternionTuple): QuaternionTuple => {
+  const euler = new Euler().setFromQuaternion(
+    new Quaternion(...rotation),
+    "XYZ",
+  );
+  euler.x = MathUtils.clamp(
+    euler.x,
+    MathUtils.degToRad(-50),
+    MathUtils.degToRad(50),
+  );
+  euler.y = MathUtils.clamp(
+    euler.y,
+    MathUtils.degToRad(-75),
+    MathUtils.degToRad(75),
+  );
+  euler.z = MathUtils.clamp(
+    euler.z,
+    MathUtils.degToRad(-25),
+    MathUtils.degToRad(25),
+  );
+  const clamped = new Quaternion().setFromEuler(euler);
+  return [clamped.x, clamped.y, clamped.z, clamped.w];
+};
+
+const updateNeckDrag = (
   capture: StudioJointDragCapture,
   pointerPx: readonly [number, number],
 ): QuaternionTuple => {
   const deltaX = pointerPx[0] - capture.startPointerPx[0];
   const deltaY = pointerPx[1] - capture.startPointerPx[1];
-  const dragRotation = quaternionFromEulerDegrees([
-    -deltaY * 0.55,
-    deltaX * 0.55,
-    0,
-  ]);
-  return multiplyQuaternions(dragRotation, capture.startRotation);
+  const yawDegrees = MathUtils.clamp(deltaX * 0.35, -75, 75);
+  const pitchDegrees = MathUtils.clamp(deltaY * 0.35, -50, 50);
+  const yaw = quaternionFromAxisDegrees(capture.axes.up, yawDegrees);
+  const pitch = quaternionFromAxisDegrees(capture.axes.right, pitchDegrees);
+  return clampNeckRotation(
+    multiplyQuaternions(
+      multiplyQuaternions(pitch, yaw),
+      capture.startRotation,
+    ),
+  );
+};
+
+const updateScreenRelativeRotationDrag = (
+  capture: StudioEntityRotationDragCapture | StudioJointDragCapture,
+  pointerPx: readonly [number, number],
+  direction: 1 | -1,
+): QuaternionTuple => {
+  const deltaX = pointerPx[0] - capture.startPointerPx[0];
+  const deltaY = pointerPx[1] - capture.startPointerPx[1];
+  const horizontal = quaternionFromAxisDegrees(
+    capture.axes.up,
+    deltaX * 0.55 * direction,
+  );
+  const vertical = quaternionFromAxisDegrees(
+    capture.axes.right,
+    deltaY * 0.55 * direction,
+  );
+  return multiplyQuaternions(
+    multiplyQuaternions(horizontal, vertical),
+    capture.startRotation,
+  );
+};
+
+export const updateEntityRotationDrag = (
+  capture: StudioEntityRotationDragCapture,
+  pointerPx: readonly [number, number],
+): QuaternionTuple =>
+  updateScreenRelativeRotationDrag(capture, pointerPx, -1);
+
+export const updateJointDrag = (
+  capture: StudioJointDragCapture,
+  pointerPx: readonly [number, number],
+): QuaternionTuple => {
+  if (capture.jointId === "neck") {
+    return updateNeckDrag(capture, pointerPx);
+  }
+  const startX = capture.startPointerPx[0] - capture.pivotPointerPx[0];
+  const startY = capture.startPointerPx[1] - capture.pivotPointerPx[1];
+  const currentX = pointerPx[0] - capture.pivotPointerPx[0];
+  const currentY = pointerPx[1] - capture.pivotPointerPx[1];
+  const startLength = Math.hypot(startX, startY);
+  const currentLength = Math.hypot(currentX, currentY);
+  if (startLength < 1e-4 || currentLength < 1e-4) {
+    return capture.startRotation;
+  }
+  const signedAngleDegrees =
+    (Math.atan2(
+      startX * currentY - startY * currentX,
+      startX * currentX + startY * currentY,
+    ) *
+      180) /
+    Math.PI;
+  return multiplyQuaternions(
+    quaternionFromAxisDegrees(capture.axes.forward, signedAngleDegrees),
+    capture.startRotation,
+  );
 };

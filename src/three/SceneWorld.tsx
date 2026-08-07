@@ -20,9 +20,10 @@ import type {
   Group,
   PerspectiveCamera as ThreePerspectiveCamera,
 } from "three";
-import { DoubleSide, Shape, Vector2 } from "three";
+import { DoubleSide, Shape, Vector2, Vector3 } from "three";
 import {
   resolveActorProjection,
+  resolveActorJointParentRotations,
   type ActorRigPrimitive,
 } from "../domain/actor-projection";
 import { deriveBoundaryWallBoxes } from "../domain/spatial-layout";
@@ -38,13 +39,19 @@ import {
 } from "../editor/spatial-preview";
 import {
   beginGroundDrag,
+  beginEntityRotationDrag,
   beginJointDrag,
-  canBeginDirectEntityDrag,
+  directEntityDragMode,
   shouldCommitDirectEntityDrag,
+  shouldShowStudioTransformControls,
   updateGroundDrag,
+  updateEntityRotationDrag,
   updateJointDrag,
+  rotationDragAxesInLocalSpace,
   type GroundDragCapture,
+  type StudioEntityRotationDragCapture,
   type StudioJointDragCapture,
+  type StudioRotationDragAxes,
 } from "../editor/studio-interaction-math";
 import { subscribeStudioPointerCancellation } from "../editor/studio-pointer-events";
 import { hasStudioPointerExceededDragThreshold } from "../editor/studio-selection";
@@ -61,6 +68,10 @@ import {
   type QuaternionTuple,
   type TransformSpec,
 } from "../domain/scene-schema";
+import {
+  multiplyQuaternions,
+  rotateVector,
+} from "../domain/scene-math";
 import type { CanonicalPuppetJointId } from "../domain/actor-joints";
 import {
   RefinedMannequin,
@@ -187,6 +198,14 @@ const pointerCaptureTarget = (
 ): ThreePointerCaptureTarget =>
   event.currentTarget as unknown as ThreePointerCaptureTarget;
 
+const editorScreenRotationAxes = (
+  rotation: QuaternionTuple,
+): StudioRotationDragAxes => ({
+  right: rotateVector([1, 0, 0], rotation),
+  up: rotateVector([0, 1, 0], rotation),
+  forward: rotateVector([0, 0, -1], rotation),
+});
+
 const SelectionEdges = ({
   selected,
   color = "#9fd0ff",
@@ -217,6 +236,12 @@ interface GrayMeshProps {
   castShadow?: boolean;
   receiveShadow?: boolean;
   opacity?: number;
+  onPointerDown?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerUp?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerCancel?: (event: ThreeEvent<PointerEvent>) => void;
+  onLostPointerCapture?: (event: ThreeEvent<PointerEvent>) => void;
+  onClick?: (event: ThreeEvent<MouseEvent>) => void;
 }
 
 const EntityOpacityContext = createContext(1);
@@ -232,6 +257,12 @@ const GrayMesh = ({
   castShadow = true,
   receiveShadow = true,
   opacity,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onLostPointerCapture,
+  onClick,
 }: GrayMeshProps) => {
   const inheritedOpacity = useContext(EntityOpacityContext);
   const focused = useContext(EntityFocusContext);
@@ -245,6 +276,12 @@ const GrayMesh = ({
       scale={scale}
       castShadow={castShadow && resolvedOpacity >= 0.99}
       receiveShadow={receiveShadow}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onLostPointerCapture}
+      onClick={onClick}
     >
       {children}
       <meshStandardMaterial
@@ -558,9 +595,14 @@ const ActorRigPrimitiveMesh = ({
   onFocusActorJoint,
   actorId,
   currentJointRotation,
+  jointParentRotation,
+  actorTransform,
+  editorDomElement,
   onActorJointStart,
   onActorJointDraft,
   onActorJointCommit,
+  refinedGeometry,
+  refinedTransform,
 }: {
   primitive: ActorRigPrimitive;
   color: string;
@@ -569,36 +611,211 @@ const ActorRigPrimitiveMesh = ({
   onFocusActorJoint?: (jointId: CanonicalPuppetJointId) => void;
   actorId?: string;
   currentJointRotation?: QuaternionTuple;
+  jointParentRotation?: QuaternionTuple;
+  actorTransform: TransformSpec;
+  editorDomElement?: HTMLElement;
   onActorJointStart?: SceneWorldProps["onActorJointStart"];
   onActorJointDraft?: SceneWorldProps["onActorJointDraft"];
   onActorJointCommit?: SceneWorldProps["onActorJointCommit"];
+  refinedGeometry?: BufferGeometry;
+  refinedTransform?: RefinedPrimitiveRenderDescriptor["transform"];
 }) => {
   const jointId = primitiveToJointId(primitive.id);
   const canFocusJoint = jointId !== null && onFocusActorJoint !== undefined;
-  const jointDragRef = useRef<StudioJointDragCapture | null>(null);
+  const jointDragRef = useRef<{
+    capture: StudioJointDragCapture;
+    moved: boolean;
+  } | null>(null);
   const jointPointerIdRef = useRef<number | null>(null);
+  const jointDocumentCleanupRef = useRef<(() => void) | null>(null);
   const editorCameraControls = useThree(
     (state) => state.controls,
   ) as unknown as ToggleableEditorCameraControls | null;
+  const editorCamera = useThree((state) => state.camera);
+  const ownerDocument = useThree(
+    (state) => state.gl.domElement.ownerDocument,
+  );
+
+  const clearJointDocumentListeners = (): void => {
+    const cleanup = jointDocumentCleanupRef.current;
+    jointDocumentCleanupRef.current = null;
+    cleanup?.();
+  };
+  const cancelJointPointer = (pointerId: number): void => {
+    if (jointPointerIdRef.current !== pointerId) return;
+    jointPointerIdRef.current = null;
+    jointDragRef.current = null;
+    clearJointDocumentListeners();
+    if (editorCameraControls) editorCameraControls.enabled = true;
+  };
+  const updateJointPointer = (
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+  ): boolean => {
+    const active = jointDragRef.current;
+    if (
+      jointId === null ||
+      !active ||
+      !actorId ||
+      jointPointerIdRef.current !== pointerId
+    ) {
+      return false;
+    }
+    if (
+      !active.moved &&
+      !hasStudioPointerExceededDragThreshold(
+        active.capture.startPointerPx,
+        [clientX, clientY],
+      )
+    ) {
+      return false;
+    }
+    if (!active.moved) {
+      active.moved = true;
+      onActorJointStart?.(actorId, jointId);
+    }
+    onActorJointDraft?.(
+      actorId,
+      jointId,
+      updateJointDrag(active.capture, [clientX, clientY]),
+    );
+    return true;
+  };
+  const finishJointPointer = (
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+  ): boolean => {
+    const active = jointDragRef.current;
+    if (
+      jointId === null ||
+      !active ||
+      !actorId ||
+      jointPointerIdRef.current !== pointerId
+    ) {
+      return false;
+    }
+    jointPointerIdRef.current = null;
+    jointDragRef.current = null;
+    clearJointDocumentListeners();
+    if (editorCameraControls) editorCameraControls.enabled = true;
+    if (active.moved) {
+      onActorJointCommit?.(
+        actorId,
+        jointId,
+        updateJointDrag(active.capture, [clientX, clientY]),
+      );
+    }
+    return true;
+  };
+  const bindJointDocumentListeners = (): void => {
+    clearJointDocumentListeners();
+    const handleDocumentPointerMove = (event: PointerEvent): void => {
+      updateJointPointer(event.pointerId, event.clientX, event.clientY);
+    };
+    const handleDocumentPointerUp = (event: PointerEvent): void => {
+      finishJointPointer(event.pointerId, event.clientX, event.clientY);
+    };
+    const handleDocumentPointerCancel = (event: PointerEvent): void => {
+      cancelJointPointer(event.pointerId);
+    };
+    ownerDocument.addEventListener("pointermove", handleDocumentPointerMove, true);
+    ownerDocument.addEventListener("pointerup", handleDocumentPointerUp, true);
+    ownerDocument.addEventListener("pointercancel", handleDocumentPointerCancel, true);
+    jointDocumentCleanupRef.current = () => {
+      ownerDocument.removeEventListener("pointermove", handleDocumentPointerMove, true);
+      ownerDocument.removeEventListener("pointerup", handleDocumentPointerUp, true);
+      ownerDocument.removeEventListener("pointercancel", handleDocumentPointerCancel, true);
+    };
+  };
 
   useEffect(
     () => () => {
-      if (jointPointerIdRef.current !== null && editorCameraControls) {
-        editorCameraControls.enabled = true;
-      }
+      clearJointDocumentListeners();
+      jointPointerIdRef.current = null;
+      jointDragRef.current = null;
+      if (editorCameraControls) editorCameraControls.enabled = true;
     },
     [editorCameraControls],
   );
 
-  const cancelJointDrag = (event: ThreeEvent<PointerEvent>): void => {
-    if (jointPointerIdRef.current !== event.pointerId) return;
-    jointPointerIdRef.current = null;
-    jointDragRef.current = null;
-    const capturedTarget = pointerCaptureTarget(event);
-    if (capturedTarget.hasPointerCapture(event.pointerId)) {
-      capturedTarget.releasePointerCapture(event.pointerId);
+  const onJointPointerDown = (event: ThreeEvent<PointerEvent>): void => {
+    if (
+      !canFocusJoint ||
+      jointId === null ||
+      event.button !== 0 ||
+      !actorId ||
+      !currentJointRotation ||
+      !jointParentRotation ||
+      !editorDomElement ||
+      !event.object.parent
+    ) {
+      return;
     }
-    if (editorCameraControls) editorCameraControls.enabled = true;
+    event.stopPropagation();
+    onFocusActorJoint(jointId);
+    const pivotWorld = event.object.parent.getWorldPosition(new Vector3());
+    const pivotNdc = pivotWorld.project(editorCamera);
+    const editorBounds = editorDomElement.getBoundingClientRect();
+    const pivotPointerPx = [
+      editorBounds.left + ((pivotNdc.x + 1) * editorBounds.width) / 2,
+      editorBounds.top + ((1 - pivotNdc.y) * editorBounds.height) / 2,
+    ] as const;
+    jointDragRef.current = {
+      capture: beginJointDrag(
+        jointId,
+        currentJointRotation,
+        [event.nativeEvent.clientX, event.nativeEvent.clientY],
+        rotationDragAxesInLocalSpace(
+          editorScreenRotationAxes([
+            editorCamera.quaternion.x,
+            editorCamera.quaternion.y,
+            editorCamera.quaternion.z,
+            editorCamera.quaternion.w,
+          ]),
+          multiplyQuaternions(
+            actorTransform.rotation,
+            jointParentRotation,
+          ),
+        ),
+        pivotPointerPx,
+      ),
+      moved: false,
+    };
+    jointPointerIdRef.current = event.pointerId;
+    bindJointDocumentListeners();
+    if (editorCameraControls) editorCameraControls.enabled = false;
+  };
+  const onJointPointerMove = (event: ThreeEvent<PointerEvent>): void => {
+    if (
+      updateJointPointer(
+        event.pointerId,
+        event.nativeEvent.clientX,
+        event.nativeEvent.clientY,
+      )
+    ) {
+      event.stopPropagation();
+    }
+  };
+  const onJointPointerUp = (event: ThreeEvent<PointerEvent>): void => {
+    if (
+      finishJointPointer(
+        event.pointerId,
+        event.nativeEvent.clientX,
+        event.nativeEvent.clientY,
+      )
+    ) {
+      event.stopPropagation();
+    }
+  };
+  const cancelJointDrag = (event: ThreeEvent<PointerEvent>): void => {
+    cancelJointPointer(event.pointerId);
+  };
+  const onJointClick = (event: ThreeEvent<MouseEvent>): void => {
+    if (!canFocusJoint || jointId === null) return;
+    event.stopPropagation();
+    onFocusActorJoint(jointId);
   };
   let geometry: ReactNode;
   switch (primitive.kind) {
@@ -663,92 +880,6 @@ const ActorRigPrimitiveMesh = ({
     <group
       position={primitive.frame.position}
       quaternion={primitive.frame.rotation}
-      onPointerDown={
-        canFocusJoint
-          ? (event) => {
-              event.stopPropagation();
-              if (event.button !== 0 || !actorId || !currentJointRotation) return;
-              onFocusActorJoint(jointId);
-              jointDragRef.current = beginJointDrag(
-                jointId,
-                currentJointRotation,
-                [event.nativeEvent.clientX, event.nativeEvent.clientY],
-              );
-              jointPointerIdRef.current = event.pointerId;
-              pointerCaptureTarget(event).setPointerCapture(event.pointerId);
-              if (editorCameraControls) editorCameraControls.enabled = false;
-              onActorJointStart?.(actorId, jointId);
-            }
-          : undefined
-      }
-      onPointerMove={
-        canFocusJoint
-          ? (event) => {
-              const capture = jointDragRef.current;
-              if (
-                !capture ||
-                !actorId ||
-                jointPointerIdRef.current !== event.pointerId
-              ) {
-                return;
-              }
-              event.stopPropagation();
-              onActorJointDraft?.(
-                actorId,
-                jointId,
-                updateJointDrag(capture, [
-                  event.nativeEvent.clientX,
-                  event.nativeEvent.clientY,
-                ]),
-              );
-            }
-          : undefined
-      }
-      onPointerUp={
-        canFocusJoint
-          ? (event) => {
-              const capture = jointDragRef.current;
-              if (
-                !capture ||
-                !actorId ||
-                jointPointerIdRef.current !== event.pointerId
-              ) {
-                return;
-              }
-              jointPointerIdRef.current = null;
-              jointDragRef.current = null;
-              const capturedTarget = pointerCaptureTarget(event);
-              if (capturedTarget.hasPointerCapture(event.pointerId)) {
-                capturedTarget.releasePointerCapture(event.pointerId);
-              }
-              if (editorCameraControls) editorCameraControls.enabled = true;
-              event.stopPropagation();
-              onActorJointCommit?.(
-                actorId,
-                jointId,
-                updateJointDrag(capture, [
-                  event.nativeEvent.clientX,
-                  event.nativeEvent.clientY,
-                ]),
-              );
-            }
-          : undefined
-      }
-      onPointerCancel={cancelJointDrag}
-      onLostPointerCapture={(event) => {
-        if (jointPointerIdRef.current !== event.pointerId) return;
-        jointPointerIdRef.current = null;
-        jointDragRef.current = null;
-        if (editorCameraControls) editorCameraControls.enabled = true;
-      }}
-      onClick={
-        canFocusJoint
-          ? (event) => {
-              event.stopPropagation();
-              onFocusActorJoint(jointId);
-            }
-          : undefined
-      }
     >
       <ActorJointFocusContext.Provider
         value={focusedActorJointId === jointId ? jointId : null}
@@ -756,16 +887,23 @@ const ActorRigPrimitiveMesh = ({
         <GrayMesh
           color={primitive.id === "face" && !selected ? "#aab4bf" : color}
           selected={selected}
-          position={primitive.center}
+          geometry={refinedGeometry}
+          position={refinedTransform?.position ?? primitive.center}
+          onPointerDown={onJointPointerDown}
+          onPointerMove={onJointPointerMove}
+          onPointerUp={onJointPointerUp}
+          onPointerCancel={cancelJointDrag}
+          onClick={onJointClick}
           scale={
-            primitive.kind === "profile"
+            refinedTransform?.scale ??
+            (primitive.kind === "profile"
               ? [1, 1, primitive.depthScale]
               : primitive.kind === "ellipsoid"
                 ? [...primitive.radii]
-                : undefined
+                : undefined)
           }
         >
-          {geometry}
+          {refinedGeometry ? null : geometry}
         </GrayMesh>
       </ActorJointFocusContext.Provider>
     </group>
@@ -782,6 +920,7 @@ const MannequinActor = ({
   onActorJointStart,
   onActorJointDraft,
   onActorJointCommit,
+  editorDomElement,
 }: {
   scene: SceneSpec;
   actor: AnyActorEntity;
@@ -792,6 +931,7 @@ const MannequinActor = ({
   onActorJointStart?: SceneWorldProps["onActorJointStart"];
   onActorJointDraft?: SceneWorldProps["onActorJointDraft"];
   onActorJointCommit?: SceneWorldProps["onActorJointCommit"];
+  editorDomElement?: HTMLElement;
 }) => {
   const effectiveActor = actorJointOverride
     ? {
@@ -805,6 +945,10 @@ const MannequinActor = ({
   const projection = actorJointOverride
     ? resolveActorProjection(scene, effectiveActor)
     : resolveActorProjection(scene, actor);
+  const jointParentRotations = resolveActorJointParentRotations(
+    scene,
+    effectiveActor,
+  );
   const primitiveProps = (primitive: ActorRigPrimitive) => {
     const jointId = primitiveToJointId(primitive.id);
     return {
@@ -812,6 +956,11 @@ const MannequinActor = ({
       currentJointRotation: jointId
         ? effectiveActor.pose.joints[jointId]
         : undefined,
+      jointParentRotation: jointId
+        ? jointParentRotations[jointId]
+        : undefined,
+      actorTransform: effectiveActor.transform,
+      editorDomElement,
       onActorJointStart,
       onActorJointDraft,
       onActorJointCommit,
@@ -833,34 +982,32 @@ const MannequinActor = ({
     </>
   );
   const renderProcedural = (primitive: ActorRigPrimitive) => (
-      <ActorRigPrimitiveMesh
-        key={primitive.id}
-        primitive={primitive}
-        color={actor.color}
-        selected={selected}
-        focusedActorJointId={focusedActorJointId}
-        onFocusActorJoint={onFocusActorJoint}
-        {...primitiveProps(primitive)}
-      />
+    <ActorRigPrimitiveMesh
+      key={primitive.id}
+      primitive={primitive}
+      color={actor.color}
+      selected={selected}
+      focusedActorJointId={focusedActorJointId}
+      onFocusActorJoint={onFocusActorJoint}
+      {...primitiveProps(primitive)}
+    />
   );
   const renderRefined = ({
     primitive,
     geometry,
     transform,
   }: RefinedPrimitiveRenderDescriptor) => (
-    <group
+    <ActorRigPrimitiveMesh
       key={primitive.id}
-      position={primitive.frame.position}
-      quaternion={primitive.frame.rotation}
-    >
-      <GrayMesh
-        color={actor.color}
-        selected={selected}
-        geometry={geometry}
-        position={transform.position}
-        scale={transform.scale}
-      />
-    </group>
+      primitive={primitive}
+      color={actor.color}
+      selected={selected}
+      focusedActorJointId={focusedActorJointId}
+      onFocusActorJoint={onFocusActorJoint}
+      refinedGeometry={geometry}
+      refinedTransform={transform}
+      {...primitiveProps(primitive)}
+    />
   );
   return (
     <RefinedMannequin
@@ -895,7 +1042,14 @@ const CameraProxy = ({
 const primitiveToJointId = (
   primitiveId: ActorRigPrimitive["id"],
 ): CanonicalPuppetJointId | null => {
-  if (primitiveId === "pelvis" || primitiveId === "torso" || primitiveId === "neck" || primitiveId === "head") return null;
+  if (
+    primitiveId === "neck" ||
+    primitiveId === "head" ||
+    primitiveId === "face"
+  ) {
+    return "neck";
+  }
+  if (primitiveId === "pelvis" || primitiveId === "torso") return null;
   if (primitiveId === "upper_arm_l" || primitiveId === "shoulder_l") return "upper_arm_l";
   if (primitiveId === "forearm_l" || primitiveId === "elbow_l") return "forearm_l";
   if (primitiveId === "hand_l") return "hand_l";
@@ -964,19 +1118,24 @@ const EntityProjection = ({
   const editorCameraControls = useThree(
     (state) => state.controls,
   ) as unknown as ToggleableEditorCameraControls | null;
+  const editorCamera = useThree((state) => state.camera);
   const directDragRef = useRef<{
     pointerId: number;
-    capture: GroundDragCapture;
+    capture:
+      | { mode: "translate"; value: GroundDragCapture }
+      | { mode: "rotate"; value: StudioEntityRotationDragCapture };
+    startTransform: TransformSpec;
     startPointerPx: readonly [number, number];
     moved: boolean;
   } | null>(null);
   const onTransformCancelRef = useRef(onTransformCancel);
   onTransformCancelRef.current = onTransformCancel;
-  const showTransformControls =
-    selected &&
-    view === "editor" &&
-    entity.lockMode !== "user" &&
-    (toolMode !== "select" || focused);
+  const showTransformControls = shouldShowStudioTransformControls({
+    selected,
+    view,
+    lockMode: entity.lockMode,
+    toolMode,
+  });
   const transformMode = toolMode === "rotate" ? "rotate" : "translate";
   const setEditorCameraControlsEnabled = (enabled: boolean): void => {
     if (view === "editor" && editorCameraControls) {
@@ -1065,37 +1224,64 @@ const EntityProjection = ({
     onFocusEntity?.(entity.id);
   };
   const onPointerDown = (event: ThreeEvent<PointerEvent>): void => {
-    if (
-      !canBeginDirectEntityDrag({
-        view,
-        button: event.button,
-        toolMode,
-        lockMode: entity.lockMode,
-        entityKind: entity.kind,
-      })
-    ) {
-      return;
-    }
+    const mode = directEntityDragMode({
+      view,
+      button: event.button,
+      toolMode,
+      lockMode: entity.lockMode,
+      entityKind: entity.kind,
+      focused,
+    });
+    if (!mode) return;
     event.stopPropagation();
     onSelectEntity(entity.id);
-    const floorY = entity.transform.positionM[1];
-    const capture = beginGroundDrag(
-      entity.transform.positionM,
-      {
-        originM: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
-        directionM: [
-          event.ray.direction.x,
-          event.ray.direction.y,
-          event.ray.direction.z,
-        ],
-      },
-      floorY,
-    );
+    const startTransform = transformOverride ?? entity.transform;
+    const startPointerPx = [
+      event.nativeEvent.clientX,
+      event.nativeEvent.clientY,
+    ] as const;
+    const capture =
+      mode === "rotate"
+        ? {
+            mode,
+            value: beginEntityRotationDrag(
+              startTransform.rotation,
+              startPointerPx,
+              editorScreenRotationAxes([
+                editorCamera.quaternion.x,
+                editorCamera.quaternion.y,
+                editorCamera.quaternion.z,
+                editorCamera.quaternion.w,
+              ]),
+            ),
+          } as const
+        : (() => {
+            const groundCapture = beginGroundDrag(
+              startTransform.positionM,
+              {
+                originM: [
+                  event.ray.origin.x,
+                  event.ray.origin.y,
+                  event.ray.origin.z,
+                ],
+                directionM: [
+                  event.ray.direction.x,
+                  event.ray.direction.y,
+                  event.ray.direction.z,
+                ],
+              },
+              startTransform.positionM[1],
+            );
+            return groundCapture
+              ? ({ mode, value: groundCapture } as const)
+              : null;
+          })();
     if (!capture) return;
     directDragRef.current = {
       pointerId: event.pointerId,
       capture,
-      startPointerPx: [event.nativeEvent.clientX, event.nativeEvent.clientY],
+      startTransform,
+      startPointerPx,
       moved: false,
     };
     pointerCaptureTarget(event).setPointerCapture(event.pointerId);
@@ -1113,24 +1299,39 @@ const EntityProjection = ({
     ) {
       return;
     }
-    const nextPosition = updateGroundDrag(active.capture, {
-      originM: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
-      directionM: [
-        event.ray.direction.x,
-        event.ray.direction.y,
-        event.ray.direction.z,
-      ],
-    });
-    if (!nextPosition) return;
+    const nextTransform =
+      active.capture.mode === "rotate"
+        ? {
+            ...active.startTransform,
+            rotation: updateEntityRotationDrag(active.capture.value, [
+              event.nativeEvent.clientX,
+              event.nativeEvent.clientY,
+            ]),
+          }
+        : (() => {
+            const nextPosition = updateGroundDrag(active.capture.value, {
+              originM: [
+                event.ray.origin.x,
+                event.ray.origin.y,
+                event.ray.origin.z,
+              ],
+              directionM: [
+                event.ray.direction.x,
+                event.ray.direction.y,
+                event.ray.direction.z,
+              ],
+            });
+            return nextPosition
+              ? { ...active.startTransform, positionM: nextPosition }
+              : null;
+          })();
+    if (!nextTransform) return;
     if (!active.moved) {
       active.moved = true;
       onTransformStart?.(entity.id);
     }
     event.stopPropagation();
-    onTransformDraft?.(entity.id, {
-      ...entity.transform,
-      positionM: nextPosition,
-    });
+    onTransformDraft?.(entity.id, nextTransform);
   };
   const onPointerUp = (event: ThreeEvent<PointerEvent>): void => {
     const active = directDragRef.current;
@@ -1141,20 +1342,35 @@ const EntityProjection = ({
       capturedTarget.releasePointerCapture(event.pointerId);
     }
     setEditorCameraControlsEnabled(true);
-    const nextPosition = updateGroundDrag(active.capture, {
-      originM: [event.ray.origin.x, event.ray.origin.y, event.ray.origin.z],
-      directionM: [
-        event.ray.direction.x,
-        event.ray.direction.y,
-        event.ray.direction.z,
-      ],
-    });
+    const nextTransform =
+      active.capture.mode === "rotate"
+        ? {
+            ...active.startTransform,
+            rotation: updateEntityRotationDrag(active.capture.value, [
+              event.nativeEvent.clientX,
+              event.nativeEvent.clientY,
+            ]),
+          }
+        : (() => {
+            const nextPosition = updateGroundDrag(active.capture.value, {
+              originM: [
+                event.ray.origin.x,
+                event.ray.origin.y,
+                event.ray.origin.z,
+              ],
+              directionM: [
+                event.ray.direction.x,
+                event.ray.direction.y,
+                event.ray.direction.z,
+              ],
+            });
+            return nextPosition
+              ? { ...active.startTransform, positionM: nextPosition }
+              : null;
+          })();
     event.stopPropagation();
-    if (nextPosition && shouldCommitDirectEntityDrag(active.moved)) {
-      void onTransformCommit?.(entity.id, {
-        ...entity.transform,
-        positionM: nextPosition,
-      });
+    if (nextTransform && shouldCommitDirectEntityDrag(active.moved)) {
+      void onTransformCommit?.(entity.id, nextTransform);
     }
   };
 
@@ -1177,7 +1393,9 @@ const EntityProjection = ({
         />
       );
       break;
-    case "actor":
+    case "actor": {
+      const canDirectPoseActor =
+        view === "editor" && entity.lockMode !== "user";
       content = (
         <MannequinActor
           scene={scene}
@@ -1185,15 +1403,22 @@ const EntityProjection = ({
           selected={selectedInEditor}
           focusedActorJointId={focused ? focusedActorJointId : null}
           onFocusActorJoint={
-            focused ? onFocusActorJoint : undefined
+            canDirectPoseActor
+              ? (jointId) => {
+                  if (!focused) onFocusEntity?.(entity.id);
+                  onFocusActorJoint?.(jointId);
+                }
+              : undefined
           }
           actorJointOverride={actorJointOverride}
-          onActorJointStart={focused ? onActorJointStart : undefined}
-          onActorJointDraft={focused ? onActorJointDraft : undefined}
-          onActorJointCommit={focused ? onActorJointCommit : undefined}
+          onActorJointStart={canDirectPoseActor ? onActorJointStart : undefined}
+          onActorJointDraft={canDirectPoseActor ? onActorJointDraft : undefined}
+          onActorJointCommit={canDirectPoseActor ? onActorJointCommit : undefined}
+          editorDomElement={transformDomElement}
         />
       );
       break;
+    }
     case "camera":
       content =
         view === "editor" ? <CameraProxy selected={selected} /> : null;
@@ -1330,7 +1555,7 @@ export const SceneWorld = ({
     <group
       name={`scene-world-${scene.revision}-${view}`}
       onPointerMissed={(event) => {
-        if (event.button === 0) onSelectEntity(null);
+        if (view === "editor" && event.button === 0) onSelectEntity(null);
       }}
     >
       <ambientLight intensity={1.35} />
@@ -1384,9 +1609,7 @@ export const SceneWorld = ({
             opacity={opacity}
             onSelectEntity={onSelectEntity}
             onFocusEntity={onFocusEntity}
-            onFocusActorJoint={
-              entity.id === focusedEntityId ? onFocusActorJoint : undefined
-            }
+            onFocusActorJoint={onFocusActorJoint}
             onActorJointStart={onActorJointStart}
             onActorJointDraft={onActorJointDraft}
             onActorJointCommit={onActorJointCommit}

@@ -51,23 +51,111 @@ describe("studio world interaction contract", () => {
     expect(source).toContain("onActorJointDraft");
     expect(source).toContain('focusedActorJointId === jointId');
     expect(jointSection).toContain("jointPointerIdRef");
-    expect(jointSection).toContain("setPointerCapture(event.pointerId)");
-    expect(jointSection).toContain("releasePointerCapture(event.pointerId)");
+    expect(jointSection).toContain("bindJointDocumentListeners");
+    expect(jointSection).not.toContain("setPointerCapture(event.pointerId)");
     expect(jointSection).toContain("editorCameraControls.enabled = false");
     expect(jointSection).toContain("editorCameraControls.enabled = true");
-    expect(jointSection).toContain("onLostPointerCapture");
+  });
+
+  it("maps the visible head to the neck joint for direct rotation", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    const mappingSection = source.slice(
+      source.indexOf("const primitiveToJointId"),
+      source.indexOf("const EntityProjection"),
+    );
+    expect(mappingSection).toContain('primitiveId === "neck"');
+    expect(mappingSection).toContain('primitiveId === "head"');
+    expect(mappingSection).toContain('primitiveId === "face"');
+    expect(mappingSection).toContain('return "neck";');
+  });
+
+  it("keeps joint pointer handling on loaded refined mannequin sections", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    const refinedSection = source.slice(
+      source.indexOf("const renderRefined"),
+      source.indexOf("return (", source.indexOf("const renderRefined")),
+    );
+    expect(refinedSection).toContain("<ActorRigPrimitiveMesh");
+    expect(refinedSection).toContain("refinedGeometry={geometry}");
+    expect(refinedSection).toContain("refinedTransform={transform}");
+  });
+
+  it("binds joint pointer handlers to the raycast mesh instead of its group", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    const jointSection = source.slice(
+      source.indexOf("const ActorRigPrimitiveMesh"),
+      source.indexOf("const MannequinActor"),
+    );
+    expect(jointSection).toContain("onPointerDown={onJointPointerDown}");
+    expect(jointSection).toContain("onPointerMove={onJointPointerMove}");
+    expect(jointSection).toContain("onPointerUp={onJointPointerUp}");
+    expect(jointSection).toContain("onClick={onJointClick}");
+  });
+
+  it("focuses an actor and its joint from the first supported-part press", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    const actorProjection = source.slice(
+      source.indexOf('case "actor":'),
+      source.indexOf('case "camera":'),
+    );
+    expect(actorProjection).toContain("onFocusEntity?.(entity.id);");
+    expect(actorProjection).toContain("onFocusActorJoint?.(jointId);");
+    expect(actorProjection).not.toContain(
+      "focused ? onFocusActorJoint : undefined",
+    );
+  });
+
+  it("does not request a second editor-camera frame for a joint on the focused actor", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    expect(source).toContain("if (!focused) onFocusEntity?.(entity.id);");
+  });
+
+  it("does not commit a joint patch until the part drag crosses the threshold", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    const jointSection = source.slice(
+      source.indexOf("const ActorRigPrimitiveMesh"),
+      source.indexOf("const MannequinActor"),
+    );
+    expect(jointSection).toContain("moved: boolean");
+    expect(jointSection).toContain("hasStudioPointerExceededDragThreshold");
+    expect(jointSection).toContain("if (!active.moved)");
+    expect(jointSection).toContain("if (active.moved)");
+  });
+
+  it("finishes a joint gesture from document pointer events after leaving the mesh", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    const jointSection = source.slice(
+      source.indexOf("const ActorRigPrimitiveMesh"),
+      source.indexOf("const MannequinActor"),
+    );
+    expect(jointSection).toContain("jointDocumentCleanupRef");
+    expect(jointSection).toContain(
+      'ownerDocument.addEventListener("pointermove", handleDocumentPointerMove, true);',
+    );
+    expect(jointSection).toContain(
+      'ownerDocument.addEventListener("pointerup", handleDocumentPointerUp, true);',
+    );
+  });
+
+  it("routes focused camera proxy dragging through rotation capture", () => {
+    const source = readSource("src/three/SceneWorld.tsx");
+    expect(source).toContain("directEntityDragMode");
+    expect(source).toContain("beginEntityRotationDrag");
+    expect(source).toContain("updateEntityRotationDrag");
   });
 
   it("keeps right-button misses out of the ordinary empty-space selection path", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     expect(source).toContain("onPointerMissed={(event) => {");
-    expect(source).toContain("if (event.button === 0) onSelectEntity(null);");
+    expect(source).toContain(
+      'if (view === "editor" && event.button === 0) onSelectEntity(null);',
+    );
   });
 
   it("keeps user protection blocking while workflow locks remain editable", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     const app = readSource("src/App.tsx");
-    expect(source).toContain("canBeginDirectEntityDrag");
+    expect(source).toContain("directEntityDragMode");
     expect(source).toContain("lockMode: entity.lockMode");
     expect(app).toContain('entity.lockMode === "workflow"');
   });
