@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultScene } from "../src/domain/default-scene";
+import { rotateVector } from "../src/domain/scene-math";
 import {
   beginEntityRotationDrag,
   beginGroundDrag,
@@ -48,7 +49,7 @@ describe("studio interaction math", () => {
     const capture = beginEntityRotationDrag(
       [0, 0, 0, 1],
       [10, 10],
-      { right: [1, 0, 0], up: [0, 1, 0] },
+      { right: [1, 0, 0], up: [0, 1, 0], forward: [0, 0, -1] },
     );
     const rotation = updateEntityRotationDrag(capture, [30, 10]);
     expect(rotation[0]).toBeCloseTo(0);
@@ -60,7 +61,7 @@ describe("studio interaction math", () => {
     const capture = beginEntityRotationDrag(
       [0, 0, 0, 1],
       [0, 0],
-      { right: [0, 1, 0], up: [0, 0, -1] },
+      { right: [0, 1, 0], up: [0, 0, -1], forward: [-1, 0, 0] },
     );
     const horizontal = updateEntityRotationDrag(capture, [20, 0]);
     const vertical = updateEntityRotationDrag(capture, [0, -20]);
@@ -73,13 +74,14 @@ describe("studio interaction math", () => {
   it("converts editor-screen axes into a rotated joint parent's local space", () => {
     const halfTurn = Math.sqrt(0.5);
     const axes = rotationDragAxesInLocalSpace(
-      { right: [1, 0, 0], up: [0, 1, 0] },
+      { right: [1, 0, 0], up: [0, 1, 0], forward: [0, 0, -1] },
       [0, 0, halfTurn, halfTurn],
     );
     expect(axes.right[0]).toBeCloseTo(0);
     expect(axes.right[1]).toBeCloseTo(-1);
     expect(axes.up[0]).toBeCloseTo(1);
     expect(axes.up[1]).toBeCloseTo(0);
+    expect(axes.forward).toEqual([0, 0, -1]);
   });
 
   it("allows ordinary editor selection to begin an entity drag", () => {
@@ -193,18 +195,31 @@ describe("studio interaction math", () => {
     expect(moveEntityByEditorKey(transform, "PageUp", view, { altKey: true }).positionM).toEqual([0, 1.02, 0]);
   });
 
-  it("turns a limb drag into one normalized local joint rotation", () => {
+  it.each([
+    "upper_leg_l",
+    "lower_leg_l",
+    "upper_leg_r",
+    "lower_leg_r",
+  ] as const)("moves %s toward the pointer around its screen pivot", (jointId) => {
+    const axes = {
+      right: [1, 0, 0] as [number, number, number],
+      up: [0, 1, 0] as [number, number, number],
+      forward: [0, 0, -1] as [number, number, number],
+    };
+    const startPointer = [10, 30] as const;
+    const pivotPointer = [10, 10] as const;
     const capture = beginJointDrag(
-      "upper_arm_r",
+      jointId,
       [0, 0, 0, 1],
-      [10, 10],
-      { right: [1, 0, 0], up: [0, 1, 0] },
+      startPointer,
+      axes,
+      pivotPointer,
     );
-    const horizontal = updateJointDrag(capture, [30, 10]);
-    const vertical = updateJointDrag(capture, [10, -10]);
-    expect(horizontal[1]).toBeGreaterThan(0);
-    expect(vertical[0]).toBeLessThan(0);
-    const rotation = updateJointDrag(capture, [30, 0]);
-    expect(Math.hypot(...rotation)).toBeCloseTo(1);
+
+    const rightRotation = updateJointDrag(capture, [30, 30]);
+    const leftRotation = updateJointDrag(capture, [-10, 30]);
+    expect(rotateVector([0, -1, 0], rightRotation)[0]).toBeGreaterThan(0);
+    expect(rotateVector([0, -1, 0], leftRotation)[0]).toBeLessThan(0);
+    expect(Math.hypot(...rightRotation)).toBeCloseTo(1);
   });
 });
