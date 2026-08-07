@@ -1234,7 +1234,7 @@ const EntityProjection = ({
     });
     if (!mode) return;
     event.stopPropagation();
-    onSelectEntity(entity.id);
+    if (!focused) onSelectEntity(entity.id);
     const startTransform = transformOverride ?? entity.transform;
     const startPointerPx = [
       event.nativeEvent.clientX,

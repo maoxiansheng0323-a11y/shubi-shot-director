@@ -592,7 +592,9 @@ export const ViewportWorkspace = ({
     }
     try {
       await onCommitTransform(entityId, transform);
-      onSelect(entityId);
+      if (focusedEntityId !== entityId) {
+        onSelect(entityId);
+      }
     } catch {
       // The authoritative store exposes the readable mutation error.
     } finally {

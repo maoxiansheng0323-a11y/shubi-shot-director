@@ -144,6 +144,22 @@ describe("studio world interaction contract", () => {
     expect(source).toContain("updateEntityRotationDrag");
   });
 
+  it("keeps entity focus while a focused proxy transform is committed", () => {
+    const world = readSource("src/three/SceneWorld.tsx");
+    const pointerDown = world.slice(
+      world.indexOf("const onPointerDown", world.indexOf("const EntityProjection")),
+      world.indexOf("const onPointerMove", world.indexOf("const EntityProjection")),
+    );
+    expect(pointerDown).toContain("if (!focused) onSelectEntity(entity.id);");
+
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
+    const transformCommit = workspace.slice(
+      workspace.indexOf("const handleTransformCommit"),
+      workspace.indexOf("const handleActorJointDraft"),
+    );
+    expect(transformCommit).toContain("focusedEntityId !== entityId");
+  });
+
   it("keeps right-button misses out of the ordinary empty-space selection path", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     expect(source).toContain("onPointerMissed={(event) => {");
