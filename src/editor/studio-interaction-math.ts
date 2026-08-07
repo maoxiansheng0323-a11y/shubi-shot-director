@@ -4,7 +4,7 @@ import {
   rotateVector,
   transformPoint,
 } from "../domain/scene-math";
-import { Quaternion, Vector3 } from "three";
+import { Euler, MathUtils, Quaternion, Vector3 } from "three";
 import type {
   QuaternionTuple,
   SceneSpec,
@@ -399,6 +399,48 @@ const quaternionFromAxisDegrees = (
   return [rotation.x, rotation.y, rotation.z, rotation.w];
 };
 
+const clampNeckRotation = (rotation: QuaternionTuple): QuaternionTuple => {
+  const euler = new Euler().setFromQuaternion(
+    new Quaternion(...rotation),
+    "XYZ",
+  );
+  euler.x = MathUtils.clamp(
+    euler.x,
+    MathUtils.degToRad(-50),
+    MathUtils.degToRad(50),
+  );
+  euler.y = MathUtils.clamp(
+    euler.y,
+    MathUtils.degToRad(-75),
+    MathUtils.degToRad(75),
+  );
+  euler.z = MathUtils.clamp(
+    euler.z,
+    MathUtils.degToRad(-25),
+    MathUtils.degToRad(25),
+  );
+  const clamped = new Quaternion().setFromEuler(euler);
+  return [clamped.x, clamped.y, clamped.z, clamped.w];
+};
+
+const updateNeckDrag = (
+  capture: StudioJointDragCapture,
+  pointerPx: readonly [number, number],
+): QuaternionTuple => {
+  const deltaX = pointerPx[0] - capture.startPointerPx[0];
+  const deltaY = pointerPx[1] - capture.startPointerPx[1];
+  const yawDegrees = MathUtils.clamp(deltaX * 0.35, -75, 75);
+  const pitchDegrees = MathUtils.clamp(deltaY * 0.35, -50, 50);
+  const yaw = quaternionFromAxisDegrees(capture.axes.up, yawDegrees);
+  const pitch = quaternionFromAxisDegrees(capture.axes.right, pitchDegrees);
+  return clampNeckRotation(
+    multiplyQuaternions(
+      multiplyQuaternions(pitch, yaw),
+      capture.startRotation,
+    ),
+  );
+};
+
 const updateScreenRelativeRotationDrag = (
   capture: StudioEntityRotationDragCapture | StudioJointDragCapture,
   pointerPx: readonly [number, number],
@@ -430,6 +472,9 @@ export const updateJointDrag = (
   capture: StudioJointDragCapture,
   pointerPx: readonly [number, number],
 ): QuaternionTuple => {
+  if (capture.jointId === "neck") {
+    return updateNeckDrag(capture, pointerPx);
+  }
   const startX = capture.startPointerPx[0] - capture.pivotPointerPx[0];
   const startY = capture.startPointerPx[1] - capture.pivotPointerPx[1];
   const currentX = pointerPx[0] - capture.pivotPointerPx[0];

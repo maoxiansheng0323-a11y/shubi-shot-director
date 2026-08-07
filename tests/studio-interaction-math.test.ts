@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Euler, MathUtils, Quaternion } from "three";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { rotateVector } from "../src/domain/scene-math";
 import {
@@ -221,5 +222,53 @@ describe("studio interaction math", () => {
     expect(rotateVector([0, -1, 0], rightRotation)[0]).toBeGreaterThan(0);
     expect(rotateVector([0, -1, 0], leftRotation)[0]).toBeLessThan(0);
     expect(Math.hypot(...rightRotation)).toBeCloseTo(1);
+  });
+
+  it("maps head dragging to turn and nod without rolling around the screen", () => {
+    const capture = beginJointDrag(
+      "neck",
+      [0, 0, 0, 1],
+      [0, 0],
+      {
+        right: [1, 0, 0],
+        up: [0, 1, 0],
+        forward: [0, 0, -1],
+      },
+      [0, 20],
+    );
+
+    const turned = updateJointDrag(capture, [80, 0]);
+    const nodded = updateJointDrag(capture, [0, 80]);
+    const turnedForward = rotateVector([0, 0, 1], turned);
+    const turnedUp = rotateVector([0, 1, 0], turned);
+    const noddedForward = rotateVector([0, 0, 1], nodded);
+
+    expect(turnedForward[0]).toBeGreaterThan(0);
+    expect(turnedUp[0]).toBeCloseTo(0);
+    expect(turnedUp[2]).toBeCloseTo(0);
+    expect(noddedForward[1]).toBeLessThan(0);
+  });
+
+  it("clamps head dragging to a usable cervical range", () => {
+    const capture = beginJointDrag(
+      "neck",
+      [0, 0, 0, 1],
+      [0, 0],
+      {
+        right: [1, 0, 0],
+        up: [0, 1, 0],
+        forward: [0, 0, -1],
+      },
+      [0, 20],
+    );
+    const rotation = updateJointDrag(capture, [1000, 1000]);
+    const euler = new Euler().setFromQuaternion(
+      new Quaternion(...rotation),
+      "XYZ",
+    );
+
+    expect(Math.abs(MathUtils.radToDeg(euler.x))).toBeLessThanOrEqual(50.00001);
+    expect(Math.abs(MathUtils.radToDeg(euler.y))).toBeLessThanOrEqual(75.00001);
+    expect(Math.abs(MathUtils.radToDeg(euler.z))).toBeLessThanOrEqual(25.00001);
   });
 });
