@@ -4,6 +4,7 @@ import {
   assertNoForbiddenDirectorEnvironment,
   createBridgeChildEnvironment,
 } from "../scripts/process-boundary.mjs";
+import { createBackgroundProcessLaunch } from "./background-process-launch";
 import {
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_SERVICE,
@@ -967,25 +968,20 @@ export const ensureBridge = async (
     );
   }
 
-  const child = spawn(
-    process.execPath,
-    [
+  const launch = createBackgroundProcessLaunch({
+    executable: process.execPath,
+    args: [
       paths.tsxCliPath,
       path.join(paths.repositoryRoot, "server", "index.ts"),
     ],
-    {
-      cwd: paths.repositoryRoot,
-      detached: true,
-      env: createBridgeChildEnvironment(
-        configuration.port,
-        configuration.runtimeDirectory,
-        process.env,
-      ),
-      shell: false,
-      stdio: "ignore",
-      windowsHide: true,
-    },
-  );
+    cwd: paths.repositoryRoot,
+    env: createBridgeChildEnvironment(
+      configuration.port,
+      configuration.runtimeDirectory,
+      process.env,
+    ),
+  });
+  const child = spawn(launch.executable, launch.args, launch.options);
   child.unref();
   return {
     health: await waitForHealth(configuration, 20_000),
