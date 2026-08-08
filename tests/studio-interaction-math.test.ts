@@ -44,6 +44,26 @@ describe("studio interaction math", () => {
         focused: false,
       }),
     ).toBe("translate");
+    expect(
+      directEntityDragMode({
+        view: "editor",
+        button: 0,
+        toolMode: "select",
+        lockMode: "workflow",
+        entityKind: "camera",
+        focused: true,
+      }),
+    ).toBe("rotate");
+    expect(
+      directEntityDragMode({
+        view: "editor",
+        button: 0,
+        toolMode: "select",
+        lockMode: "user",
+        entityKind: "camera",
+        focused: true,
+      }),
+    ).toBeNull();
   });
 
   it("turns a focused camera proxy drag into a normalized rotation", () => {

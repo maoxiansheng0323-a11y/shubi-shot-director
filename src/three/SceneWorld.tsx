@@ -53,7 +53,10 @@ import {
   type StudioJointDragCapture,
   type StudioRotationDragAxes,
 } from "../editor/studio-interaction-math";
-import { subscribeStudioPointerCancellation } from "../editor/studio-pointer-events";
+import {
+  subscribeStudioPointerCancellation,
+  subscribeStudioPointerDrag,
+} from "../editor/studio-pointer-events";
 import { hasStudioPointerExceededDragThreshold } from "../editor/studio-selection";
 import {
   deriveHiddenShotWallBoxKey,
@@ -1126,8 +1129,10 @@ const EntityProjection = ({
       | { mode: "rotate"; value: StudioEntityRotationDragCapture };
     startTransform: TransformSpec;
     startPointerPx: readonly [number, number];
+    lastPointerPx: readonly [number, number] | null;
     moved: boolean;
   } | null>(null);
+  const directDragDocumentCleanupRef = useRef<(() => void) | null>(null);
   const onTransformCancelRef = useRef(onTransformCancel);
   onTransformCancelRef.current = onTransformCancel;
   const showTransformControls = shouldShowStudioTransformControls({
@@ -1142,12 +1147,18 @@ const EntityProjection = ({
       editorCameraControls.enabled = enabled;
     }
   };
+  const clearDirectDragDocumentListeners = useCallback((): void => {
+    const cleanup = directDragDocumentCleanupRef.current;
+    directDragDocumentCleanupRef.current = null;
+    cleanup?.();
+  }, []);
 
   const cancelDirectDrag = useCallback(
     (pointerId: number): void => {
       const active = directDragRef.current;
       if (!active || active.pointerId !== pointerId) return;
       directDragRef.current = null;
+      clearDirectDragDocumentListeners();
       if (view === "editor" && editorCameraControls) {
         editorCameraControls.enabled = true;
       }
@@ -1155,7 +1166,7 @@ const EntityProjection = ({
         onTransformCancelRef.current?.(entity.id);
       }
     },
-    [editorCameraControls, entity.id, view],
+    [clearDirectDragDocumentListeners, editorCameraControls, entity.id, view],
   );
 
   useEffect(() => {
@@ -1168,8 +1179,13 @@ const EntityProjection = ({
       unsubscribe();
       const active = directDragRef.current;
       if (active) cancelDirectDrag(active.pointerId);
+      clearDirectDragDocumentListeners();
     };
-  }, [cancelDirectDrag, transformDomElement]);
+  }, [
+    cancelDirectDrag,
+    clearDirectDragDocumentListeners,
+    transformDomElement,
+  ]);
 
   useEffect(() => {
     if (!showTransformControls || !transformDomElement) {
@@ -1223,6 +1239,84 @@ const EntityProjection = ({
     event.stopPropagation();
     onFocusEntity?.(entity.id);
   };
+  const updateDirectRotationPointer = (
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+  ): boolean => {
+    const active = directDragRef.current;
+    if (
+      !active ||
+      active.pointerId !== pointerId ||
+      active.capture.mode !== "rotate"
+    ) {
+      return false;
+    }
+    const pointerPx = [clientX, clientY] as const;
+    if (
+      active.lastPointerPx?.[0] === clientX &&
+      active.lastPointerPx[1] === clientY
+    ) {
+      return false;
+    }
+    active.lastPointerPx = pointerPx;
+    if (
+      !active.moved &&
+      !hasStudioPointerExceededDragThreshold(active.startPointerPx, pointerPx)
+    ) {
+      return false;
+    }
+    if (!active.moved) {
+      active.moved = true;
+      onTransformStart?.(entity.id);
+    }
+    onTransformDraft?.(entity.id, {
+      ...active.startTransform,
+      rotation: updateEntityRotationDrag(active.capture.value, pointerPx),
+    });
+    return true;
+  };
+  const finishDirectRotationPointer = (
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+  ): boolean => {
+    const active = directDragRef.current;
+    if (
+      !active ||
+      active.pointerId !== pointerId ||
+      active.capture.mode !== "rotate"
+    ) {
+      return false;
+    }
+    directDragRef.current = null;
+    clearDirectDragDocumentListeners();
+    setEditorCameraControlsEnabled(true);
+    if (shouldCommitDirectEntityDrag(active.moved)) {
+      void onTransformCommit?.(entity.id, {
+        ...active.startTransform,
+        rotation: updateEntityRotationDrag(active.capture.value, [
+          clientX,
+          clientY,
+        ]),
+      });
+    }
+    return true;
+  };
+  const bindDirectRotationDocumentListeners = (): void => {
+    if (!transformDomElement) return;
+    clearDirectDragDocumentListeners();
+    const ownerDocument = transformDomElement.ownerDocument;
+    directDragDocumentCleanupRef.current = subscribeStudioPointerDrag(
+      ownerDocument,
+      {
+        onMove: ({ pointerId, clientX, clientY }) =>
+          updateDirectRotationPointer(pointerId, clientX, clientY),
+        onEnd: ({ pointerId, clientX, clientY }) =>
+          finishDirectRotationPointer(pointerId, clientX, clientY),
+      },
+    );
+  };
   const onPointerDown = (event: ThreeEvent<PointerEvent>): void => {
     const mode = directEntityDragMode({
       view,
@@ -1233,6 +1327,7 @@ const EntityProjection = ({
       focused,
     });
     if (!mode) return;
+    event.nativeEvent.preventDefault();
     event.stopPropagation();
     if (!focused) onSelectEntity(entity.id);
     const startTransform = transformOverride ?? entity.transform;
@@ -1282,14 +1377,31 @@ const EntityProjection = ({
       capture,
       startTransform,
       startPointerPx,
+      lastPointerPx: null,
       moved: false,
     };
-    pointerCaptureTarget(event).setPointerCapture(event.pointerId);
+    if (capture.mode === "rotate") {
+      bindDirectRotationDocumentListeners();
+    } else {
+      pointerCaptureTarget(event).setPointerCapture(event.pointerId);
+    }
     setEditorCameraControlsEnabled(false);
   };
   const onPointerMove = (event: ThreeEvent<PointerEvent>): void => {
     const active = directDragRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
+    if (active.capture.mode === "rotate") {
+      if (
+        updateDirectRotationPointer(
+          event.pointerId,
+          event.nativeEvent.clientX,
+          event.nativeEvent.clientY,
+        )
+      ) {
+        event.stopPropagation();
+      }
+      return;
+    }
     if (
       !active.moved &&
       !hasStudioPointerExceededDragThreshold(active.startPointerPx, [
@@ -1299,32 +1411,21 @@ const EntityProjection = ({
     ) {
       return;
     }
-    const nextTransform =
-      active.capture.mode === "rotate"
-        ? {
-            ...active.startTransform,
-            rotation: updateEntityRotationDrag(active.capture.value, [
-              event.nativeEvent.clientX,
-              event.nativeEvent.clientY,
-            ]),
-          }
-        : (() => {
-            const nextPosition = updateGroundDrag(active.capture.value, {
-              originM: [
-                event.ray.origin.x,
-                event.ray.origin.y,
-                event.ray.origin.z,
-              ],
-              directionM: [
-                event.ray.direction.x,
-                event.ray.direction.y,
-                event.ray.direction.z,
-              ],
-            });
-            return nextPosition
-              ? { ...active.startTransform, positionM: nextPosition }
-              : null;
-          })();
+    const nextPosition = updateGroundDrag(active.capture.value, {
+      originM: [
+        event.ray.origin.x,
+        event.ray.origin.y,
+        event.ray.origin.z,
+      ],
+      directionM: [
+        event.ray.direction.x,
+        event.ray.direction.y,
+        event.ray.direction.z,
+      ],
+    });
+    const nextTransform = nextPosition
+      ? { ...active.startTransform, positionM: nextPosition }
+      : null;
     if (!nextTransform) return;
     if (!active.moved) {
       active.moved = true;
@@ -1336,38 +1437,39 @@ const EntityProjection = ({
   const onPointerUp = (event: ThreeEvent<PointerEvent>): void => {
     const active = directDragRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
+    if (active.capture.mode === "rotate") {
+      if (
+        finishDirectRotationPointer(
+          event.pointerId,
+          event.nativeEvent.clientX,
+          event.nativeEvent.clientY,
+        )
+      ) {
+        event.stopPropagation();
+      }
+      return;
+    }
     directDragRef.current = null;
     const capturedTarget = pointerCaptureTarget(event);
     if (capturedTarget.hasPointerCapture(event.pointerId)) {
       capturedTarget.releasePointerCapture(event.pointerId);
     }
     setEditorCameraControlsEnabled(true);
-    const nextTransform =
-      active.capture.mode === "rotate"
-        ? {
-            ...active.startTransform,
-            rotation: updateEntityRotationDrag(active.capture.value, [
-              event.nativeEvent.clientX,
-              event.nativeEvent.clientY,
-            ]),
-          }
-        : (() => {
-            const nextPosition = updateGroundDrag(active.capture.value, {
-              originM: [
-                event.ray.origin.x,
-                event.ray.origin.y,
-                event.ray.origin.z,
-              ],
-              directionM: [
-                event.ray.direction.x,
-                event.ray.direction.y,
-                event.ray.direction.z,
-              ],
-            });
-            return nextPosition
-              ? { ...active.startTransform, positionM: nextPosition }
-              : null;
-          })();
+    const nextPosition = updateGroundDrag(active.capture.value, {
+      originM: [
+        event.ray.origin.x,
+        event.ray.origin.y,
+        event.ray.origin.z,
+      ],
+      directionM: [
+        event.ray.direction.x,
+        event.ray.direction.y,
+        event.ray.direction.z,
+      ],
+    });
+    const nextTransform = nextPosition
+      ? { ...active.startTransform, positionM: nextPosition }
+      : null;
     event.stopPropagation();
     if (nextTransform && shouldCommitDirectEntityDrag(active.moved)) {
       void onTransformCommit?.(entity.id, nextTransform);

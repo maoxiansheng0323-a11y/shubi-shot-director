@@ -139,9 +139,20 @@ describe("studio world interaction contract", () => {
 
   it("routes focused camera proxy dragging through rotation capture", () => {
     const source = readSource("src/three/SceneWorld.tsx");
-    expect(source).toContain("directEntityDragMode");
-    expect(source).toContain("beginEntityRotationDrag");
-    expect(source).toContain("updateEntityRotationDrag");
+    const entitySection = source.slice(
+      source.indexOf("const EntityProjection"),
+      source.indexOf("export const SceneWorld"),
+    );
+    expect(entitySection).toContain("directEntityDragMode");
+    expect(entitySection).toContain("beginEntityRotationDrag");
+    expect(entitySection).toContain("updateEntityRotationDrag");
+    expect(entitySection).toContain("directDragDocumentCleanupRef");
+    expect(entitySection).toContain("bindDirectRotationDocumentListeners");
+    expect(entitySection).toContain("subscribeStudioPointerDrag");
+    expect(entitySection).toContain("event.nativeEvent.preventDefault();");
+    expect(entitySection).toMatch(
+      /if \(capture\.mode === "rotate"\) \{\s*bindDirectRotationDocumentListeners\(\);/,
+    );
   });
 
   it("keeps entity focus while a focused proxy transform is committed", () => {
