@@ -70,6 +70,29 @@ export const lookAtQuaternion = (
   return fromQuaternion(new Quaternion().setFromRotationMatrix(matrix).normalize());
 };
 
+export const uprightCameraRotation = (
+  rotation: QuaternionTuple,
+): QuaternionTuple => {
+  const forward = new Vector3(0, 0, -1)
+    .applyQuaternion(toQuaternion(rotation))
+    .normalize();
+  const backward = forward.clone().negate();
+  const worldUp = new Vector3(0, 1, 0);
+  const referenceUp =
+    Math.abs(forward.dot(worldUp)) > 0.9999
+      ? new Vector3(0, 0, 1)
+      : worldUp;
+  const right = new Vector3()
+    .crossVectors(referenceUp, backward)
+    .normalize();
+  const up = new Vector3().crossVectors(backward, right).normalize();
+  const matrix = new Matrix4().makeBasis(right, up, backward);
+
+  return fromQuaternion(
+    new Quaternion().setFromRotationMatrix(matrix).normalize(),
+  );
+};
+
 export const transformPoint = (
   transform: TransformSpec,
   localPoint: Vec3,
