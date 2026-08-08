@@ -138,6 +138,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
   let serverStateEpoch = 0;
   let latestRefreshId = 0;
   let pendingMutations = 0;
+  let resumeEventsAfterMutations = false;
+  let mutationConnectionGeneration: number | null = null;
   let saveQueue: Promise<void> = Promise.resolve();
 
   const currentFocusState = (): StudioFocusState => {
@@ -333,6 +335,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     current: SceneSpec | null;
   }> => {
     const requestEpoch = serverStateEpoch;
+    if (pendingMutations === 0) {
+      resumeEventsAfterMutations = unsubscribeEvents !== null;
+      mutationConnectionGeneration = connectionGeneration;
+      if (resumeEventsAfterMutations) {
+        unsubscribeEvents?.();
+        unsubscribeEvents = null;
+      }
+    }
     pendingMutations += 1;
     set({ isMutating: true, error: null });
     try {
@@ -348,6 +358,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     } finally {
       pendingMutations -= 1;
       set({ isMutating: pendingMutations > 0 });
+      if (pendingMutations === 0) {
+        const shouldResumeEvents =
+          resumeEventsAfterMutations &&
+          mutationConnectionGeneration === connectionGeneration;
+        resumeEventsAfterMutations = false;
+        mutationConnectionGeneration = null;
+        if (shouldResumeEvents) {
+          attachEvents(connectionGeneration);
+        }
+      }
     }
   };
 
