@@ -265,6 +265,7 @@ const EditorScene = ({
       <EditorCameraRig
         frame={frame}
         frameRequestVersion={focusRequestVersion}
+        frameTargetId={focusedEntityId}
         shouldFrame={focusedEntityId !== null}
         domElement={editorDomElement ?? undefined}
       />

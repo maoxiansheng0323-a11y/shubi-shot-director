@@ -23,6 +23,7 @@ export const EDITOR_VIEW_MOUSE_BUTTONS = {
 export interface EditorCameraRigProps {
   frame: EditorCameraFrame;
   frameRequestVersion: number;
+  frameTargetId?: string | null;
   shouldFrame?: boolean;
   domElement?: HTMLElement;
   fov?: number;
@@ -33,6 +34,8 @@ export interface EditorCameraFrameApplication {
   shouldFrame: boolean;
   previousRequestVersion: number | null;
   requestVersion: number;
+  previousTargetId: string | null;
+  targetId: string | null;
   autoFrameArmed: boolean;
   currentDistance: number;
   requestedDistance: number;
@@ -45,11 +48,14 @@ export const shouldApplyEditorCameraFrame = ({
   shouldFrame,
   previousRequestVersion,
   requestVersion,
+  previousTargetId,
+  targetId,
   autoFrameArmed,
   currentDistance,
   requestedDistance,
 }: EditorCameraFrameApplication): boolean =>
   !initialized ||
+  (shouldFrame && previousTargetId !== targetId) ||
   (shouldFrame &&
     previousRequestVersion !== requestVersion &&
     autoFrameArmed &&
@@ -59,6 +65,7 @@ export interface EditorAutoFrameState {
   initialized: boolean;
   armed: boolean;
   previousRequestVersion: number | null;
+  previousTargetId: string | null;
   lastFrameDistance: number | null;
 }
 
@@ -71,18 +78,21 @@ export const createEditorAutoFrameState = (): EditorAutoFrameState => ({
   initialized: false,
   armed: true,
   previousRequestVersion: null,
+  previousTargetId: null,
   lastFrameDistance: null,
 });
 
 export const decideEditorCameraFrame = ({
   state,
   shouldFrame,
+  targetId,
   requestVersion,
   currentDistance,
   requestedDistance,
 }: {
   state: EditorAutoFrameState;
   shouldFrame: boolean;
+  targetId: string | null;
   requestVersion: number;
   currentDistance: number;
   requestedDistance: number;
@@ -92,6 +102,8 @@ export const decideEditorCameraFrame = ({
     shouldFrame,
     previousRequestVersion: state.previousRequestVersion,
     requestVersion,
+    previousTargetId: state.previousTargetId,
+    targetId,
     autoFrameArmed: state.armed,
     currentDistance,
     requestedDistance,
@@ -102,6 +114,7 @@ export const decideEditorCameraFrame = ({
       initialized: true,
       armed: applyFrame && shouldFrame ? false : state.armed,
       previousRequestVersion: requestVersion,
+      previousTargetId: targetId,
       lastFrameDistance:
         applyFrame && shouldFrame
           ? requestedDistance
@@ -143,6 +156,7 @@ const frameDistance = (frame: EditorCameraFrame): number =>
 export const EditorCameraRig = ({
   frame,
   frameRequestVersion,
+  frameTargetId = null,
   shouldFrame = false,
   domElement,
   fov = 50,
@@ -161,6 +175,7 @@ export const EditorCameraRig = ({
     const decision = decideEditorCameraFrame({
       state: autoFrameStateRef.current,
       shouldFrame,
+      targetId: frameTargetId,
       requestVersion: frameRequestVersion,
       currentDistance: controls.getDistance(),
       requestedDistance,
@@ -174,7 +189,7 @@ export const EditorCameraRig = ({
     camera.updateMatrixWorld(true);
     controls.target.set(...frame.targetM);
     controls.update();
-  }, [frame, frameRequestVersion, shouldFrame]);
+  }, [frame, frameRequestVersion, frameTargetId, shouldFrame]);
 
   useEffect(() => {
     const ownerWindow = domElement?.ownerDocument.defaultView;

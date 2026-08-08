@@ -20,6 +20,7 @@ describe("editor camera frame application", () => {
     const decision = decideEditorCameraFrame({
       state: createEditorAutoFrameState(),
       shouldFrame: false,
+      targetId: null,
       requestVersion: 0,
       currentDistance: 20,
       requestedDistance: 4,
@@ -30,20 +31,23 @@ describe("editor camera frame application", () => {
       initialized: true,
       armed: true,
       previousRequestVersion: 0,
+      previousTargetId: null,
       lastFrameDistance: null,
     });
   });
 
-  it("frames the first focused request only from a distant overview", () => {
+  it("frames the first focused target at a deterministic editing scale", () => {
     const initial = {
       initialized: true,
       armed: true,
       previousRequestVersion: 0,
+      previousTargetId: null,
       lastFrameDistance: null,
     };
     const distant = decideEditorCameraFrame({
       state: initial,
       shouldFrame: true,
+      targetId: "camera_a",
       requestVersion: 1,
       currentDistance: 12,
       requestedDistance: 4,
@@ -51,6 +55,7 @@ describe("editor camera frame application", () => {
     const nearby = decideEditorCameraFrame({
       state: initial,
       shouldFrame: true,
+      targetId: "camera_a",
       requestVersion: 1,
       currentDistance: 5,
       requestedDistance: 4,
@@ -59,7 +64,7 @@ describe("editor camera frame application", () => {
     expect(distant.applyFrame).toBe(true);
     expect(distant.state.armed).toBe(false);
     expect(distant.state.lastFrameDistance).toBe(4);
-    expect(nearby.applyFrame).toBe(false);
+    expect(nearby.applyFrame).toBe(true);
   });
 
   it("consumes repeated focus requests without resetting the camera", () => {
@@ -68,9 +73,11 @@ describe("editor camera frame application", () => {
         initialized: true,
         armed: false,
         previousRequestVersion: 1,
+        previousTargetId: "camera_a",
         lastFrameDistance: 4,
       },
       shouldFrame: true,
+      targetId: "camera_a",
       requestVersion: 2,
       currentDistance: 9,
       requestedDistance: 4,
@@ -81,15 +88,38 @@ describe("editor camera frame application", () => {
     expect(decision.state.armed).toBe(false);
   });
 
+  it("frames a different focused entity even while repeated focus is disarmed", () => {
+    const decision = decideEditorCameraFrame({
+      state: {
+        initialized: true,
+        armed: false,
+        previousRequestVersion: 1,
+        previousTargetId: "camera_a",
+        lastFrameDistance: 4,
+      },
+      shouldFrame: true,
+      targetId: "camera_b",
+      requestVersion: 2,
+      currentDistance: 4,
+      requestedDistance: 4,
+    });
+
+    expect(decision.applyFrame).toBe(true);
+    expect(decision.state.previousTargetId).toBe("camera_b");
+    expect(decision.state.armed).toBe(false);
+  });
+
   it("keeps auto focus disarmed when transient focus is cleared", () => {
     const decision = decideEditorCameraFrame({
       state: {
         initialized: true,
         armed: false,
         previousRequestVersion: 1,
+        previousTargetId: "camera_a",
         lastFrameDistance: 4,
       },
       shouldFrame: false,
+      targetId: null,
       requestVersion: 2,
       currentDistance: 9,
       requestedDistance: 9,
@@ -108,6 +138,7 @@ describe("editor camera frame application", () => {
       initialized: true,
       armed: false,
       previousRequestVersion: 1,
+      previousTargetId: "camera_a",
       lastFrameDistance: 4,
     };
 
