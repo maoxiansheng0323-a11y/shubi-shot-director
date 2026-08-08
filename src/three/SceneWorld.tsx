@@ -1124,6 +1124,7 @@ const EntityProjection = ({
   const editorCamera = useThree((state) => state.camera);
   const directDragRef = useRef<{
     pointerId: number;
+    captureTarget: ThreePointerCaptureTarget;
     capture:
       | { mode: "translate"; value: GroundDragCapture }
       | { mode: "rotate"; value: StudioEntityRotationDragCapture };
@@ -1159,6 +1160,9 @@ const EntityProjection = ({
       if (!active || active.pointerId !== pointerId) return;
       directDragRef.current = null;
       clearDirectDragDocumentListeners();
+      if (active.captureTarget.hasPointerCapture(pointerId)) {
+        active.captureTarget.releasePointerCapture(pointerId);
+      }
       if (view === "editor" && editorCameraControls) {
         editorCameraControls.enabled = true;
       }
@@ -1291,6 +1295,9 @@ const EntityProjection = ({
     }
     directDragRef.current = null;
     clearDirectDragDocumentListeners();
+    if (active.captureTarget.hasPointerCapture(pointerId)) {
+      active.captureTarget.releasePointerCapture(pointerId);
+    }
     setEditorCameraControlsEnabled(true);
     if (shouldCommitDirectEntityDrag(active.moved)) {
       void onTransformCommit?.(entity.id, {
@@ -1372,18 +1379,19 @@ const EntityProjection = ({
               : null;
           })();
     if (!capture) return;
+    const captureTarget = pointerCaptureTarget(event);
     directDragRef.current = {
       pointerId: event.pointerId,
+      captureTarget,
       capture,
       startTransform,
       startPointerPx,
       lastPointerPx: null,
       moved: false,
     };
+    captureTarget.setPointerCapture(event.pointerId);
     if (capture.mode === "rotate") {
       bindDirectRotationDocumentListeners();
-    } else {
-      pointerCaptureTarget(event).setPointerCapture(event.pointerId);
     }
     setEditorCameraControlsEnabled(false);
   };
@@ -1450,9 +1458,8 @@ const EntityProjection = ({
       return;
     }
     directDragRef.current = null;
-    const capturedTarget = pointerCaptureTarget(event);
-    if (capturedTarget.hasPointerCapture(event.pointerId)) {
-      capturedTarget.releasePointerCapture(event.pointerId);
+    if (active.captureTarget.hasPointerCapture(event.pointerId)) {
+      active.captureTarget.releasePointerCapture(event.pointerId);
     }
     setEditorCameraControlsEnabled(true);
     const nextPosition = updateGroundDrag(active.capture.value, {
@@ -1551,13 +1558,7 @@ const EntityProjection = ({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={(event) => {
-          const capturedTarget = pointerCaptureTarget(event);
-          if (capturedTarget.hasPointerCapture(event.pointerId)) {
-            capturedTarget.releasePointerCapture(event.pointerId);
-          }
-          cancelDirectDrag(event.pointerId);
-        }}
+        onPointerCancel={(event) => cancelDirectDrag(event.pointerId)}
         onDoubleClick={onDoubleClick}
       >
         <EntityFocusContext.Provider value={focused}>

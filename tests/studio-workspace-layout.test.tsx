@@ -31,6 +31,20 @@ describe("persistent studio workspace layout contract", () => {
     expect(source).toContain('data-testid="shot-preview"');
   });
 
+  it("keeps native browser dragging out of the editor gesture surface", () => {
+    const source = readSource("src/editor/ViewportWorkspace.tsx");
+    const editorSurface = source.slice(
+      source.indexOf("ref={setEditorDomElement}"),
+      source.indexOf('<View id="editor-three-view"'),
+    );
+
+    expect(editorSurface).toContain('touchAction: "none"');
+    expect(editorSurface).toContain('userSelect: "none"');
+    expect(editorSurface).toContain(
+      "onDragStart={(event) => event.preventDefault()}",
+    );
+  });
+
   it("renders the overlapping shot view after the editor view", () => {
     const source = readSource("src/editor/ViewportWorkspace.tsx");
     const shotPriority = Number(

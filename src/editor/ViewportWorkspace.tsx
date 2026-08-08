@@ -734,7 +734,10 @@ export const ViewportWorkspace = ({
           zIndex: 2,
           display: "block",
           pointerEvents: isShotPreviewExpanded ? "none" : "auto",
+          touchAction: "none",
+          userSelect: "none",
         }}
+        onDragStart={(event) => event.preventDefault()}
         data-testid="editor-viewport"
         aria-label="Editor viewport. Left-drag to pan, right-drag to orbit, and scroll to zoom."
         tabIndex={0}

@@ -150,6 +150,12 @@ describe("studio world interaction contract", () => {
     expect(entitySection).toContain("bindDirectRotationDocumentListeners");
     expect(entitySection).toContain("subscribeStudioPointerDrag");
     expect(entitySection).toContain("event.nativeEvent.preventDefault();");
+    expect(entitySection).toContain(
+      "captureTarget.setPointerCapture(event.pointerId);",
+    );
+    expect(entitySection).toContain(
+      "active.captureTarget.releasePointerCapture(pointerId)",
+    );
     expect(entitySection).toMatch(
       /if \(capture\.mode === "rotate"\) \{\s*bindDirectRotationDocumentListeners\(\);/,
     );
@@ -201,9 +207,11 @@ describe("studio world interaction contract", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     expect(source).toContain("event.currentTarget as unknown");
     expect(source).toContain(
-      "pointerCaptureTarget(event).setPointerCapture(event.pointerId)",
+      "captureTarget.setPointerCapture(event.pointerId)",
     );
-    expect(source).toContain("capturedTarget.releasePointerCapture(event.pointerId)");
+    expect(source).toContain(
+      "active.captureTarget.releasePointerCapture(event.pointerId)",
+    );
     expect(source).toContain("setEditorCameraControlsEnabled(false)");
     expect(source).toContain("setEditorCameraControlsEnabled(true)");
     expect(source).toContain("hasStudioPointerExceededDragThreshold");
