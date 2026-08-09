@@ -28,11 +28,11 @@ export const startServer = async (options: {
   const uiUrl = `http://${host}:${port}`;
   const instanceId = `instance_${randomUUID().replaceAll("-", "")}`;
   const runtimeDirectory = process.env.SHUBI_SHOT_RUNTIME_DIR;
-  const persistence = new ScenePersistence(
+  const resolvedRuntimeDirectory =
     runtimeDirectory === undefined
       ? path.join(repositoryRoot, ".shubi-shot")
-      : runtimeDirectory,
-  );
+      : runtimeDirectory;
+  const persistence = new ScenePersistence(resolvedRuntimeDirectory);
   const session = new SceneSession(await persistence.load());
   session.subscribe(({ scene }) => {
     void persistence.persist(scene).catch(() => {
@@ -79,6 +79,7 @@ export const startServer = async (options: {
   } else {
     vite = await createViteServer({
       root: repositoryRoot,
+      cacheDir: path.join(resolvedRuntimeDirectory, "vite-cache"),
       server: {
         host,
         middlewareMode: true,
