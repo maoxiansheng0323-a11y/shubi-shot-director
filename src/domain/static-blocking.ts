@@ -88,7 +88,7 @@ const relaxArm = (
     desired,
   );
   actor.pose.joints[upperId] = quaternionTuple(upper.normalize());
-  actor.pose.joints[forearmId] = quaternionFromEulerDegrees([-70, 0, 0]);
+  actor.pose.joints[forearmId] = quaternionFromEulerDegrees([-12, 0, 0]);
   actor.pose.joints[handId] = quaternionFromEulerDegrees([0, 0, 0]);
 };
 
@@ -283,7 +283,7 @@ export const materializeStaticBlockingPlan = (
       actorId: actor.id,
       limb: relaxed.limb,
       gravityDirection: [0, -1, 0],
-      maxDeviationDeg: 75,
+      maxDeviationDeg: 20,
       enabled: true,
     });
   }

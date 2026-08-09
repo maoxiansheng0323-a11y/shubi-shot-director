@@ -1,4 +1,5 @@
 import {
+  BODY_CONTACT_ORIENTATION_TOLERANCE_DEG,
   BodyContactError,
   measureBodyContact,
   resolveContactSurface,
@@ -34,6 +35,7 @@ export type PoseDiagnosticIssueCode =
   | "BODY_CONTACT_GAP"
   | "BODY_CONTACT_PENETRATION"
   | "BODY_CONTACT_OUT_OF_BOUNDS"
+  | "BODY_CONTACT_ORIENTATION"
   | "BODY_CONTACT_SURFACE_INVALID"
   | "BODY_CONTACT_SITE_UNAVAILABLE"
   | "ACTOR_SURFACE_PENETRATION"
@@ -64,6 +66,7 @@ export interface ContactDiagnostic extends BodyContactMeasurement {
   readonly constraintId: string;
   readonly role: "contact" | "support";
   readonly toleranceM: number;
+  readonly orientationToleranceDeg: number | null;
   readonly status: PoseDiagnosticStatus;
 }
 
@@ -155,6 +158,15 @@ const contactDiagnosticStatus = (
       thresholdStatus(-measurement.actorMinGapM, toleranceM),
     );
   }
+  if (measurement.orientationDeviationDeg !== null) {
+    status = maximumStatus(
+      status,
+      thresholdStatus(
+        measurement.orientationDeviationDeg,
+        BODY_CONTACT_ORIENTATION_TOLERANCE_DEG,
+      ),
+    );
+  }
   return status;
 };
 
@@ -236,6 +248,10 @@ export const analyzePoseDiagnostics = (
           constraintId: constraint.id,
           role: constraint.role,
           toleranceM: constraint.toleranceM,
+          orientationToleranceDeg:
+            measurement.orientationDeviationDeg === null
+              ? null
+              : BODY_CONTACT_ORIENTATION_TOLERANCE_DEG,
           status,
         });
         const gapStatus = thresholdStatus(
@@ -268,6 +284,22 @@ export const analyzePoseDiagnostics = (
             measured: measurement.boundsOverflowM,
             tolerance: constraint.toleranceM,
           });
+        }
+        if (measurement.orientationDeviationDeg !== null) {
+          const orientationStatus = thresholdStatus(
+            measurement.orientationDeviationDeg,
+            BODY_CONTACT_ORIENTATION_TOLERANCE_DEG,
+          );
+          if (orientationStatus !== "pass") {
+            issues.push({
+              code: "BODY_CONTACT_ORIENTATION",
+              status: orientationStatus,
+              actorId: constraint.actorId,
+              constraintId: constraint.id,
+              measured: measurement.orientationDeviationDeg,
+              maximum: BODY_CONTACT_ORIENTATION_TOLERANCE_DEG,
+            });
+          }
         }
         if (measurement.actorMinGapM < -constraint.toleranceM) {
           const penetrationStatus = thresholdStatus(
@@ -406,6 +438,55 @@ export const assertPoseDiagnostics = (
 ): PoseDiagnosticsReport => {
   const report = analyzePoseDiagnostics(scene);
   if (report.status === "fail") {
+    throw new PoseDiagnosticsError(report);
+  }
+  return report;
+};
+
+const diagnosticIssueKey = (issue: PoseDiagnosticIssue): string =>
+  [
+    issue.code,
+    issue.actorId,
+    issue.constraintId ?? "",
+    issue.jointId ?? "",
+    issue.axis ?? "",
+  ].join(":");
+
+const diagnosticFailureExcess = (issue: PoseDiagnosticIssue): number => {
+  if (issue.measured === undefined) return Number.POSITIVE_INFINITY;
+  if (issue.tolerance !== undefined) {
+    return Math.max(0, Math.abs(issue.measured) - issue.tolerance);
+  }
+  if (issue.minimum !== undefined || issue.maximum !== undefined) {
+    return Math.max(
+      0,
+      (issue.minimum ?? Number.NEGATIVE_INFINITY) - issue.measured,
+      issue.measured - (issue.maximum ?? Number.POSITIVE_INFINITY),
+    );
+  }
+  return Number.POSITIVE_INFINITY;
+};
+
+export const assertNoNewPoseDiagnosticFailures = (
+  before: SceneSpec,
+  after: SceneSpec,
+): PoseDiagnosticsReport => {
+  const beforeFailures = new Map(
+    analyzePoseDiagnostics(before).issues
+      .filter(({ status }) => status === "fail")
+      .map((issue) => [diagnosticIssueKey(issue), diagnosticFailureExcess(issue)]),
+  );
+  const report = analyzePoseDiagnostics(after);
+  const hasNewOrWorseFailure = report.issues
+    .filter(({ status }) => status === "fail")
+    .some((issue) => {
+      const previousExcess = beforeFailures.get(diagnosticIssueKey(issue));
+      return (
+        previousExcess === undefined ||
+        diagnosticFailureExcess(issue) > previousExcess + 1e-6
+      );
+    });
+  if (hasNewOrWorseFailure) {
     throw new PoseDiagnosticsError(report);
   }
   return report;

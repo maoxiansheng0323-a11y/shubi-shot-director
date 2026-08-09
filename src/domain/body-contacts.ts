@@ -10,6 +10,7 @@ import {
 import {
   addVectors,
   rotateVector,
+  transformNormal,
   transformPoint,
 } from "./scene-math";
 import {
@@ -65,7 +66,11 @@ export interface BodyContactMeasurement {
   readonly boundsOverflowM: number;
   readonly actorMinGapM: number;
   readonly actorMinPrimitiveId: string;
+  readonly bodySiteNormalWorld: Vec3 | null;
+  readonly orientationDeviationDeg: number | null;
 }
+
+export const BODY_CONTACT_ORIENTATION_TOLERANCE_DEG = 45;
 
 type BodyContactConstraint = Extract<
   SceneSpec["constraints"][number],
@@ -86,6 +91,10 @@ const scale = (vector: Vec3, scalar: number): Vec3 => [
   vector[1] * scalar,
   vector[2] * scalar,
 ];
+
+const deviationDegrees = (left: Vec3, right: Vec3): number =>
+  Math.acos(Math.min(1, Math.max(-1, dot(left, right)))) *
+  (180 / Math.PI);
 
 const entityById = (
   scene: SceneSpec,
@@ -297,13 +306,15 @@ const pointsForBodySite = (
     );
   }
   const torsoAxis = rotateVector([0, 1, 0], torso.frame.rotation);
+  const surfaceNormal = projection.anatomicalSurfaceNormals[bodySite];
   const minimumRatio = bodySite === "upper-back" ? 0.55 : 0.3;
-  const maximumRatio = bodySite === "upper-back" ? 1 : 0.78;
+  const maximumRatio = bodySite === "upper-back" ? 1 : 0.94;
   const points = clouds.flatMap(({ localPoints, worldPoints }) =>
     localPoints.flatMap((point, index) => {
       const height = dot(subtract(point, torso.frame.position), torsoAxis);
       return height >= projection.dimensions.torsoLength * minimumRatio &&
-        height <= projection.dimensions.torsoLength * maximumRatio
+        height <= projection.dimensions.torsoLength * maximumRatio &&
+        dot(subtract(point, torso.frame.position), surfaceNormal) >= -1e-9
         ? [worldPoints[index]]
         : [];
     }),
@@ -341,6 +352,17 @@ export const measureBodyContact = (
     constraint.surfaceEntityId,
     constraint.surfaceFace,
   );
+  const projection = resolveActorProjection(scene, actor);
+  const anatomicalNormal =
+    constraint.bodySite === "upper-back" || constraint.bodySite === "chest"
+      ? projection.anatomicalSurfaceNormals[constraint.bodySite]
+      : null;
+  const bodySiteNormalWorld = anatomicalNormal
+    ? transformNormal(actor.transform, anatomicalNormal)
+    : null;
+  const orientationDeviationDeg = bodySiteNormalWorld
+    ? deviationDegrees(bodySiteNormalWorld, scale(surface.normal, -1))
+    : null;
   const bodyPointWorld = minimumPointAlongNormal(
     pointsForBodySite(scene, actor, constraint.bodySite),
     surface,
@@ -400,6 +422,8 @@ export const measureBodyContact = (
     boundsOverflowM,
     actorMinGapM,
     actorMinPrimitiveId: minimumActorPoint.primitiveId,
+    bodySiteNormalWorld,
+    orientationDeviationDeg,
   };
 };
 

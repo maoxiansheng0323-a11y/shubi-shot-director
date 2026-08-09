@@ -14,10 +14,13 @@ import {
   ScenePersistence,
   ScenePersistenceError,
 } from "../server/scene-persistence";
+import { SceneSession } from "../server/scene-session";
 import { resolveActorLimbPresenceUpdates } from "../src/domain/actor-anatomy";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { createActorBlueprintSnapshot } from "../src/domain/actor-blueprint";
 import { snapTransformToContact } from "../src/domain/contact-constraints";
+import { analyzePoseDiagnostics } from "../src/domain/pose-diagnostics";
+import { quaternionFromEulerDegrees } from "../src/domain/scene-math";
 import {
   parseSceneFile,
   serializeSceneFile,
@@ -211,6 +214,30 @@ describe("ScenePersistence", () => {
     await expect(readFile(currentFile, "utf8")).resolves.toBe(
       corruptSource,
     );
+  });
+
+  it("loads a schema-valid historical custom pose without applying new diagnostic policy", async () => {
+    const runtimeDirectory = await createRuntimeDirectory();
+    const persistence = new ScenePersistence(runtimeDirectory);
+    const scene = createDefaultScene();
+    const actor = scene.entities.find((entity) => entity.kind === "actor");
+    if (!actor || actor.kind !== "actor") {
+      throw new Error("Historical custom pose fixture is incomplete.");
+    }
+    actor.pose.preset.id = "pose.custom-v1";
+    actor.pose.joints.lower_leg_r = quaternionFromEulerDegrees([-35, 0, 0]);
+    const expectedPose = structuredClone(actor.pose);
+    expect(analyzePoseDiagnostics(scene).status).toBe("fail");
+
+    await persistence.persist(sceneSpecSchema.parse(scene));
+    const restored = await persistence.load();
+    const restoredActor = restored.entities.find(
+      (entity) => entity.id === actor.id,
+    );
+
+    expect(restoredActor).toMatchObject({ pose: expectedPose });
+    expect(analyzePoseDiagnostics(restored).status).toBe("fail");
+    expect(() => new SceneSession(restored)).not.toThrow();
   });
 
   it.each(["none", "workflow", "user"] as const)(

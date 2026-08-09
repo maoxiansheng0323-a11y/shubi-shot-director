@@ -6,7 +6,6 @@ import {
 } from "../src/domain/apply-scene-patch";
 import { enforceGroundContacts } from "../src/domain/contact-constraints";
 import { enforceBodyContacts } from "../src/domain/body-contacts";
-import { assertPoseDiagnostics } from "../src/domain/pose-diagnostics";
 import {
   validateIntentCoverage,
   validateIntentPolicy,
@@ -49,7 +48,6 @@ export class SceneSession {
     this.scene = enforceBodyContacts(
       enforceGroundContacts(sceneSpecSchema.parse(initialScene)),
     );
-    assertPoseDiagnostics(this.scene);
     this.maxHistory = maxHistory;
   }
 
@@ -116,7 +114,6 @@ export class SceneSession {
     const next = enforceBodyContacts(
       enforceGroundContacts(parseSceneSpecInput(input)),
     );
-    assertPoseDiagnostics(next);
     const previous = this.snapshot();
     const replaced = {
       ...structuredClone(next),

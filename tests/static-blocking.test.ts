@@ -6,6 +6,7 @@ import {
   applyScenePatch,
   SceneDomainError,
 } from "../src/domain/apply-scene-patch";
+import { enforceBodyContacts } from "../src/domain/body-contacts";
 import { createDefaultScene } from "../src/domain/default-scene";
 import { analyzePoseDiagnostics } from "../src/domain/pose-diagnostics";
 import { quaternionFromEulerDegrees } from "../src/domain/scene-math";
@@ -18,6 +19,7 @@ import {
 import type { StaticBlockingPlan } from "../src/domain/static-blocking-schema";
 import { parseSceneSubmission } from "../src/domain/scene-submission";
 import { ScenePersistence } from "../server/scene-persistence";
+import { SceneSession } from "../server/scene-session";
 import { createIntentReport } from "./helpers/structured-fixtures";
 
 const createBlockingScene = (): SceneSpec => {
@@ -37,11 +39,20 @@ const createBlockingScene = (): SceneSpec => {
   }
   prop.id = "prop_support_1";
   prop.label = "Generic back support";
-  prop.transform.positionM = [0, 0.3, -0.6];
+  prop.transform.positionM = [0, 0.8, -0.6];
   prop.geometry = {
     primitive: "box",
-    sizeM: [1.3, 0.6, 0.3],
+    sizeM: [1.3, 1.6, 0.3],
   };
+  const seat = structuredClone(prop);
+  seat.id = "prop_seat_1";
+  seat.label = "Generic pelvis support";
+  seat.transform.positionM = [0, 0.45, -0.2];
+  seat.geometry = {
+    primitive: "box",
+    sizeM: [0.28, 0.2, 0.5],
+  };
+  scene.entities.push(seat);
   return sceneSpecSchema.parse(scene);
 };
 
@@ -55,14 +66,14 @@ const blockingPlan = (): StaticBlockingPlan => ({
     version: 1,
   },
   trunk: {
-    lean: { direction: "backward", angleDeg: 35 },
+    lean: { direction: "backward", angleDeg: 10 },
   },
   legPosture: "bent-resting",
   contacts: [
     {
       constraintId: "contact_pelvis_floor_1",
       bodySite: "pelvis",
-      surfaceEntityId: null,
+      surfaceEntityId: "prop_seat_1",
       surfaceFace: "top",
       role: "support",
     },
@@ -81,6 +92,38 @@ const blockingPlan = (): StaticBlockingPlan => ({
     },
   ],
 });
+
+const createDirectionalContactScene = (
+  bodySite: "upper-back" | "chest",
+  actorYawDeg = 0,
+  propYawDeg = 0,
+): SceneSpec => {
+  const scene = createDefaultScene();
+  scene.constraints = [];
+  const actor = scene.entities.find((entity) => entity.kind === "actor");
+  const prop = scene.entities.find((entity) => entity.kind === "prop");
+  if (!actor || actor.kind !== "actor" || !prop || prop.kind !== "prop") {
+    throw new Error("Directional contact fixture is incomplete.");
+  }
+  actor.transform.positionM = [0, 0.9, 0.2];
+  actor.transform.rotation = quaternionFromEulerDegrees([0, actorYawDeg, 0]);
+  prop.id = "prop_directional_surface_1";
+  prop.transform.positionM = [0, 1.25, -0.4];
+  prop.transform.rotation = quaternionFromEulerDegrees([0, propYawDeg, 0]);
+  prop.geometry = { primitive: "box", sizeM: [2.4, 0.7, 0.2] };
+  scene.constraints.push({
+    id: `contact_${bodySite.replace("-", "_")}_direction_1`,
+    type: "body-contact",
+    actorId: actor.id,
+    bodySite,
+    surfaceEntityId: prop.id,
+    surfaceFace: "front",
+    role: "support",
+    toleranceM: 0.012,
+    enabled: true,
+  });
+  return enforceBodyContacts(sceneSpecSchema.parse(scene));
+};
 
 describe("deterministic static blocking", () => {
   it("materializes two body contacts and a gravity-down relaxed arm", () => {
@@ -109,6 +152,7 @@ describe("deterministic static blocking", () => {
             gapM: contact.gapM,
             actorMinGapM: contact.actorMinGapM,
             boundsOverflowM: contact.boundsOverflowM,
+            orientationDeviationDeg: contact.orientationDeviationDeg,
             status: contact.status,
           },
         ]),
@@ -121,6 +165,7 @@ describe("deterministic static blocking", () => {
       contact_back_prop_1: {
         status: "pass",
         boundsOverflowM: 0,
+        orientationDeviationDeg: expect.closeTo(10, 5),
       },
     });
     for (const contact of report.contacts) {
@@ -137,8 +182,88 @@ describe("deterministic static blocking", () => {
       }),
     ]);
     expect(report.relaxedLimbs[0]?.upperDeviationDeg).toBeLessThan(1);
-    expect(report.relaxedLimbs[0]?.lowerDeviationDeg).toBeLessThan(72);
+    expect(report.relaxedLimbs[0]?.lowerDeviationDeg).toBeCloseTo(12, 4);
+    expect(report.relaxedLimbs[0]?.maxDeviationDeg).toBe(20);
   });
+
+  it("passes upper-back contact only when the anatomical back faces the surface", () => {
+    const report = analyzePoseDiagnostics(
+      createDirectionalContactScene("upper-back"),
+    );
+    const contact = report.contacts[0];
+
+    expect(report.status).toBe("pass");
+    expect(contact?.status).toBe("pass");
+    expect(Math.abs(contact?.gapM ?? 1)).toBeLessThan(1e-6);
+    expect(contact?.orientationDeviationDeg).toBeCloseTo(0, 5);
+  });
+
+  it("does not pass upper-back contact when the same actor is side-on", () => {
+    const report = analyzePoseDiagnostics(
+      createDirectionalContactScene("upper-back", 90),
+    );
+    const contact = report.contacts[0];
+
+    expect(Math.abs(contact?.gapM ?? 1)).toBeLessThan(1e-6);
+    expect(contact?.orientationDeviationDeg).toBeCloseTo(90, 5);
+    expect(contact?.status).not.toBe("pass");
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "BODY_CONTACT_ORIENTATION" }),
+      ]),
+    );
+  });
+
+  it("distinguishes chest-facing contact from upper-back contact", () => {
+    const backReport = analyzePoseDiagnostics(
+      createDirectionalContactScene("upper-back", 180),
+    );
+    const chestReport = analyzePoseDiagnostics(
+      createDirectionalContactScene("chest", 180),
+    );
+
+    expect(backReport.contacts[0]?.orientationDeviationDeg).toBeCloseTo(180, 5);
+    expect(backReport.contacts[0]?.status).toBe("fail");
+    expect(chestReport.status).toBe("pass");
+    expect(chestReport.contacts[0]?.orientationDeviationDeg).toBeCloseTo(0, 5);
+    expect(chestReport.contacts[0]?.status).toBe("pass");
+  });
+
+  it("keeps anatomical contact orientation correct on a rotated box face", () => {
+    const report = analyzePoseDiagnostics(
+      createDirectionalContactScene("upper-back", 90, 90),
+    );
+
+    expect(report.status).toBe("pass");
+    expect(report.contacts[0]?.orientationDeviationDeg).toBeCloseTo(0, 5);
+    expect(report.contacts[0]?.status).toBe("pass");
+  });
+
+  it.each(["arm-l", "arm-r"] as const)(
+    "solves %s with both arm segments close to gravity",
+    (limb) => {
+      const scene = createDefaultScene();
+      scene.constraints = [];
+      const solved = materializeStaticBlockingPlan(scene, {
+        schemaVersion: 1,
+        planId: `blocking_${limb.replace("-", "_")}_1`,
+        actorId: "actor_generic_1",
+        contacts: [],
+        relaxedLimbs: [
+          {
+            constraintId: `relaxed_${limb.replace("-", "_")}_1`,
+            limb,
+          },
+        ],
+      });
+      const relaxed = analyzePoseDiagnostics(solved).relaxedLimbs[0];
+
+      expect(relaxed?.status).toBe("pass");
+      expect(relaxed?.upperDeviationDeg).toBeLessThan(1);
+      expect(relaxed?.lowerDeviationDeg).toBeCloseTo(12, 4);
+      expect(relaxed?.maxDeviationDeg).toBe(20);
+    },
+  );
 
   it("applies a blocking plan as one atomic Patch revision", () => {
     const scene = createBlockingScene();
@@ -223,12 +348,15 @@ describe("deterministic static blocking", () => {
     );
   });
 
-  it("rejects an explicitly reversed knee before visual QA", () => {
+  it.each([
+    ["lower_leg_r", -35],
+    ["forearm_r", 35],
+  ] as const)("rejects an explicitly reversed %s before visual QA", (jointId, angleDeg) => {
     const scene = createDefaultScene();
     expect(() =>
       applyScenePatch(scene, {
         schemaVersion: PATCH_SCHEMA_VERSION,
-        patchId: "patch_reverse_knee_1",
+        patchId: `patch_reverse_${jointId}_1`,
         sceneId: scene.sceneId,
         baseRevision: scene.revision,
         source: "natural-language",
@@ -238,7 +366,7 @@ describe("deterministic static blocking", () => {
             op: "actor.pose.joints.set",
             actorId: "actor_generic_1",
             updates: {
-              lower_leg_r: quaternionFromEulerDegrees([-35, 0, 0]),
+              [jointId]: quaternionFromEulerDegrees([angleDeg, 0, 0]),
             },
           },
         ],
@@ -248,5 +376,90 @@ describe("deterministic static blocking", () => {
         code: "POSE_DIAGNOSTICS_FAILED",
       }),
     );
+  });
+
+  it("rejects a newly solved static-blocking pose outside joint limits", () => {
+    const scene = createDefaultScene();
+    scene.constraints = [];
+    expect(() =>
+      materializeStaticBlockingPlan(scene, {
+        schemaVersion: 1,
+        planId: "blocking_illegal_trunk_1",
+        actorId: "actor_generic_1",
+        trunk: {
+          lean: { direction: "backward", angleDeg: 80 },
+        },
+        contacts: [],
+        relaxedLimbs: [],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "POSE_DIAGNOSTICS_FAILED" }),
+    );
+  });
+
+  it("rejects an unsatisfiable multi-contact plan instead of forcing a pose", () => {
+    const scene = createDefaultScene();
+    scene.constraints = [];
+    expect(() =>
+      materializeStaticBlockingPlan(scene, {
+        schemaVersion: 1,
+        planId: "blocking_conflicting_contacts_1",
+        actorId: "actor_generic_1",
+        contacts: [
+          {
+            constraintId: "contact_pelvis_ground_conflict_1",
+            bodySite: "pelvis",
+            surfaceEntityId: null,
+            surfaceFace: "top",
+            role: "support",
+          },
+          {
+            constraintId: "contact_head_ground_conflict_1",
+            bodySite: "head",
+            surfaceEntityId: null,
+            surfaceFace: "top",
+            role: "contact",
+          },
+        ],
+        relaxedLimbs: [],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "POSE_DIAGNOSTICS_FAILED" }),
+    );
+  });
+
+  it("allows an unrelated edit over a historical diagnostic failure without normalizing it", () => {
+    const scene = createDefaultScene();
+    const actor = scene.entities.find((entity) => entity.kind === "actor");
+    const camera = scene.entities.find((entity) => entity.kind === "camera");
+    if (!actor || actor.kind !== "actor" || !camera || camera.kind !== "camera") {
+      throw new Error("Historical pose fixture is incomplete.");
+    }
+    actor.pose.preset.id = "pose.custom-v1";
+    actor.pose.joints.lower_leg_r = quaternionFromEulerDegrees([-35, 0, 0]);
+    const historicalPose = structuredClone(actor.pose);
+
+    const applied = applyScenePatch(sceneSpecSchema.parse(scene), {
+      schemaVersion: PATCH_SCHEMA_VERSION,
+      patchId: "patch_historical_pose_camera_1",
+      sceneId: scene.sceneId,
+      baseRevision: scene.revision,
+      source: "manual",
+      preserveLock: true,
+      operations: [
+        {
+          op: "camera.lens.set",
+          entityId: camera.id,
+          value: { ...camera.lens, focalLengthMm: camera.lens.focalLengthMm + 5 },
+        },
+      ],
+    });
+    const appliedActor = applied.next.entities.find(
+      (entity) => entity.id === actor.id,
+    );
+
+    expect(analyzePoseDiagnostics(applied.next).status).toBe("fail");
+    expect(appliedActor).toMatchObject({ pose: historicalPose });
+    expect(() => new SceneSession(applied.next)).not.toThrow();
   });
 });

@@ -107,3 +107,17 @@ export const transformPoint = (
     rotateVector(scaled, transform.rotation),
   );
 };
+
+export const transformNormal = (
+  transform: TransformSpec,
+  localNormal: Vec3,
+): Vec3 => {
+  const inverseScaled = new Vector3(
+    localNormal[0] / transform.scale[0],
+    localNormal[1] / transform.scale[1],
+    localNormal[2] / transform.scale[2],
+  )
+    .applyQuaternion(toQuaternion(transform.rotation))
+    .normalize();
+  return fromVector3(inverseScaled);
+};

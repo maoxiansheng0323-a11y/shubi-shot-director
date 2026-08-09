@@ -54,7 +54,7 @@ import {
 } from "./scene-schema";
 import {
   PoseDiagnosticsError,
-  assertPoseDiagnostics,
+  assertNoNewPoseDiagnosticFailures,
 } from "./pose-diagnostics";
 import {
   StaticBlockingError,
@@ -1207,7 +1207,7 @@ export const applyScenePatch = (
     : current.revision + 1;
 
   try {
-    assertPoseDiagnostics(next);
+    assertNoNewPoseDiagnosticFailures(current, next);
   } catch (error) {
     if (error instanceof PoseDiagnosticsError) {
       throw new SceneDomainError(error.code, error.message);

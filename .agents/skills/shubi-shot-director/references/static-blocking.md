@@ -9,7 +9,7 @@ This is a still-pose solver. It has no prompt input, model call, animation, time
 - Body sites: `pelvis`, `upper-back`, `chest`, `head`, left/right `hand`, `knee`, and `foot`.
 - Surfaces: implicit world ground with `surfaceEntityId: null` and `surfaceFace: "top"`; room floors; box prop faces; plane prop top faces.
 - Contact roles: `support` for a load-bearing relation and `contact` for required touching.
-- Relaxed limbs: `arm-l` and `arm-r`, targeting normalized world gravity `[0, -1, 0]` without physical simulation.
+- Relaxed limbs: `arm-l` and `arm-r`, targeting normalized world gravity `[0, -1, 0]` for both upper arm and forearm, with a small preferred-direction elbow bend and no physical simulation.
 - Broad pose goals: an optional immutable built-in seed pose, trunk lean/side-bend/twist, and `legPosture: "bent-resting"`.
 
 The solver enforces canonical joint limits and preferred elbow/knee bend directions. It rejects a missing body site, conflicting contact ownership, invalid preset seed, joint reversal, unresolved required contact, surface penetration, out-of-bounds support, or unavailable relaxed limb before visual QA.
@@ -31,14 +31,14 @@ For a new scene, keep the authored SceneSpec generic and structurally valid, the
     "version": 1
   },
   "trunk": {
-    "lean": { "direction": "backward", "angleDeg": 35 }
+    "lean": { "direction": "backward", "angleDeg": 10 }
   },
   "legPosture": "bent-resting",
   "contacts": [
     {
       "constraintId": "contact_pelvis_floor_1",
       "bodySite": "pelvis",
-      "surfaceEntityId": null,
+      "surfaceEntityId": "prop_seat_1",
       "surfaceFace": "top",
       "role": "support"
     },
@@ -59,7 +59,7 @@ For a new scene, keep the authored SceneSpec generic and structurally valid, the
 }
 ```
 
-The Host chooses broad values such as a 35-degree backward trunk goal. It must not author the resulting fifteen bespoke joint quaternions. Use built-in pose presets without a blocking plan when no additional support/contact relation is required.
+The Host chooses broad values such as a 10-degree backward trunk goal. It must not author the resulting fifteen bespoke joint quaternions. Use built-in pose presets without a blocking plan when no additional support/contact relation is required. A pelvis contact on the infinite world floor is incompatible with a complete gravity-down arm when the actor's arm reach extends below the pelvis; use a real elevated support or omit the relaxed-arm goal instead of weakening diagnostics.
 
 ## Modify materialization
 
@@ -82,6 +82,6 @@ Run this before composition inspection or screenshot review:
 node scripts/director.mjs pose inspect --json
 ```
 
-Require `report.status: "pass"` for final acceptance. `check` requires explicit inspection and is emitted as `POSE_DIAGNOSTICS_CHECK` on export; `fail` blocks composition inspection, save/load acceptance, and PNG export. For each required contact retain `gapM`, `penetrationM`, `boundsOverflowM`, and `actorMinGapM`. For relaxed limbs retain upper/lower gravity deviation. Joint violations include canonical joint, axis, measured angle, allowed range, and reversal code.
+Require `report.status: "pass"` for final acceptance. `check` requires explicit inspection and is emitted as `POSE_DIAGNOSTICS_CHECK` on export; `fail` blocks new static-blocking acceptance, composition inspection, and PNG export. Historical schema-valid scenes load without pose normalization; loading them does not convert a diagnostic failure into acceptance. For each required contact retain `gapM`, `penetrationM`, `boundsOverflowM`, `actorMinGapM`, and anatomical-surface orientation when the body site defines one. For relaxed limbs retain upper/lower gravity deviation. Joint violations include canonical joint, axis, measured angle, allowed range, and reversal code.
 
 Visual QA follows deterministic pose QA and is limited to final composition, readability, and visual confirmation. It is not the primary detector for joint reversal or missing support.
