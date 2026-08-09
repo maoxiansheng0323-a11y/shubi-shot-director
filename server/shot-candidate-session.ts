@@ -13,6 +13,7 @@ import {
   type ShotIntentPlan,
 } from "../src/domain/shot-intent";
 import {
+  parseShotSolveSubmission,
   solveShotSubmission,
   type ShotSolveSubmission,
 } from "../src/domain/shot-solve-submission";
@@ -114,13 +115,13 @@ export class ShotCandidateSession {
   }
 
   solve(input: unknown, baseSessionScene: SceneSpec): PublicShotSolve {
-    const { submission, result } = solveShotSubmission(input);
+    const parsed = parseShotSolveSubmission(input);
     if (
-      submission.plan.operation === "modify" &&
+      parsed.plan.operation === "modify" &&
       (
-        submission.scene.sceneId !== baseSessionScene.sceneId ||
-        submission.scene.revision !== baseSessionScene.revision ||
-        canonicalJsonSha256(submission.scene) !== canonicalJsonSha256(baseSessionScene)
+        parsed.scene.sceneId !== baseSessionScene.sceneId ||
+        parsed.scene.revision !== baseSessionScene.revision ||
+        canonicalJsonSha256(parsed.scene) !== canonicalJsonSha256(baseSessionScene)
       )
     ) {
       throw new ShotCandidateSessionError(
@@ -128,6 +129,7 @@ export class ShotCandidateSession {
         "A modify semantic shot solve must use the exact authoritative SceneSession snapshot.",
       );
     }
+    const { submission, result } = solveShotSubmission(parsed);
     const solveId = `solve_${randomUUID().replaceAll("-", "")}`;
     this.currentSolve = {
       solveId,
