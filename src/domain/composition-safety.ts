@@ -1242,14 +1242,24 @@ export const analyzeComposition = (scene: SceneSpec): CompositionReport => {
     const supportSurfaceBySubject = new Map<string, Set<string>>();
     for (const constraint of scene.constraints) {
       if (
-        constraint.type === "ground-contact" &&
+        (constraint.type === "ground-contact" ||
+          constraint.type === "body-contact") &&
         constraint.enabled &&
         constraint.surfaceEntityId !== null
       ) {
         const surfaces =
-          supportSurfaceBySubject.get(constraint.entityId) ?? new Set<string>();
+          supportSurfaceBySubject.get(
+            constraint.type === "ground-contact"
+              ? constraint.entityId
+              : constraint.actorId,
+          ) ?? new Set<string>();
         surfaces.add(constraint.surfaceEntityId);
-        supportSurfaceBySubject.set(constraint.entityId, surfaces);
+        supportSurfaceBySubject.set(
+          constraint.type === "ground-contact"
+            ? constraint.entityId
+            : constraint.actorId,
+          surfaces,
+        );
       }
     }
 

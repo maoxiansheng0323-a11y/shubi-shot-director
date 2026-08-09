@@ -19,7 +19,7 @@ Never route a follow-up through scene replacement. On `STALE_REVISION`, discard 
 
 The generated Patch JSON Schema is structural. `x-shubi-resolved-stature` and `x-shubi-limb-hierarchy` describe semantics Ajv cannot enforce independently across the current snapshot and limb chains. Runtime Zod refinement decides final acceptance, while Host Codex must author the requested stature and hierarchy correctly instead of relying on runtime inference or repair.
 
-Use a slot, label, or alias only to locate the actor in Host Codex. Copy that snapshot actor's SceneSpec `entity.id` into the operation target. Use `actor.pose.set { op, entityId, value }` as the sole actor-operation target-field exception. `actor.height.set`, `actor.pose.joints.set`, `actor.limb-presence.set`, and `actor.variant.set` use `actorId`. Never use the actor's `slot`, label, or alias as the operation target.
+Use a slot, label, or alias only to locate the actor in Host Codex. Copy that snapshot actor's SceneSpec `entity.id` into the operation target. Use `actor.pose.set { op, entityId, value }` as the sole actor-operation target-field exception. `actor.height.set`, `actor.pose.joints.set`, `actor.limb-presence.set`, and `actor.variant.set` use `actorId`; `actor.blocking.solve` carries `actorId` inside its structured `plan`. Never use the actor's `slot`, label, or alias as the operation target.
 
 ## Select domain operations
 
@@ -30,6 +30,7 @@ Use a slot, label, or alias only to locate the actor in Host Codex. Copy that sn
 - Lens or clip planes: `camera.lens.set`
 - Actor stature: `actor.height.set { actorId, heightM }`, with resolved stature from 1.0-2.4 meters
 - One or a few actor joints: `actor.pose.joints.set { actorId, updates }`
+- Structured static support/contact pose: `actor.blocking.solve { plan }`; follow `static-blocking.md` and do not author its resulting quaternions
 - Complete action: `actor.pose.set { entityId, value }`; do not use it for one wrist, ankle, or other local correction
 - Actor limb presence on either legacy or Blueprint actors: one minimal `actor.limb-presence.set` operation with a canonical actor ID and one to twelve explicit updates
 - Register one canonical Actor Blueprint snapshot: `actor.blueprint.register`
@@ -101,6 +102,8 @@ For Blueprint actors, read `actor-blueprints.md`. Register a path-free snapshot 
 - `actor.pose.joints.set.updates` contains one to fifteen canonical keys with normalized quaternions. Prefer only the joint or small set named by the follow-up.
 - Inspector axes are actor-local right-handed XYZ: X bend, Y twist, Z side-bend. Host Codex resolves phrases such as forward/backward from actor-local orientation and the visible shot. When that context is genuinely insufficient, emit an unresolved relation instead of guessing a joint or sign.
 - `ACTOR_HEIGHT_TARGET_INVALID` and `ACTOR_JOINT_TARGET_INVALID` require a fresh snapshot and corrected actor ID. `ACTOR_HEIGHT_RANGE_INVALID` requires 1.0-2.4 meters. `ACTOR_JOINT_ID_INVALID` requires a canonical ID. Do not fall back to transform scale, hidden geometry, a whole-pose replacement, or snapshot mutation.
+
+For multi-contact support, relaxed arms, or a broad still pose that would otherwise require guessed quaternions, use one `actor.blocking.solve` operation instead. Read `static-blocking.md`. The runtime materializes the final complete pose and rejects `POSE_DIAGNOSTICS_FAILED` before visual QA.
 
 Verify the requested changes and only these deterministic companion changes; they are not permission for Host Codex to author additional fields:
 

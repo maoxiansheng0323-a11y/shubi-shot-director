@@ -5,6 +5,7 @@ import {
   type AppliedScenePatch,
 } from "../src/domain/apply-scene-patch";
 import { enforceGroundContacts } from "../src/domain/contact-constraints";
+import { enforceBodyContacts } from "../src/domain/body-contacts";
 import {
   validateIntentCoverage,
   validateIntentPolicy,
@@ -44,7 +45,9 @@ export class SceneSession {
   private readonly maxHistory: number;
 
   constructor(initialScene: SceneSpec, maxHistory = 100) {
-    this.scene = enforceGroundContacts(sceneSpecSchema.parse(initialScene));
+    this.scene = enforceBodyContacts(
+      enforceGroundContacts(sceneSpecSchema.parse(initialScene)),
+    );
     this.maxHistory = maxHistory;
   }
 
@@ -108,7 +111,9 @@ export class SceneSession {
   }
 
   replaceScene(input: unknown): SceneSpec {
-    const next = enforceGroundContacts(parseSceneSpecInput(input));
+    const next = enforceBodyContacts(
+      enforceGroundContacts(parseSceneSpecInput(input)),
+    );
     const previous = this.snapshot();
     const replaced = {
       ...structuredClone(next),

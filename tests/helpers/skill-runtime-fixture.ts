@@ -155,6 +155,9 @@ const actionFromArgs = (input) => {
   if (command === "composition" && input[1] === "inspect") {
     return "composition.inspect";
   }
+  if (command === "pose" && input[1] === "inspect") {
+    return "pose.inspect";
+  }
   if (command === "export" && input[1] === "png") {
     return "export.png";
   }

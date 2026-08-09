@@ -42,6 +42,7 @@ const EXPECTED_COMMAND_IDS = [
   "patch.apply",
   "patch.submit",
   "composition.inspect",
+  "pose.inspect",
   "export.png",
   "undo",
   "redo",
@@ -64,6 +65,9 @@ const EXPECTED_FEATURE_IDS = [
   "actor.resolved-projection",
   "actor.height",
   "actor.pose-joints",
+  "actor.static-blocking",
+  "actor.body-contact-sites",
+  "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
 ] as const;
 const EXPECTED_ACTOR_PUPPET_CAPABILITY = {
@@ -85,12 +89,20 @@ const EXPECTED_ACTOR_PUPPET_CAPABILITY = {
     "lower_leg_r",
     "foot_r",
   ],
-  operationIds: ["actor.height.set", "actor.pose.joints.set"],
+  operationIds: [
+    "actor.height.set",
+    "actor.pose.joints.set",
+    "actor.blocking.solve",
+  ],
   errorCodes: [
     "ACTOR_HEIGHT_TARGET_INVALID",
     "ACTOR_HEIGHT_RANGE_INVALID",
     "ACTOR_JOINT_TARGET_INVALID",
     "ACTOR_JOINT_ID_INVALID",
+    "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+    "STATIC_BLOCKING_CONSTRAINT_CONFLICT",
+    "STATIC_BLOCKING_POSE_PRESET_INVALID",
+    "POSE_DIAGNOSTICS_FAILED",
   ],
 } as const;
 const EXPECTED_ACTOR_BLUEPRINT_CAPABILITY = {
@@ -244,7 +256,7 @@ describe("runtime capability manifest", () => {
     ) as { version: string };
     const manifest = getRuntimeCapabilityManifest();
 
-    expect(packageMetadata.version).toBe("0.9.3");
+    expect(packageMetadata.version).toBe("0.9.4");
     expect(APPLICATION_VERSION).toBe(packageMetadata.version);
     expect(runtimeCapabilities).toMatchObject({
       CAPABILITIES_CONTRACT_VERSION: 2,

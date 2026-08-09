@@ -24,6 +24,10 @@ import {
   snapTransformToContact,
 } from "./contact-constraints";
 import {
+  BodyContactError,
+  enforceBodyContacts,
+} from "./body-contacts";
+import {
   isLocked,
   mutationBlockedByLock,
   type EntityLockMode,
@@ -48,6 +52,14 @@ import {
   type SceneSpec,
   type Vec3,
 } from "./scene-schema";
+import {
+  PoseDiagnosticsError,
+  assertNoNewPoseDiagnosticFailures,
+} from "./pose-diagnostics";
+import {
+  StaticBlockingError,
+  materializeStaticBlockingPlan,
+} from "./static-blocking";
 
 export class SceneDomainError extends Error {
   readonly code: string;
@@ -380,12 +392,27 @@ const preflightBlueprintOperations = (
 const constraintReferencesEntity = (
   constraint: SceneSpec["constraints"][number],
   entityId: string,
-): boolean =>
-  constraint.type === "ground-contact"
-    ? constraint.entityId === entityId ||
-      constraint.surfaceEntityId === entityId
-    : constraint.cameraId === entityId ||
-      constraint.subjectEntityId === entityId;
+): boolean => {
+  switch (constraint.type) {
+    case "ground-contact":
+      return (
+        constraint.entityId === entityId ||
+        constraint.surfaceEntityId === entityId
+      );
+    case "body-contact":
+      return (
+        constraint.actorId === entityId ||
+        constraint.surfaceEntityId === entityId
+      );
+    case "relaxed-limb":
+      return constraint.actorId === entityId;
+    case "keep-visible":
+      return (
+        constraint.cameraId === entityId ||
+        constraint.subjectEntityId === entityId
+      );
+  }
+};
 
 const compositionGoalsReferenceEntity = (
   scene: SceneSpec,
@@ -437,17 +464,24 @@ const contactAffectedEntityIds = (
     case "actor.pose.joints.set":
     case "actor.variant.set":
       return new Set([operation.actorId]);
+    case "actor.blocking.solve":
+      return new Set();
     case "constraint.set":
-      return operation.value.type === "ground-contact"
-        ? new Set(
-            operation.value.surfaceEntityId === null
-              ? [operation.value.entityId]
-              : [
-                  operation.value.entityId,
-                  operation.value.surfaceEntityId,
-                ],
-          )
-        : new Set();
+      if (operation.value.type === "ground-contact") {
+        return new Set(
+          operation.value.surfaceEntityId === null
+            ? [operation.value.entityId]
+            : [operation.value.entityId, operation.value.surfaceEntityId],
+        );
+      }
+      if (operation.value.type === "body-contact") {
+        return new Set(
+          operation.value.surfaceEntityId === null
+            ? [operation.value.actorId]
+            : [operation.value.actorId, operation.value.surfaceEntityId],
+        );
+      }
+      return new Set();
     default:
       return new Set();
   }
@@ -495,9 +529,16 @@ const enforceContactsForOperation = (
         pendingV5BlueprintContactRebases.delete(actor.id);
       }
     }
-    return enforceGroundContacts(scene, affectedIds, { preserveLock });
+    return enforceBodyContacts(
+      enforceGroundContacts(scene, affectedIds, { preserveLock }),
+      affectedIds,
+      { preserveLock },
+    );
   } catch (error) {
-    if (error instanceof ContactConstraintError) {
+    if (
+      error instanceof ContactConstraintError ||
+      error instanceof BodyContactError
+    ) {
       throw new SceneDomainError(error.code, error.message);
     }
     throw error;
@@ -737,6 +778,26 @@ const applyOperation = (
           ...operation.updates,
         },
       };
+      return;
+    }
+    case "actor.blocking.solve": {
+      try {
+        const materialized = materializeStaticBlockingPlan(
+          scene,
+          operation.plan,
+          { preserveLock },
+        );
+        Object.assign(scene, materialized);
+      } catch (error) {
+        if (
+          error instanceof StaticBlockingError ||
+          error instanceof BodyContactError ||
+          error instanceof PoseDiagnosticsError
+        ) {
+          throw new SceneDomainError(error.code, error.message);
+        }
+        throw error;
+      }
       return;
     }
     case "actor.limb-presence.set": {
@@ -1092,11 +1153,17 @@ export const applyScenePatch = (
           `Variant target disappeared: ${operation.actorId}`,
         );
       }
-      const contactEnabled = next.constraints.some(
+      const groundContactEnabled = next.constraints.some(
         (constraint) =>
           constraint.type === "ground-contact" &&
           constraint.enabled &&
           constraint.entityId === operation.actorId,
+      );
+      const bodyContactEnabled = next.constraints.some(
+        (constraint) =>
+          constraint.type === "body-contact" &&
+          constraint.enabled &&
+          constraint.actorId === operation.actorId,
       );
       const expected = {
         ...variantBefore,
@@ -1104,7 +1171,7 @@ export const applyScenePatch = (
           ...variantBefore.blueprintInstance,
           variantId: operation.variantId,
         },
-        transform: contactEnabled
+        transform: groundContactEnabled
           ? {
               ...variantBefore.transform,
               positionM: [
@@ -1113,6 +1180,11 @@ export const applyScenePatch = (
                 variantBefore.transform.positionM[2],
               ],
             }
+          : bodyContactEnabled
+            ? {
+                ...variantBefore.transform,
+                positionM: variantAfter.transform.positionM,
+              }
           : variantBefore.transform,
       };
       if (JSON.stringify(expected) !== JSON.stringify(variantAfter)) {
@@ -1133,6 +1205,15 @@ export const applyScenePatch = (
   next.revision = deduplicationOnly
     ? current.revision
     : current.revision + 1;
+
+  try {
+    assertNoNewPoseDiagnosticFailures(current, next);
+  } catch (error) {
+    if (error instanceof PoseDiagnosticsError) {
+      throw new SceneDomainError(error.code, error.message);
+    }
+    throw error;
+  }
 
   return {
     previous: current,

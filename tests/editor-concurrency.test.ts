@@ -283,6 +283,63 @@ describe("editor authoritative revision handling", () => {
     expect(useEditorStore.getState().lastSceneEvent?.revision).toBe(3);
     cleanup();
   });
+
+  it("releases the live scene stream while a mutation request is in flight", async () => {
+    const initial = atRevision(4);
+    const target = actorTransform(initial);
+    const patch = createTransformPatch(
+      initial,
+      target.entityId,
+      target.transform,
+    );
+    const accepted = applyScenePatch(initial, patch).next;
+    const update = deferredUpdate();
+    const lifecycle: string[] = [];
+    let subscriptionCount = 0;
+
+    vi.spyOn(sceneClient, "getScene").mockResolvedValue({
+      scene: initial,
+      history: HISTORY_IDLE,
+    });
+    vi.spyOn(sceneClient, "subscribe").mockImplementation((handlers) => {
+      subscriptionCount += 1;
+      const subscriptionId = subscriptionCount;
+      lifecycle.push(`subscribe:${subscriptionId}`);
+      handlers.onConnectionChange?.("connected");
+      return () => {
+        lifecycle.push(`unsubscribe:${subscriptionId}`);
+        handlers.onConnectionChange?.("disconnected");
+      };
+    });
+    vi.spyOn(sceneClient, "applyPatch").mockImplementation(() => {
+      lifecycle.push("request");
+      return update.promise;
+    });
+
+    const cleanup = useEditorStore.getState().initialize();
+    await vi.waitFor(() => expect(subscriptionCount).toBe(1));
+
+    const mutation = useEditorStore.getState().applyPatch(patch);
+    await vi.waitFor(() => expect(lifecycle).toContain("request"));
+    expect(lifecycle).toEqual([
+      "subscribe:1",
+      "unsubscribe:1",
+      "request",
+    ]);
+
+    update.resolve({
+      scene: accepted,
+      history: { canUndo: true, canRedo: false },
+    });
+    await expect(mutation).resolves.toEqual(accepted);
+    expect(lifecycle).toEqual([
+      "subscribe:1",
+      "unsubscribe:1",
+      "request",
+      "subscribe:2",
+    ]);
+    cleanup();
+  });
 });
 
 describe("explicit editor save checkpoint", () => {

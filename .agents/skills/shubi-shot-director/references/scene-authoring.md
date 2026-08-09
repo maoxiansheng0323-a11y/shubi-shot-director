@@ -15,12 +15,12 @@ The generated SceneSpec JSON Schema is a structural contract. Its `x-shubi-resol
    perspective camera.
 5. Give every new and unfinished graybox entity `lockMode: "none"`. Do not create a workflow or user lock merely because an entity is present in an initial submission.
 6. Select exactly one strict actor branch. A legacy actor has `rig`, `body`, actual stature in `body.heightM`, and a complete twelve-key `body.limbPresence` map. A Blueprint actor has `blueprintInstance` and no legacy `rig` or `body`; its referenced canonical snapshot must already exist in `actorBlueprints`. Set `heightScale: 1` unless the requested resolved stature requires `requestedHeightM / snapshot.body.heightM`, and default `limbPresenceOverrides` to `{}`.
-7. Materialize actor transforms, a complete fifteen-key normalized joint map for every explicit action, contact, relationship blocking, camera rotation, and composition constraints. Read `references/generated/pose-presets.json` for complete actions. Leave no instruction for runtime semantic inference.
+7. Materialize actor transforms and a complete fifteen-key normalized joint map for ordinary explicit actions. Read `references/generated/pose-presets.json` for complete actions. When support, body-site contact, or a relaxed arm requires deterministic solving, read `static-blocking.md` and author a structured transient `blockingPlans` entry instead of guessing the final quaternions. Leave no instruction for runtime semantic inference.
 8. Persist focal length and sensor width, not FOV. Persist the camera quaternion, not a second look-at state.
 9. Use 16:9 output; default to 1920 x 1080 unless the user requests another supported resolution.
 10. Use generic IDs, slots, labels, title, and constraint IDs. Exclude source wording, aliases, profile data, and private asset paths.
 11. Pair the scene with a v6 create `IntentReport`. Require `allowPartial: false`, `canApplySafely: true`, empty unsupported/unresolved arrays, and valid evidence for every required recognized constraint. Use `actor.body.heightM` for legacy `actor-height` evidence and `actor.blueprintInstance.heightScale` for Blueprint `actor-height` evidence. Use `actor.pose` for pose evidence and all twelve exact legacy limb evidence paths when legacy limb presence is required. For required Blueprint limb-presence, instance, or variant evidence, use the actor entity's actual v6 `actor.blueprintInstance` evidence path; never invent a nested override evidence path.
-12. Put both objects in one transient scene-submission envelope and call `scene submit --file`.
+12. Put both objects in one transient scene-submission envelope, add optional `blockingPlans` only when required, and call `scene submit --file`.
 
 Do not use a complete SceneSpec for a follow-up to an existing shot.
 
@@ -106,7 +106,7 @@ When an external Actor Blueprint is explicitly supplied, validate it at the Host
 - Low support: `prop.platform-low-v1`
 - Generic block: `prop.block-v1`
 
-Use immutable preset versions. Materialize pose recipes into `pose.joints` and `contactOffsetM`; materialize relationship recipes into ordinary transforms, poses, and constraints. Do not create hidden bindings, IK, physics, or animation state.
+Use immutable preset versions. Materialize pose recipes into `pose.joints` and `contactOffsetM`; materialize relationship recipes into ordinary transforms, poses, and constraints. Static blocking may use the bounded deterministic still-pose solver described in `static-blocking.md`; it must not create animation, timeline, physics, ragdoll, gameplay, or model state.
 
 ## Composition handoff
 

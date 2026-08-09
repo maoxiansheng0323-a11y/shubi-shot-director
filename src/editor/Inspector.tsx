@@ -15,7 +15,10 @@ import {
   type TransformSpec,
   type Vec3,
 } from "../domain/scene-schema";
-import { quaternionFromEulerDegrees } from "../domain/scene-math";
+import {
+  quaternionFromEulerDegrees,
+  uprightCameraRotation,
+} from "../domain/scene-math";
 import { ActorPresetControls } from "./ActorPresetControls";
 import { ActorLimbControls } from "./ActorLimbControls";
 import { ActorBlueprintControls } from "./ActorBlueprintControls";
@@ -269,6 +272,16 @@ const TransformEditor = ({
     onCommit?.(entity.id, next);
   };
 
+  const uprightCamera = () => {
+    const current = transformRef.current;
+    const next = {
+      ...current,
+      rotation: uprightCameraRotation(current.rotation),
+    };
+    transformRef.current = next;
+    onCommit?.(entity.id, next);
+  };
+
   return (
     <section className="inspector-section">
       <div className="section-title-row">
@@ -325,7 +338,21 @@ const TransformEditor = ({
 
       <div className="section-title-row" style={{ marginTop: 12 }}>
         <h3>旋转</h3>
-        <span>角度 ° · XYZ</span>
+        <div className="rotation-title-actions">
+          <span>角度 ° · XYZ</span>
+          {entity.kind === "camera" ? (
+            <button
+              aria-label="镜头回正"
+              className="camera-upright-button"
+              disabled={disabled || entity.lockMode === "user" || !onCommit}
+              title="保持当前位置和朝向，只消除镜头滚转"
+              type="button"
+              onClick={uprightCamera}
+            >
+              镜头回正
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="vector-readout">
         {(["x", "y", "z"] as const).map((axis, index) => (

@@ -4,6 +4,55 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v0.9.4 static blocking and resting-arm gates
+
+Run the focused solver and release-contract checks before the complete gate:
+
+```powershell
+pnpm exec vitest run tests/static-blocking.test.ts tests/pose-diagnostics.test.ts tests/body-contacts.test.ts tests/scene-schema.test.ts tests/public-onboarding.test.ts tests/public-release-audit.test.ts
+pnpm verify
+node .agents/skills/shubi-shot-director/scripts/audit-generic-output.mjs
+git diff --check
+```
+
+Require application 0.9.4 with capability contract 2, bridge protocol 1,
+workspace routing 1, and SceneSpec/ScenePatch/IntentReport version 6. The
+optional `relaxed-limb.restSurface` extension must remain backward compatible:
+historical scenes without it continue to use free-hanging diagnostics, while a
+new surface-resting arm must verify terminal contact, full-arm clearance,
+canonical elbow bend, joint limits, gravity drop, and a gravity-opposing
+surface. An unreachable surface, reversed elbow, body-site orientation error,
+or joint-limit violation must remain CHECK/FAIL rather than being normalized
+into acceptance.
+
+In a real browser, require a generic actor with pelvis on world ground,
+upper-back supported by a generic box, one absent arm chain, and the remaining
+relaxed arm resting on the ground without manual joint dragging. Require pose
+diagnostics to pass, save/load to retain the materialized SceneSpec, and export
+one browser-rendered 1920 x 1080 Shot Preview PNG. Keep a negative copy with the
+actor side-on to the prop: geometric contact may remain, but upper-back
+orientation must CHECK/FAIL. Visual taste remains a human approval boundary.
+
+### Fresh evidence - 2026-08-09
+
+The final `pnpm verify` gate passed 100 regular test files with 2,002 tests,
+the separate workspace e2e file with 1 test, TypeScript, ESLint, and the
+production Vite build. The public audit scanned 305 files
+with zero findings; the generic-output audit also reported zero findings.
+
+The generic browser acceptance passed at scene revision 5 and remained stable
+after reload. Pelvis-to-ground and upper-back-to-box contact gaps were exactly
+0 m; upper-back orientation deviation was 20 degrees. The surface-resting
+right elbow was -76.849499954 degrees, the hand terminal gap was
+0.00000003029108280871995 m, penetration was 0 m, and full-arm minimum gap was
+0.00000003029108280871995 m. The exported 1920 x 1080 PNG had SHA-256
+`DD267C518F9CED67161E012504E94675E4D8410FAB92A7741C5A78471BE63431`.
+The negative side-on scene retained 0 m geometric contact but measured a
+90-degree upper-back orientation deviation against a 45-degree limit, so pose
+diagnostics failed as required. The conservative composition proxy reported an
+occlusion CHECK for the support box behind the actor; direct browser inspection
+confirmed the intended support relationship.
+
 ## v0.9.3 direct manipulation maintenance gates
 
 Run the focused manipulation checks before the complete release gate:

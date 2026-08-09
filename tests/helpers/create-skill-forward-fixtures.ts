@@ -38,6 +38,7 @@ const commandIds = [
   "patch.apply",
   "patch.submit",
   "composition.inspect",
+  "pose.inspect",
   "export.png",
   "undo",
   "redo",
@@ -60,6 +61,9 @@ const featureIds = [
   "actor.resolved-projection",
   "actor.height",
   "actor.pose-joints",
+  "actor.static-blocking",
+  "actor.body-contact-sites",
+  "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
 ];
 
@@ -93,12 +97,20 @@ const actorPuppet = {
     "upper_arm_r", "forearm_r", "hand_r", "upper_leg_l", "lower_leg_l",
     "foot_l", "upper_leg_r", "lower_leg_r", "foot_r",
   ],
-  operationIds: ["actor.height.set", "actor.pose.joints.set"],
+  operationIds: [
+    "actor.height.set",
+    "actor.pose.joints.set",
+    "actor.blocking.solve",
+  ],
   errorCodes: [
     "ACTOR_HEIGHT_TARGET_INVALID",
     "ACTOR_HEIGHT_RANGE_INVALID",
     "ACTOR_JOINT_TARGET_INVALID",
     "ACTOR_JOINT_ID_INVALID",
+    "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+    "STATIC_BLOCKING_CONSTRAINT_CONFLICT",
+    "STATIC_BLOCKING_POSE_PRESET_INVALID",
+    "POSE_DIAGNOSTICS_FAILED",
   ],
 } as const;
 const actorBlueprint = {

@@ -60,6 +60,7 @@ const commandIds = [
   "patch.apply",
   "patch.submit",
   "composition.inspect",
+  "pose.inspect",
   "export.png",
   "undo",
   "redo",
@@ -82,6 +83,9 @@ const featureIds = [
   "actor.resolved-projection",
   "actor.height",
   "actor.pose-joints",
+  "actor.static-blocking",
+  "actor.body-contact-sites",
+  "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
 ] as const;
 const actorPuppet = {
@@ -103,12 +107,20 @@ const actorPuppet = {
     "lower_leg_r",
     "foot_r",
   ],
-  operationIds: ["actor.height.set", "actor.pose.joints.set"],
+  operationIds: [
+    "actor.height.set",
+    "actor.pose.joints.set",
+    "actor.blocking.solve",
+  ],
   errorCodes: [
     "ACTOR_HEIGHT_TARGET_INVALID",
     "ACTOR_HEIGHT_RANGE_INVALID",
     "ACTOR_JOINT_TARGET_INVALID",
     "ACTOR_JOINT_ID_INVALID",
+    "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+    "STATIC_BLOCKING_CONSTRAINT_CONFLICT",
+    "STATIC_BLOCKING_POSE_PRESET_INVALID",
+    "POSE_DIAGNOSTICS_FAILED",
   ],
 } as const;
 const actorBlueprint = {
@@ -504,6 +516,7 @@ describe("v0.7 portable Skill contract", () => {
       "patch-authoring.md",
       "intent-report.md",
       "actor-blueprints.md",
+      "static-blocking.md",
       "visual-qa.md",
     ] as const;
     const generatedNames = [
@@ -573,7 +586,7 @@ afterEach(async () => {
 });
 
 describe("v2 compatibility planner", () => {
-  it("exports exactly the 18 structured actions and the v2 plan shape", () => {
+  it("exports exactly the 19 structured actions and the v2 plan shape", () => {
     const plan = buildPlan("scene.submit", v2Manifest());
 
     expect(planner.PLAN_CONTRACT_VERSION).toBe(2);

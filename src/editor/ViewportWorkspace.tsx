@@ -265,6 +265,7 @@ const EditorScene = ({
       <EditorCameraRig
         frame={frame}
         frameRequestVersion={focusRequestVersion}
+        frameTargetId={focusedEntityId}
         shouldFrame={focusedEntityId !== null}
         domElement={editorDomElement ?? undefined}
       />
@@ -592,7 +593,9 @@ export const ViewportWorkspace = ({
     }
     try {
       await onCommitTransform(entityId, transform);
-      onSelect(entityId);
+      if (focusedEntityId !== entityId) {
+        onSelect(entityId);
+      }
     } catch {
       // The authoritative store exposes the readable mutation error.
     } finally {
@@ -731,7 +734,10 @@ export const ViewportWorkspace = ({
           zIndex: 2,
           display: "block",
           pointerEvents: isShotPreviewExpanded ? "none" : "auto",
+          touchAction: "none",
+          userSelect: "none",
         }}
+        onDragStart={(event) => event.preventDefault()}
         data-testid="editor-viewport"
         aria-label="Editor viewport. Left-drag to pan, right-drag to orbit, and scroll to zoom."
         tabIndex={0}

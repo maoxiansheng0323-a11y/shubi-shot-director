@@ -46,12 +46,17 @@ export const ACTOR_PUPPET_HEIGHT_LIMITS_M = {
 export const ACTOR_PUPPET_OPERATION_IDS = [
   "actor.height.set",
   "actor.pose.joints.set",
+  "actor.blocking.solve",
 ] as const;
 export const ACTOR_PUPPET_ERROR_CODES = [
   "ACTOR_HEIGHT_TARGET_INVALID",
   "ACTOR_HEIGHT_RANGE_INVALID",
   "ACTOR_JOINT_TARGET_INVALID",
   "ACTOR_JOINT_ID_INVALID",
+  "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+  "STATIC_BLOCKING_CONSTRAINT_CONFLICT",
+  "STATIC_BLOCKING_POSE_PRESET_INVALID",
+  "POSE_DIAGNOSTICS_FAILED",
 ] as const;
 export const ACTOR_BLUEPRINT_VARIANT_DELTA_FIELDS = [
   "limbPresence",
@@ -95,6 +100,7 @@ export const CLI_COMMAND_DEFINITIONS = [
     usage: "patch submit --file <patch-submission.json>",
   },
   { id: "composition.inspect", usage: "composition inspect --json" },
+  { id: "pose.inspect", usage: "pose inspect --json" },
   {
     id: "export.png",
     usage:
@@ -125,6 +131,9 @@ export const RUNTIME_FEATURE_IDS = [
   "actor.resolved-projection",
   "actor.height",
   "actor.pose-joints",
+  "actor.static-blocking",
+  "actor.body-contact-sites",
+  "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
 ] as const;
 

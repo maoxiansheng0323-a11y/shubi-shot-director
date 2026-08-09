@@ -72,6 +72,10 @@ export const ACTION_POLICY = Object.freeze({
     features: ["composition.segmented-report"],
     requiresBridge: true,
   }),
+  "pose.inspect": policy("pose.inspect", {
+    features: ["actor.pose-diagnostics"],
+    requiresBridge: true,
+  }),
   "export.png": policy("export.png", {
     features: ["export.software-png"],
     requiresBridge: true,
@@ -97,6 +101,9 @@ const REQUIRED_FEATURE_IDS = Object.freeze([
   "actor.limb-presence",
   "actor.height",
   "actor.pose-joints",
+  "actor.static-blocking",
+  "actor.body-contact-sites",
+  "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
 ]);
 const ENTITY_LOCK_MODES = Object.freeze(["none", "workflow", "user"]);
@@ -137,12 +144,17 @@ const ACTOR_PUPPET = Object.freeze({
   operationIds: Object.freeze([
     "actor.height.set",
     "actor.pose.joints.set",
+    "actor.blocking.solve",
   ]),
   errorCodes: Object.freeze([
     "ACTOR_HEIGHT_TARGET_INVALID",
     "ACTOR_HEIGHT_RANGE_INVALID",
     "ACTOR_JOINT_TARGET_INVALID",
     "ACTOR_JOINT_ID_INVALID",
+    "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+    "STATIC_BLOCKING_CONSTRAINT_CONFLICT",
+    "STATIC_BLOCKING_POSE_PRESET_INVALID",
+    "POSE_DIAGNOSTICS_FAILED",
   ]),
 });
 const REMOVED_COMMAND_IDS = new Set([

@@ -37,6 +37,8 @@ export type ActorAnchor =
   | "pelvis"
   | "root";
 
+export type ActorAnatomicalSurfaceSite = "upper-back" | "chest";
+
 export type ActorProjectionPrimitiveId =
   | "pelvis"
   | "torso"
@@ -127,6 +129,9 @@ export interface ResolvedActorProjection {
     Record<ActorBlueprintMountId, ActorRigFrame>
   >;
   readonly anchors: Readonly<Record<ActorAnchor, Vec3>>;
+  readonly anatomicalSurfaceNormals: Readonly<
+    Record<ActorAnatomicalSurfaceSite, Vec3>
+  >;
   readonly dimensions: ActorAnatomyDimensions;
   readonly effective: {
     readonly limbPresence: ActorLimbPresence;
@@ -798,6 +803,7 @@ const resolveProjection = (
     ]),
     face: framePoint(face.frame, [...face.center]),
   };
+  const chestNormal = rotateVector([0, 0, 1], frames.spine.rotation);
 
   return {
     primitives: [
@@ -806,6 +812,10 @@ const resolveProjection = (
     ],
     mountFrames: frames.mounts,
     anchors,
+    anatomicalSurfaceNormals: {
+      chest: chestNormal,
+      "upper-back": [-chestNormal[0], -chestNormal[1], -chestNormal[2]],
+    },
     dimensions: definition.dimensions,
     effective: {
       limbPresence: definition.limbPresence,

@@ -3162,6 +3162,187 @@
                   },
                   "type": {
                     "type": "string",
+                    "const": "body-contact"
+                  },
+                  "actorId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "bodySite": {
+                    "type": "string",
+                    "enum": [
+                      "pelvis",
+                      "upper-back",
+                      "chest",
+                      "head",
+                      "hand-l",
+                      "hand-r",
+                      "knee-l",
+                      "knee-r",
+                      "foot-l",
+                      "foot-r"
+                    ]
+                  },
+                  "surfaceEntityId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "surfaceFace": {
+                    "type": "string",
+                    "enum": [
+                      "top",
+                      "bottom",
+                      "left",
+                      "right",
+                      "front",
+                      "back"
+                    ]
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "contact",
+                      "support"
+                    ]
+                  },
+                  "toleranceM": {
+                    "type": "number",
+                    "minimum": 0.001,
+                    "maximum": 0.05
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "actorId",
+                  "bodySite",
+                  "surfaceEntityId",
+                  "surfaceFace",
+                  "role",
+                  "toleranceM",
+                  "enabled"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "relaxed-limb"
+                  },
+                  "actorId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "limb": {
+                    "type": "string",
+                    "enum": [
+                      "arm-l",
+                      "arm-r"
+                    ]
+                  },
+                  "gravityDirection": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "maxDeviationDeg": {
+                    "type": "number",
+                    "minimum": 5,
+                    "maximum": 90
+                  },
+                  "restSurface": {
+                    "type": "object",
+                    "properties": {
+                      "surfaceEntityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "surfaceFace": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom",
+                          "left",
+                          "right",
+                          "front",
+                          "back"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "surfaceEntityId",
+                      "surfaceFace"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "actorId",
+                  "limb",
+                  "gravityDirection",
+                  "maxDeviationDeg",
+                  "enabled"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_-]*$"
+                  },
+                  "type": {
+                    "type": "string",
                     "const": "keep-visible"
                   },
                   "cameraId": {
@@ -3218,6 +3399,238 @@
         "constraints"
       ],
       "additionalProperties": false
+    },
+    "blockingPlans": {
+      "maxItems": 16,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "const": 1
+          },
+          "planId": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "actorId": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "seedPose": {
+            "type": "object",
+            "properties": {
+              "registry": {
+                "type": "string",
+                "const": "builtin"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 80,
+                "pattern": "^[a-z0-9][a-z0-9._-]*$"
+              },
+              "version": {
+                "type": "number",
+                "const": 1
+              }
+            },
+            "required": [
+              "registry",
+              "id",
+              "version"
+            ],
+            "additionalProperties": false
+          },
+          "trunk": {
+            "type": "object",
+            "properties": {
+              "lean": {
+                "type": "object",
+                "properties": {
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "forward",
+                      "backward"
+                    ]
+                  },
+                  "angleDeg": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "direction",
+                  "angleDeg"
+                ],
+                "additionalProperties": false
+              },
+              "sideBendDeg": {
+                "type": "number",
+                "minimum": -60,
+                "maximum": 60
+              },
+              "twistDeg": {
+                "type": "number",
+                "minimum": -75,
+                "maximum": 75
+              }
+            },
+            "additionalProperties": false
+          },
+          "legPosture": {
+            "type": "string",
+            "const": "bent-resting"
+          },
+          "contacts": {
+            "default": [],
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "constraintId": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9_-]*$"
+                },
+                "bodySite": {
+                  "type": "string",
+                  "enum": [
+                    "pelvis",
+                    "upper-back",
+                    "chest",
+                    "head",
+                    "hand-l",
+                    "hand-r",
+                    "knee-l",
+                    "knee-r",
+                    "foot-l",
+                    "foot-r"
+                  ]
+                },
+                "surfaceEntityId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 64,
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "surfaceFace": {
+                  "type": "string",
+                  "enum": [
+                    "top",
+                    "bottom",
+                    "left",
+                    "right",
+                    "front",
+                    "back"
+                  ]
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "contact",
+                    "support"
+                  ]
+                }
+              },
+              "required": [
+                "constraintId",
+                "bodySite",
+                "surfaceEntityId",
+                "surfaceFace",
+                "role"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "relaxedLimbs": {
+            "default": [],
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "constraintId": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9_-]*$"
+                },
+                "limb": {
+                  "type": "string",
+                  "enum": [
+                    "arm-l",
+                    "arm-r"
+                  ]
+                },
+                "restSurface": {
+                  "type": "object",
+                  "properties": {
+                    "surfaceEntityId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 64,
+                          "pattern": "^[a-z][a-z0-9_-]*$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "surfaceFace": {
+                      "type": "string",
+                      "enum": [
+                        "top",
+                        "bottom",
+                        "left",
+                        "right",
+                        "front",
+                        "back"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "surfaceEntityId",
+                    "surfaceFace"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "constraintId",
+                "limb"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "planId",
+          "actorId",
+          "contacts",
+          "relaxedLimbs"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [

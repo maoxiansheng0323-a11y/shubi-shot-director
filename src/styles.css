@@ -829,6 +829,40 @@ button {
   font-size: 9px;
 }
 
+.rotation-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.camera-upright-button {
+  min-width: 66px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid #46515e;
+  border-radius: 6px;
+  color: #d7e0e8;
+  background: #20272e;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.camera-upright-button:hover:not(:disabled) {
+  border-color: #6b7b8c;
+  background: #29333d;
+}
+
+.camera-upright-button:focus-visible {
+  outline: 2px solid #7f9bb6;
+  outline-offset: 2px;
+}
+
+.camera-upright-button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .vector-readout {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -139,9 +139,42 @@ describe("studio world interaction contract", () => {
 
   it("routes focused camera proxy dragging through rotation capture", () => {
     const source = readSource("src/three/SceneWorld.tsx");
-    expect(source).toContain("directEntityDragMode");
-    expect(source).toContain("beginEntityRotationDrag");
-    expect(source).toContain("updateEntityRotationDrag");
+    const entitySection = source.slice(
+      source.indexOf("const EntityProjection"),
+      source.indexOf("export const SceneWorld"),
+    );
+    expect(entitySection).toContain("directEntityDragMode");
+    expect(entitySection).toContain("beginEntityRotationDrag");
+    expect(entitySection).toContain("updateEntityRotationDrag");
+    expect(entitySection).toContain("directDragDocumentCleanupRef");
+    expect(entitySection).toContain("bindDirectRotationDocumentListeners");
+    expect(entitySection).toContain("subscribeStudioPointerDrag");
+    expect(entitySection).toContain("event.nativeEvent.preventDefault();");
+    expect(entitySection).toContain(
+      "captureTarget.setPointerCapture(event.pointerId);",
+    );
+    expect(entitySection).toContain(
+      "active.captureTarget.releasePointerCapture(pointerId)",
+    );
+    expect(entitySection).toMatch(
+      /if \(capture\.mode === "rotate"\) \{\s*bindDirectRotationDocumentListeners\(\);/,
+    );
+  });
+
+  it("keeps entity focus while a focused proxy transform is committed", () => {
+    const world = readSource("src/three/SceneWorld.tsx");
+    const pointerDown = world.slice(
+      world.indexOf("const onPointerDown", world.indexOf("const EntityProjection")),
+      world.indexOf("const onPointerMove", world.indexOf("const EntityProjection")),
+    );
+    expect(pointerDown).toContain("if (!focused) onSelectEntity(entity.id);");
+
+    const workspace = readSource("src/editor/ViewportWorkspace.tsx");
+    const transformCommit = workspace.slice(
+      workspace.indexOf("const handleTransformCommit"),
+      workspace.indexOf("const handleActorJointDraft"),
+    );
+    expect(transformCommit).toContain("focusedEntityId !== entityId");
   });
 
   it("keeps right-button misses out of the ordinary empty-space selection path", () => {
@@ -174,9 +207,11 @@ describe("studio world interaction contract", () => {
     const source = readSource("src/three/SceneWorld.tsx");
     expect(source).toContain("event.currentTarget as unknown");
     expect(source).toContain(
-      "pointerCaptureTarget(event).setPointerCapture(event.pointerId)",
+      "captureTarget.setPointerCapture(event.pointerId)",
     );
-    expect(source).toContain("capturedTarget.releasePointerCapture(event.pointerId)");
+    expect(source).toContain(
+      "active.captureTarget.releasePointerCapture(event.pointerId)",
+    );
     expect(source).toContain("setEditorCameraControlsEnabled(false)");
     expect(source).toContain("setEditorCameraControlsEnabled(true)");
     expect(source).toContain("hasStudioPointerExceededDragThreshold");

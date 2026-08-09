@@ -62,12 +62,17 @@ const bundledActorPuppet = Object.freeze({
   operationIds: Object.freeze([
     "actor.height.set",
     "actor.pose.joints.set",
+    "actor.blocking.solve",
   ]),
   errorCodes: Object.freeze([
     "ACTOR_HEIGHT_TARGET_INVALID",
     "ACTOR_HEIGHT_RANGE_INVALID",
     "ACTOR_JOINT_TARGET_INVALID",
     "ACTOR_JOINT_ID_INVALID",
+    "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+    "STATIC_BLOCKING_CONSTRAINT_CONFLICT",
+    "STATIC_BLOCKING_POSE_PRESET_INVALID",
+    "POSE_DIAGNOSTICS_FAILED",
   ]),
 });
 const bundledActorBlueprint = Object.freeze({
@@ -112,6 +117,7 @@ const stableActionIds = new Set([
   "patch.apply",
   "patch.submit",
   "composition.inspect",
+  "pose.inspect",
   "export.png",
   "undo",
   "redo",
@@ -272,6 +278,14 @@ const WRAPPER_ERROR_MESSAGES = Object.freeze({
     "The requested actor joint target is invalid.",
   ACTOR_JOINT_ID_INVALID:
     "The requested actor joint ID is unsupported.",
+  STATIC_BLOCKING_ACTOR_NOT_FOUND:
+    "The requested static blocking actor was not found.",
+  STATIC_BLOCKING_CONSTRAINT_CONFLICT:
+    "The static blocking goals conflict with active constraints.",
+  STATIC_BLOCKING_POSE_PRESET_INVALID:
+    "The requested static blocking pose seed is invalid.",
+  POSE_DIAGNOSTICS_FAILED:
+    "The scene contains an invalid pose or unresolved contact.",
   ACTOR_BLUEPRINT_FILE_READ_FAILED:
     "The Actor Blueprint file could not be read.",
   ACTOR_BLUEPRINT_FILE_INVALID:
@@ -323,6 +337,10 @@ const stableRuntimeErrorCodes = new Set([
   "ACTOR_HEIGHT_RANGE_INVALID",
   "ACTOR_JOINT_TARGET_INVALID",
   "ACTOR_JOINT_ID_INVALID",
+  "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+  "STATIC_BLOCKING_CONSTRAINT_CONFLICT",
+  "STATIC_BLOCKING_POSE_PRESET_INVALID",
+  "POSE_DIAGNOSTICS_FAILED",
   "ACTOR_BLUEPRINT_FILE_READ_FAILED",
   "ACTOR_BLUEPRINT_FILE_INVALID",
   "ACTOR_BLUEPRINT_SCHEMA_UNSUPPORTED",
@@ -538,6 +556,9 @@ const actionFromArgs = (args) => {
   }
   if (command === "composition" && args[1] === "inspect") {
     return { kind: "target", action: "composition.inspect" };
+  }
+  if (command === "pose" && args[1] === "inspect") {
+    return { kind: "target", action: "pose.inspect" };
   }
   if (command === "export" && args[1] === "png") {
     return { kind: "target", action: "export.png" };

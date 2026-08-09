@@ -118,14 +118,26 @@ const idsFromGoals = (
 
 const idsFromConstraint = (
   constraint: SceneConstraint,
-): ReadonlySet<string> =>
-  constraint.type === "ground-contact"
-    ? new Set(
+): ReadonlySet<string> => {
+  switch (constraint.type) {
+    case "ground-contact":
+      return new Set(
         constraint.surfaceEntityId === null
           ? [constraint.entityId]
           : [constraint.entityId, constraint.surfaceEntityId],
-      )
-    : new Set([constraint.cameraId, constraint.subjectEntityId]);
+      );
+    case "body-contact":
+      return new Set(
+        constraint.surfaceEntityId === null
+          ? [constraint.actorId]
+          : [constraint.actorId, constraint.surfaceEntityId],
+      );
+    case "relaxed-limb":
+      return new Set([constraint.actorId]);
+    case "keep-visible":
+      return new Set([constraint.cameraId, constraint.subjectEntityId]);
+  }
+};
 
 const visibleScenes = (
   report: IntentReport,
@@ -351,10 +363,17 @@ const scenePropertyAssessment = (
 const constraintSupportsKind = (
   constraint: SceneConstraint,
   kind: IntentKind,
-): boolean =>
-  constraint.type === "ground-contact"
-    ? kind === "contact" || kind === "relationship"
-    : kind === "camera-target" || kind === "composition-safety";
+): boolean => {
+  switch (constraint.type) {
+    case "ground-contact":
+    case "body-contact":
+      return kind === "contact" || kind === "relationship";
+    case "relaxed-limb":
+      return kind === "pose";
+    case "keep-visible":
+      return kind === "camera-target" || kind === "composition-safety";
+  }
+};
 
 const entityKindsForAddedEntity = (
   entity: SceneEntity,
@@ -494,6 +513,25 @@ const operationAssessment = (
         operationEntity(operation.actorId, report, context)?.kind === "actor"
         ? { primary: true, targetIds: new Set([operation.actorId]) }
         : undefined;
+    case "actor.blocking.solve": {
+      const compatible = new Set<IntentKind>([
+        "pose",
+        "contact",
+        "relationship",
+        "position",
+        "rotation",
+      ]);
+      if (!compatible.has(kind)) return undefined;
+      return {
+        primary: true,
+        targetIds: new Set([
+          operation.plan.actorId,
+          ...operation.plan.contacts.flatMap(({ surfaceEntityId }) =>
+            surfaceEntityId === null ? [] : [surfaceEntityId],
+          ),
+        ]),
+      };
+    }
     case "actor.limb-presence.set":
       return kind === "actor-limb-presence" &&
         operationEntity(operation.actorId, report, context)?.kind === "actor"
