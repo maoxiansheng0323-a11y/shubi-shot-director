@@ -5,6 +5,7 @@ import {
 } from "./pose-diagnostics";
 import { sceneSpecSchema, type SceneSpec } from "./scene-schema";
 import {
+  SceneRelationshipError,
   solveSceneRelationships,
   type SceneRelationshipSolveResult,
 } from "./scene-relationship-solver";
@@ -15,7 +16,10 @@ import {
 import {
   rankSemanticShotCandidates,
 } from "./shot-candidate-preferences";
-import type { ShotHardConstraintReport } from "./shot-hard-constraint-verifier";
+import {
+  analyzeFinalShotHardConstraints,
+  type ShotHardConstraintReport,
+} from "./shot-hard-constraint-verifier";
 import { shotIntentPlanSchema, type ShotIntentPlan } from "./shot-intent";
 
 export interface ShotWorldDiagnostics {
@@ -50,17 +54,28 @@ export const solveSemanticShot = (
     solveCameraCandidates(relationshipResult.scene, plan),
     plan,
   );
-  const candidates = ranked.map(
-    (candidate): ShotSolveCandidate => ({
+  const candidates = ranked.flatMap((candidate): ShotSolveCandidate[] => {
+    const finalHardConstraints = analyzeFinalShotHardConstraints(
+      candidate.scene,
+      plan,
+    );
+    if (finalHardConstraints.status !== "pass") return [];
+    return [{
       ...candidate,
       worldDiagnostics: {
         pose,
         appliedRelationshipConstraintIds:
           relationshipResult.appliedConstraintIds,
-        hardConstraints: relationshipResult.finalHardConstraints,
+        hardConstraints: finalHardConstraints,
       },
-    }),
-  );
+    }];
+  });
+  if (candidates.length === 0) {
+    throw new SceneRelationshipError(
+      "SHOT_RELATIONSHIP_UNSOLVABLE",
+      "No final camera candidate preserves every hard scene relationship.",
+    );
+  }
   return {
     solverVersion: 1,
     plan,
