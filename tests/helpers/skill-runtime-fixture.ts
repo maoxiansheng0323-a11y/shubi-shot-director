@@ -152,6 +152,12 @@ const actionFromArgs = (input) => {
   if (command === "patch" && ["apply", "submit"].includes(input[1])) {
     return "patch." + input[1];
   }
+  if (
+    command === "shot" &&
+    ["solve", "revise", "candidates", "accept"].includes(input[1])
+  ) {
+    return "shot." + input[1];
+  }
   if (command === "composition" && input[1] === "inspect") {
     return "composition.inspect";
   }
@@ -253,6 +259,7 @@ if (action === undefined || !declaredActions.has(action)) {
       "scene.load",
       "patch.apply",
       "patch.submit",
+      "shot.accept",
       "undo",
       "redo",
     ]);

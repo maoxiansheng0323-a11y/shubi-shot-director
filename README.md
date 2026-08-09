@@ -8,9 +8,9 @@ Shubi Shot Director is a local, browser-based 3D graybox camera-previsualization
 
 **[Watch the 49-second launch demo](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/shubi-shot-director-launch-demo.mp4)** · [Exported PNG](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/final-perspective.png) · [English subtitles](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.en.srt) · [中文字幕](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.zh-CN.srt)
 
-Current release contract: [v0.9.4 release notes](docs/releases/v0.9.4.md).
+Current stable release: [v0.9.4](docs/releases/v0.9.4.md). The in-review major-version candidate is documented in [v1.0.0 release notes](docs/releases/v1.0.0.md); it is not tagged or published yet.
 
-Shubi Shot Director is open-source graybox camera previs: it turns natural-language shot intent into a structured, editable 3D scene, shows the actual final camera through the real browser Shot Preview, and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
+Shubi Shot Director is open-source graybox camera previs: for supported still shots, Host Codex expresses semantic relationships, actor blocking, and composition goals while the local Director deterministically produces ranked scene/pose/camera candidates. The browser verifies actual render-space visibility before a selected candidate becomes an editable `SceneSpec` and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
 
 ## What it is (and is not)
 
@@ -32,19 +32,21 @@ The project stops at graybox previs. It does not generate final artwork, author 
 
 ## Architecture and privacy boundary
 
-Host Codex is the only semantic authority. It understands user language, resolves an explicitly supplied external alias profile in host memory, and authors either:
+Host Codex is the only semantic authority. It understands user language, resolves an explicitly supplied external alias profile in host memory, and authors one of these structured routes:
 
 - a strict `{ intentReport, scene }` create submission; or
-- a strict `{ intentReport, patch }` incremental modification.
+- a strict `{ intentReport, patch }` incremental modification; or
+- for supported still shots, a transient `{ intentReport, scene, plan }` semantic solve submission followed by minimal `ShotIntentPatch` revisions.
 
 The local Director runtime accepts structured data only. It performs schema validation, deterministic normalization, intent-coverage checks, atomic session mutation, revision control, persistence, composition inspection, and export. It does not parse prompts, call a model, or accept credentials, tokens, providers, models, endpoints, or non-loopback network routes.
 
 ```text
 User language + optional explicit external profile
   -> Host Codex semantic compile
-  -> generic IntentReport + SceneSpec or ScenePatch
-  -> deterministic loopback runtime
-  -> editable browser scene + PNG export
+  -> transient ShotIntentPlan with explicit hard constraints and soft preferences
+  -> deterministic relationship + StaticBlocking + camera candidate solvers
+  -> browser render-space verification and candidate choice
+  -> ordinary persistent SceneSpec + PNG export
 ```
 
 `SceneSpec` is the only persistent scene authority. Browser selection, focused
@@ -117,6 +119,18 @@ An abstract three-region example is available at
 
 The successful export response includes the `sceneId`, revision, dimensions, SHA-256 hash, and generic warning codes. The output stays under the ignored `.shubi-shot/` directory.
 
+## Semantic shot candidate quick start
+
+The public [`examples/semantic-shot-flagship.shot-submission.json`](examples/semantic-shot-flagship.shot-submission.json) envelope demonstrates the v1.0.0 path with a generic partial-limb actor, ground and back support, a surface-resting arm, bent legs, and semantic camera preferences. Its camera transform is only a schema-valid placeholder; the deterministic solver authors the final candidate cameras.
+
+```powershell
+node scripts/director.mjs shot solve --file examples/semantic-shot-flagship.shot-submission.json
+node scripts/director.mjs shot candidates
+node scripts/director.mjs shot accept --candidate candidate_a
+```
+
+Keep the loopback browser open after `shot solve`. It renders each candidate, submits renderer-derived ID-mask evidence, and must report at least one `pass` before `shot accept` succeeds. Use `shot revise --file <shot-intent-patch.json>` for a high-level pre-acceptance change such as lower camera, wider environment, or a different screen side. Candidate plans, previews, and verification state remain transient; acceptance is one authoritative `SceneSession` replace revision.
+
 ## Browser controls and PNG export
 
 - Treat the main viewport as the studio. `整体总览` and `局部预览` are editor
@@ -159,7 +173,7 @@ CLI PNG export requires an open connected Shot Preview. The export uses the brow
 
 The project-local Skill is stored at [`.agents/skills/shubi-shot-director/SKILL.md`](.agents/skills/shubi-shot-director/SKILL.md). Open the source checkout as a Codex workspace so the Skill can be discovered, then ask Codex to use `shubi-shot-director` for a new shot or a revision.
 
-Host Codex must author `IntentReport`, `SceneSpec`, and `ScenePatch` according to the Skill references. The Skill then calls the structured CLI, verifies `sceneId` and revision transitions, and inspects the browser preview. Account mode or KEY mode belongs to the host and is never forwarded into Director files, arguments, processes, logs, or artifacts.
+Host Codex must author `IntentReport`, `SceneSpec`, `ScenePatch`, and supported transient `ShotIntentPlan` / `ShotIntentPatch` documents according to the Skill references. The Skill then calls the structured CLI, verifies `sceneId`, generation, and revision transitions, and inspects the browser preview. Account mode or KEY mode belongs to the host and is never forwarded into Director files, arguments, processes, logs, or artifacts.
 
 Canonical authoring uses SceneSpec, ScenePatch, and IntentReport schema version 6. Legacy actors store actual stature in `body.heightM`; Blueprint actors resolve stature through `blueprintInstance.heightScale` and keep manual `limbPresenceOverrides` above the selected variant. Both branches use the same fifteen normalized joint quaternions. Follow-ups use `actor.height.set`, minimal `actor.pose.joints.set`, `actor.limb-presence.set`, or complete-action `actor.pose.set`. New and unfinished graybox entities use `lockMode: "none"`. Ordinary natural-language corrections use `preserveLock: true`.
 
@@ -252,6 +266,8 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 - Actors use one built-in segmented CC0 white mannequin or its procedural fallback. Strict reusable blueprints may add only box/sphere/cylinder modules; arbitrary GLB import, custom meshes, clothing, hair, and production character assets remain unsupported.
 - Fingers and toes are visible mesh detail but are not independently articulated. Facial performance, skinning, and animation authoring remain unsupported.
 - Pose and relationship presets materialize transforms and joints; they are not live IK, animation, physics, or collision systems.
+- Semantic scene and camera solving uses a bounded deterministic search for supported still-shot relationships and composition vocabulary. Unsupported or contradictory hard constraints fail explicitly; this is not a general optimizer, DCC, physics engine, or motion planner.
+- Browser candidate verification measures renderer-derived ID masks, actual visible ratios, clipping, safe-area overlap, required actor-part visibility, and depth order. It does not perform general computer vision or replace human judgment of visual taste.
 - Ground contact currently supports room floors and horizontal box or plane surfaces.
 - Connected layouts currently support one shared floor elevation. Stairs,
   multiple levels, pathfinding, streaming, LOD, and general level editing are
@@ -262,7 +278,7 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Verified platform
 
-The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.9.4 verification evidence is recorded in [`docs/releases/v0.9.4.md`](docs/releases/v0.9.4.md). macOS and Linux are not claimed as verified for v0.9.4.
+The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Stable v0.9.4 evidence is recorded in [`docs/releases/v0.9.4.md`](docs/releases/v0.9.4.md); the v1.0.0 candidate gate is tracked in [`docs/verification.md`](docs/verification.md#v100-semantic-shot-solver-gates). macOS and Linux are not claimed as verified for the v1.0.0 candidate.
 
 ## Origin & Maintainer
 

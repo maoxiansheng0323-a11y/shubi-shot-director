@@ -881,6 +881,8 @@ const ActorRigPrimitiveMesh = ({
 
   return (
     <group
+      name={`actor-part-${primitive.id}`}
+      userData={{ shubiActorPartId: primitive.id }}
       position={primitive.frame.position}
       quaternion={primitive.frame.rotation}
     >
@@ -1553,6 +1555,7 @@ const EntityProjection = ({
       <group
         ref={groupRef}
         name={`entity-${entity.id}`}
+        userData={{ shubiEntityId: entity.id }}
         {...entityTransformProps(transformOverride ?? entity.transform)}
         onClick={onSelect}
         onPointerDown={onPointerDown}

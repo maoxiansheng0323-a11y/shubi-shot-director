@@ -7,7 +7,7 @@ The generated SceneSpec JSON Schema is a structural contract. Its `x-shubi-resol
 ## Author in Host Codex
 
 1. Read `generated/scene-spec.schema.json`, `generated/intent-report.schema.json`, and `generated/scene-submission.schema.json`.
-2. Convert the complete request into generic spatial layout, entities, constraints, camera state, output state, and composition goals.
+2. Convert the complete request into generic spatial layout, entities, output state, and either direct structured state or a transient `ShotIntentPlan`. For supported semantic shots, leave final actor/camera solving to `semantic-shot-solving.md`.
 3. Use meter units, right-handed coordinates, `+Y` up, and camera forward along `-Z`.
 4. Choose exactly one spatial mode: `spatialLayout: null` with a legacy
    environment entity, or a complete connected `spatialLayout` with no
@@ -16,7 +16,7 @@ The generated SceneSpec JSON Schema is a structural contract. Its `x-shubi-resol
 5. Give every new and unfinished graybox entity `lockMode: "none"`. Do not create a workflow or user lock merely because an entity is present in an initial submission.
 6. Select exactly one strict actor branch. A legacy actor has `rig`, `body`, actual stature in `body.heightM`, and a complete twelve-key `body.limbPresence` map. A Blueprint actor has `blueprintInstance` and no legacy `rig` or `body`; its referenced canonical snapshot must already exist in `actorBlueprints`. Set `heightScale: 1` unless the requested resolved stature requires `requestedHeightM / snapshot.body.heightM`, and default `limbPresenceOverrides` to `{}`.
 7. Materialize actor transforms and a complete fifteen-key normalized joint map for ordinary explicit actions. Read `references/generated/pose-presets.json` for complete actions. When support, body-site contact, or a relaxed arm requires deterministic solving, read `static-blocking.md` and author a structured transient `blockingPlans` entry instead of guessing the final quaternions. Leave no instruction for runtime semantic inference.
-8. Persist focal length and sensor width, not FOV. Persist the camera quaternion, not a second look-at state.
+8. On the direct structured route, persist focal length and sensor width, not FOV, and persist the camera quaternion rather than a second look-at state. On the semantic route, the base camera is only a valid placeholder; the accepted candidate persists the solver-authored camera transform and lens.
 9. Use 16:9 output; default to 1920 x 1080 unless the user requests another supported resolution.
 10. Use generic IDs, slots, labels, title, and constraint IDs. Exclude source wording, aliases, profile data, and private asset paths.
 11. Pair the scene with a v6 create `IntentReport`. Require `allowPartial: false`, `canApplySafely: true`, empty unsupported/unresolved arrays, and valid evidence for every required recognized constraint. Use `actor.body.heightM` for legacy `actor-height` evidence and `actor.blueprintInstance.heightScale` for Blueprint `actor-height` evidence. Use `actor.pose` for pose evidence and all twelve exact legacy limb evidence paths when legacy limb presence is required. For required Blueprint limb-presence, instance, or variant evidence, use the actor entity's actual v6 `actor.blueprintInstance` evidence path; never invent a nested override evidence path.
@@ -110,4 +110,4 @@ Use immutable preset versions. Materialize pose recipes into `pose.joints` and `
 
 ## Composition handoff
 
-Select camera height, placement, rotation, and focal length to express the requested shot. Then inspect the independent 16:9 final-camera preview and segmented composition report. Treat approximate occlusion as a warning requiring visual confirmation, not a pixel-accurate result.
+For supported semantic shots, author height, angle, placement, lens, headroom, look room, context, and face-readability as hard/soft plan goals rather than final numeric camera values. The runtime searches and ranks diverse valid camera candidates, then the browser verifies actual visible pixels and screen-space bounds. For unsupported or expert direct work, author the camera numerically and inspect the independent 16:9 final-camera preview and segmented composition report.

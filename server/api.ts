@@ -8,6 +8,8 @@ import { BodyContactError } from "../src/domain/body-contacts";
 import { PoseDiagnosticsError } from "../src/domain/pose-diagnostics";
 import { StaticBlockingError } from "../src/domain/static-blocking";
 import { actorPuppetInputErrorCode } from "../src/domain/scene-patch";
+import { CameraSolveError } from "../src/domain/camera-solver";
+import { SceneRelationshipError } from "../src/domain/scene-relationship-solver";
 import {
   IntentSubmissionError,
   parsePatchSubmission,
@@ -20,6 +22,10 @@ import {
 } from "./preview-export-broker";
 import type { SceneChangeEvent } from "./scene-session";
 import { SceneSession } from "./scene-session";
+import {
+  ShotCandidateSession,
+  ShotCandidateSessionError,
+} from "./shot-candidate-session";
 
 const sendOk = (response: Response, data: unknown): void => {
   response.json({
@@ -80,11 +86,13 @@ export const createApiApp = (
     instanceId: string;
     requestShutdown: () => void;
     previewExports?: PreviewExportBroker;
+    shotCandidates?: ShotCandidateSession;
   },
 ): Express => {
   const app = express();
   const previewExports =
     options.previewExports ?? new PreviewExportBroker();
+  const shotCandidates = options.shotCandidates ?? new ShotCandidateSession();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "1mb", strict: true }));
 
@@ -141,6 +149,59 @@ export const createApiApp = (
     sendOk(response, {
       scene: session.snapshot(),
       history: session.historyStatus(),
+    });
+  });
+
+  app.get("/api/v1/shot-solves/current", (_request, response) => {
+    sendOk(response, { solve: shotCandidates.current() });
+  });
+
+  app.post("/api/v1/shot-solves", (request, response) => {
+    const solve = shotCandidates.solve(request.body, session.snapshot());
+    sendOk(response, { solve });
+  });
+
+  app.post("/api/v1/shot-solves/modify", (request, response) => {
+    const solve = shotCandidates.modify(request.body, session.snapshot());
+    sendOk(response, { solve });
+  });
+
+  app.post(
+    "/api/v1/shot-solves/:solveId/candidates/:candidateId/verification",
+    (request, response) => {
+      if (
+        request.body?.solveId !== request.params.solveId ||
+        request.body?.candidateId !== request.params.candidateId
+      ) {
+        throw new ShotCandidateSessionError(
+          "SHOT_CANDIDATE_NOT_FOUND",
+          "The render evidence does not match the requested candidate.",
+        );
+      }
+      const solve = shotCandidates.verify(request.body);
+      sendOk(response, { solve });
+    },
+  );
+
+  app.post("/api/v1/shot-solves/:solveId/accept", (request, response) => {
+    const candidateId = request.body?.candidateId;
+    if (typeof candidateId !== "string") {
+      throw new ShotCandidateSessionError(
+        "SHOT_CANDIDATE_NOT_FOUND",
+        "A semantic shot candidate id is required.",
+      );
+    }
+    const candidateScene = shotCandidates.candidateForAcceptance(
+      request.params.solveId,
+      candidateId,
+      session.snapshot(),
+    );
+    const scene = session.replaceScene(candidateScene);
+    shotCandidates.clear();
+    sendOk(response, {
+      scene,
+      history: session.historyStatus(),
+      acceptedCandidateId: candidateId,
     });
   });
 
@@ -353,6 +414,24 @@ export const createApiApp = (
       }
       if (error instanceof IntentSubmissionError) {
         response.status(400).json({
+          ok: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        });
+        return;
+      }
+      if (
+        error instanceof CameraSolveError ||
+        error instanceof SceneRelationshipError ||
+        error instanceof ShotCandidateSessionError
+      ) {
+        const stale =
+          error instanceof ShotCandidateSessionError &&
+          (error.code === "SHOT_SOLVE_STALE_SCENE" ||
+            error.code === "SHOT_SOLVE_STALE_GENERATION");
+        response.status(stale ? 409 : 400).json({
           ok: false,
           error: {
             code: error.code,

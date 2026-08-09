@@ -4,6 +4,10 @@ import {
   BUILT_IN_REFINED_MANNEQUIN_URL,
 } from "../domain/built-in-asset-paths";
 import {
+  renderSpaceEvidenceSchema,
+  type RenderSpaceEvidence,
+} from "../domain/render-space-verification";
+import {
   scenePatchSchema,
   type ScenePatch,
 } from "../domain/scene-patch";
@@ -11,6 +15,7 @@ import {
   sceneSpecSchema,
   type SceneSpec,
 } from "../domain/scene-schema";
+import { shotIntentPlanSchema } from "../domain/shot-intent";
 
 const historyStatusSchema = z
   .object({
@@ -41,6 +46,40 @@ const sceneChangeEventSchema = z
   })
   .strict();
 
+const semanticShotVerificationSchema = z
+  .object({ status: z.enum(["pass", "fail"]) })
+  .passthrough();
+
+const semanticShotCandidateSchema = z
+  .object({
+    candidateId: z.string().min(1),
+    label: z.string().min(1),
+    profile: z.string().min(1),
+    score: z.number().finite(),
+    finalScore: z.number().finite().nullable(),
+    sceneSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    scene: sceneSpecSchema,
+    renderVerification: semanticShotVerificationSchema.nullable(),
+  })
+  .passthrough();
+
+const semanticShotSolveSchema = z
+  .object({
+    solveId: z.string().min(1),
+    generation: z.number().int().nonnegative(),
+    plan: shotIntentPlanSchema,
+    candidates: z.array(semanticShotCandidateSchema),
+  })
+  .passthrough();
+
+const semanticShotSolveEnvelopeSchema = z
+  .object({ solve: semanticShotSolveSchema.nullable() })
+  .strict();
+
+const acceptedSemanticShotSchema = sceneSnapshotSchema.extend({
+  acceptedCandidateId: z.string().min(1),
+}).strict();
+
 const apiErrorEnvelopeSchema = z
   .object({
     ok: z.literal(false),
@@ -58,6 +97,7 @@ export type SceneHistoryStatus = z.infer<typeof historyStatusSchema>;
 export type SceneSessionSnapshot = z.infer<typeof sceneSnapshotSchema>;
 export type SceneSessionUpdate = z.infer<typeof sceneUpdateSchema>;
 export type SceneChangeEvent = z.infer<typeof sceneChangeEventSchema>;
+export type SemanticShotSolve = z.infer<typeof semanticShotSolveSchema>;
 
 export type SceneConnectionStatus =
   | "idle"
@@ -155,6 +195,58 @@ export class SceneClient {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  async getCurrentSemanticShotSolve(
+    signal?: AbortSignal,
+  ): Promise<SemanticShotSolve | null> {
+    const result = await this.request(
+      "/api/v1/shot-solves/current",
+      semanticShotSolveEnvelopeSchema,
+      { method: "GET", signal },
+    );
+    return result.solve;
+  }
+
+  async submitSemanticShotEvidence(
+    input: RenderSpaceEvidence,
+    signal?: AbortSignal,
+  ): Promise<SemanticShotSolve> {
+    const evidence = renderSpaceEvidenceSchema.parse(input);
+    const result = await this.request(
+      `/api/v1/shot-solves/${encodeURIComponent(evidence.solveId)}/candidates/${encodeURIComponent(evidence.candidateId)}/verification`,
+      semanticShotSolveEnvelopeSchema,
+      {
+        method: "POST",
+        signal,
+        body: JSON.stringify(evidence),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    if (!result.solve) {
+      throw new SceneClientError(
+        "INVALID_RESPONSE",
+        "The local scene bridge returned no semantic shot solve after verification.",
+      );
+    }
+    return result.solve;
+  }
+
+  acceptSemanticShotCandidate(
+    solveId: string,
+    candidateId: string,
+    signal?: AbortSignal,
+  ): Promise<z.infer<typeof acceptedSemanticShotSchema>> {
+    return this.request(
+      `/api/v1/shot-solves/${encodeURIComponent(solveId)}/accept`,
+      acceptedSemanticShotSchema,
+      {
+        method: "POST",
+        signal,
+        body: JSON.stringify({ candidateId }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   undo(signal?: AbortSignal): Promise<SceneSessionUpdate> {

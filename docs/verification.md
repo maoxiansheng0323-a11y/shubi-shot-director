@@ -4,6 +4,37 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v1.0.0 semantic shot solver gates
+
+Run the focused semantic pipeline before the complete repository gate:
+
+```powershell
+pnpm exec vitest run tests/semantic-shot-solver.test.ts tests/semantic-shot-acceptance.test.ts tests/semantic-shot-flagship.test.ts tests/render-space-verification.test.ts tests/shot-candidate-session.test.ts tests/semantic-shot-api.test.ts tests/semantic-shot-cli.test.ts
+pnpm schemas:generate
+pnpm test:parallel
+pnpm test:workspace-e2e
+pnpm verify
+node .agents/skills/shubi-shot-director/scripts/audit-generic-output.mjs
+git diff --check
+```
+
+Require application 1.0.0 candidate metadata with capability contract 2, bridge protocol 1, workspace routing 1, SceneSpec/ScenePatch/IntentReport version 6, ShotIntentPlan/ShotIntentPatch version 1, host-only semantic authority, structured-only input, no model integration, forbidden credentials, and loopback-only networking.
+
+The 20-case generic black-box corpus must cover supported actor blocking, rotated geometry, multi-actor relationships, region/opening composition, camera height/framing/placement, face visibility, caption safety, depth order, and explicit impossible/contradictory cases. The same plan and scene must return byte-equivalent candidates. Every accepted semantic candidate must have `pass` pose/contact diagnostics and no hard composition error; a `check` result is not a candidate pass.
+
+The public flagship submission must autonomously preserve one absent arm chain, place pelvis on world ground, support upper-back on a low generic box, rest the available right arm on ground, retain bent resting legs, keep the support behind the actor, and return three meaningfully different full-shot candidates with a slightly low and off-center preference. Its semantic plan must contain no final joint, actor-transform, focal-length, or camera-quaternion solution. A side-on upper-back negative must remain rejected.
+
+In the real browser, run the public flagship through `shot solve`; require all candidate previews to render and at least one candidate to receive a server-evaluated render-space `pass`. Compare all three visible candidates, accept one without manual joint or camera rescue, then require `snapshot`, `pose inspect --json`, and `composition inspect --json` to pass at the accepted revision. Export one connected-browser 1920 x 1080 PNG and record its scene ID, revision, dimensions, SHA-256, warning codes, and direct picture inspection. Candidate plans and verification state must be absent from the accepted SceneSpec and cleared from the transient API.
+
+### Candidate evidence - 2026-08-09
+
+- The 20-case generic black-box corpus passed 20/20. The independent public flagship submission produced three deterministic, meaningfully different candidates, while its side-on upper-back negative was rejected.
+- The real browser rendered all three flagship previews through the entity/actor-part ID pass and isolated silhouette pass. `candidate_a`, `candidate_b`, and `candidate_c` all received `renderStatus: "pass"` with final scores 91.506, 83.23, and 82.82. `candidate_a` was accepted without manual joint, actor-transform, focal-length, or camera-quaternion rescue.
+- Acceptance created ordinary `scene_semantic_flagship_1` revision 1 and cleared the transient candidate session. Pose diagnostics passed 15 joints, two contacts, and one surface-resting limb: pelvis and upper-back contact gaps were 0 m, upper-back orientation deviation was 20 degrees, and the resting hand terminal gap was 0.00000003029108280871995 m with 0 m penetration.
+- Composition had no hard failure: anchor, framing, occlusion, topology, and camera collision passed. The legacy framing and occlusion proxy remained approximate, so the enlarged authoritative Shot Preview was directly inspected for full-body visibility, missing-limb integrity, ground/support contact, support-behind ordering, headroom, and the surface-resting arm.
+- The connected browser exported `.shubi-shot/exports/semantic-shot-v1-flagship.png` at 1920 x 1080 with SHA-256 `781D0A004232121A5C03463C170B35CBEE99C4816A153F8EE576C87D5F1234E2`. The only warning was `ACTIVE_CAMERA_UNLOCKED`, preserving editability for Draft PR review.
+- The final repository gate passed 107 regular test files with 2,044 tests, the separate workspace e2e file with 1 test, TypeScript, ESLint, and the production Vite build. The public audit and generic-output audit each scanned 329 files with zero findings. The build retained only the existing non-blocking large-chunk advisory.
+
 ## v0.9.4 static blocking and resting-arm gates
 
 Run the focused solver and release-contract checks before the complete gate:

@@ -59,6 +59,10 @@ const commandIds = [
   "scene.load",
   "patch.apply",
   "patch.submit",
+  "shot.solve",
+  "shot.revise",
+  "shot.candidates",
+  "shot.accept",
   "composition.inspect",
   "pose.inspect",
   "export.png",
@@ -87,6 +91,12 @@ const featureIds = [
   "actor.body-contact-sites",
   "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
+  "shot.semantic-intent-plan",
+  "shot.hard-soft-constraints",
+  "shot.relationship-solver",
+  "shot.camera-candidate-solver",
+  "shot.render-space-verification",
+  "shot.semantic-revision",
 ] as const;
 const actorPuppet = {
   heightLimitsM: { min: 1, max: 2.4 },
@@ -556,7 +566,7 @@ describe("v0.7 portable Skill contract", () => {
       intentReportSchemaVersion: 6,
       actorPuppet: structuredClone(actorPuppet),
     });
-    for (const feature of featureIds.slice(-3)) {
+    for (const feature of featureIds.filter((id) => id.startsWith("shot."))) {
       expect(guidance).toContain(feature);
     }
     for (const jointId of actorPuppet.jointIds) {
@@ -586,7 +596,7 @@ afterEach(async () => {
 });
 
 describe("v2 compatibility planner", () => {
-  it("exports exactly the 19 structured actions and the v2 plan shape", () => {
+  it("exports exactly the 23 structured actions and the v2 plan shape", () => {
     const plan = buildPlan("scene.submit", v2Manifest());
 
     expect(planner.PLAN_CONTRACT_VERSION).toBe(2);
@@ -1279,7 +1289,7 @@ describe("v2 compatibility planner", () => {
     [
       "scene",
       { sceneSchemaVersion: 7 },
-      ["scene.create", "scene.submit"],
+      ["scene.create", "scene.submit", "shot.solve"],
       "SCENE_SCHEMA_UNSUPPORTED",
     ],
     [
@@ -1291,7 +1301,7 @@ describe("v2 compatibility planner", () => {
     [
       "intent",
       { intentReportSchemaVersion: 7 },
-      ["scene.submit", "patch.submit"],
+      ["scene.submit", "patch.submit", "shot.solve"],
       "INTENT_REPORT_SCHEMA_UNSUPPORTED",
     ],
   ] as const)(
@@ -1803,12 +1813,45 @@ describe("portable v2 Skill wrapper", () => {
   });
 
   it.each([
+    ["shot.solve", ["shot", "solve", "--file", "shot.json"], 0],
+    ["shot.revise", ["shot", "revise", "--file", "revision.json"], 0],
+    ["shot.candidates", ["shot", "candidates"], 0],
+    [
+      "shot.accept",
+      ["shot", "accept", "--candidate", "candidate-balanced"],
+      1,
+    ],
+  ] as const)(
+    "plans, live-verifies, and forwards %s",
+    async (action, args, revision) => {
+      const runtime = await createFixture(v2Manifest());
+
+      const result = await runtime.run([...args]);
+
+      expect(result.exitCode).toBe(0);
+      expect(parseEnvelope(result)).toMatchObject({ ok: true });
+      expect(await runtime.readActionIds()).toEqual([
+        "doctor",
+        "health",
+        action,
+      ]);
+      expect(await runtime.readState()).toMatchObject({
+        mutationCount: revision,
+        startupCount: 0,
+        revision,
+      });
+    },
+  );
+
+  it.each([
     ["scene.create", ["scene", "create"]],
     ["scene.submit", ["scene", "submit"]],
     ["scene.save", ["scene", "save"]],
     ["scene.load", ["scene", "load"]],
     ["patch.apply", ["patch", "apply"]],
     ["patch.submit", ["patch", "submit"]],
+    ["shot.solve", ["shot", "solve"]],
+    ["shot.revise", ["shot", "revise"]],
     [
       "export.png",
       ["export", "png", "--width", "1920", "--height", "1080"],

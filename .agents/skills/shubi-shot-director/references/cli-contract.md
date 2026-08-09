@@ -25,6 +25,10 @@ snapshot
 blueprint validate --file <actor-blueprint.json>
 scene submit --file <scene-submission.json>
 patch submit --file <patch-submission.json>
+shot solve --file <shot-solve-submission.json>
+shot revise --file <shot-intent-patch.json>
+shot candidates
+shot accept --candidate <candidate-id>
 scene save --file <scene.json> [--force]
 scene load --file <scene.json>
 composition inspect --json
@@ -56,6 +60,10 @@ Stable workspace errors are:
 `scene submit --file` reads a strict `{ intentReport, scene }` envelope. Validation and coverage checks finish before a full-scene mutation.
 
 `patch submit --file` reads a strict `{ intentReport, patch }` envelope. The Patch applies atomically only when the scene ID, base revision, references, policy, and evidence are all valid. Success preserves `sceneId` and advances revision exactly once.
+
+`shot solve --file` reads a strict `{ intentReport, scene, plan }` envelope. It does not mutate SceneSession. It returns a transient solve ID, generation, and ranked candidate summaries. The loopback browser renders every candidate and submits machine-readable ID-mask evidence. `shot candidates` reports `pending`, `pass`, or `fail` render status. `shot accept` is allowed only for a verified pass and commits the chosen ordinary SceneSpec in one authoritative replace revision.
+
+`shot revise --file` reads one strict semantic plan patch with the exact current solve ID and generation. It supports only hard-constraint and soft-preference set/remove operations, invalidates prior render evidence, and deterministically re-solves. It never accepts raw wording or numeric camera rescue fields.
 
 Every canonical v6 Patch includes `preserveLock`. Ordinary natural-language corrections use `preserveLock: true`. Workflow locks never require user authorization: `WORKFLOW_LOCKED` means re-author with `preserveLock: true`, not ask the user. User locks require explicit confirmation, so `USER_LOCKED` is the stop-and-ask condition. After explicit user confirmation, use `preserveLock: false` with explicit lock-mode transition operations in the same atomic Patch as the protected change; there is no temporary separate unlock.
 
@@ -104,6 +112,10 @@ Failure:
 - `INTENT_REPORT_INVALID`: correct the strict report or operation mismatch.
 - `UNSUPPORTED_DESCRIPTION`: do not mutate unless an explicitly authorized partial modification can be represented safely.
 - `INTENT_COVERAGE_INCOMPLETE`: correct generic targets or evidence.
+- `SHOT_CONSTRAINT_CONTRADICTION`: correct incompatible hard relationships.
+- `SHOT_CAMERA_NO_VALID_CANDIDATE`: revise an actually impossible hard camera/composition request; do not guess a quaternion.
+- `SHOT_SOLVE_STALE_GENERATION` or `SHOT_SOLVE_STALE_SCENE`: refresh the active solve or authoritative snapshot and re-author the minimal semantic change.
+- `SHOT_CANDIDATE_NOT_VERIFIED` or `SHOT_CANDIDATE_VERIFICATION_FAILED`: keep the browser candidate preview open and resolve the reported renderer evidence before acceptance.
 - `USER_LOCKED`: stop and ask for explicit confirmation.
 - `WORKFLOW_LOCKED`: re-author the Patch with `preserveLock: true` without asking the user.
 - Other entity, lock, contact, or schema error: refresh state and correct only the structured input.

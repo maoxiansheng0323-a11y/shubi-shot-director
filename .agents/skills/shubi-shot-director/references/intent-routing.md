@@ -9,7 +9,8 @@ Perform one semantic `compile` in Host Codex. Do not route language into the Dir
 3. Identify every required constraint, unsupported capability, and unresolved relation.
 4. Author one generic `IntentReport` with `operation: "create"`, `allowPartial: false`, and `canApplySafely: true`.
 5. Require empty `unsupportedConstraints` and `unresolvedRelations` arrays.
-6. Author one complete generic `SceneSpec` and submit the combined envelope with `scene submit --file`.
+6. For supported still-shot relationships and composition, author a generic base `SceneSpec` plus strict `ShotIntentPlan` and submit with `shot solve --file`; accept only a browser-verified candidate. Read `semantic-shot-solving.md`.
+7. Use `scene submit --file` only when the requested result is outside the semantic solver path but already has a complete supported structured solution.
 
 Never create a partial scene. If any required meaning is ambiguous or unavailable in the public schema, ask the user only when a decision is necessary; otherwise report a generic unsupported capability and do not submit.
 
@@ -17,9 +18,10 @@ Never create a partial scene. If any required meaning is ambiguous or unavailabl
 
 1. Fetch an authoritative snapshot immediately before host interpretation.
 2. Interpret the complete follow-up against that snapshot.
-3. Author one minimal `ScenePatch` with the same `sceneId` and exact `baseRevision`.
-4. Author a matching modify `IntentReport` and submit both with `patch submit --file`.
-5. Fetch another snapshot and require the same `sceneId`, exact revision `+1`, and only requested changes.
+3. When an unaccepted semantic solve is active, author one minimal `ShotIntentPatch` against its exact `solveId` and `baseGeneration`, then run `shot revise --file`.
+4. Otherwise author one minimal `ScenePatch` with the same `sceneId` and exact `baseRevision`.
+5. Author a matching modify `IntentReport` and submit both with `patch submit --file`.
+6. Fetch another snapshot and require the same `sceneId`, exact revision `+1`, and only requested changes.
 
 Default to `allowPartial: false`. Set it to `true` only after the user explicitly accepts a partial modification. List every unapplied item in a structured issue array, keep `canApplySafely: true` only for a safe applied subset, and give every applied required constraint valid generic evidence.
 

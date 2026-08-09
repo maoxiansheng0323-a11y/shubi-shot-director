@@ -41,6 +41,10 @@ const EXPECTED_COMMAND_IDS = [
   "scene.load",
   "patch.apply",
   "patch.submit",
+  "shot.solve",
+  "shot.revise",
+  "shot.candidates",
+  "shot.accept",
   "composition.inspect",
   "pose.inspect",
   "export.png",
@@ -69,6 +73,12 @@ const EXPECTED_FEATURE_IDS = [
   "actor.body-contact-sites",
   "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
+  "shot.semantic-intent-plan",
+  "shot.hard-soft-constraints",
+  "shot.relationship-solver",
+  "shot.camera-candidate-solver",
+  "shot.render-space-verification",
+  "shot.semantic-revision",
 ] as const;
 const EXPECTED_ACTOR_PUPPET_CAPABILITY = {
   heightLimitsM: { min: 1, max: 2.4 },
@@ -256,7 +266,7 @@ describe("runtime capability manifest", () => {
     ) as { version: string };
     const manifest = getRuntimeCapabilityManifest();
 
-    expect(packageMetadata.version).toBe("0.9.4");
+    expect(packageMetadata.version).toBe("1.0.0");
     expect(APPLICATION_VERSION).toBe(packageMetadata.version);
     expect(runtimeCapabilities).toMatchObject({
       CAPABILITIES_CONTRACT_VERSION: 2,

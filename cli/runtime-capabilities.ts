@@ -99,6 +99,19 @@ export const CLI_COMMAND_DEFINITIONS = [
     id: "patch.submit",
     usage: "patch submit --file <patch-submission.json>",
   },
+  {
+    id: "shot.solve",
+    usage: "shot solve --file <shot-solve-submission.json>",
+  },
+  {
+    id: "shot.revise",
+    usage: "shot revise --file <shot-intent-patch.json>",
+  },
+  { id: "shot.candidates", usage: "shot candidates" },
+  {
+    id: "shot.accept",
+    usage: "shot accept --candidate <candidate-id>",
+  },
   { id: "composition.inspect", usage: "composition inspect --json" },
   { id: "pose.inspect", usage: "pose inspect --json" },
   {
@@ -135,6 +148,12 @@ export const RUNTIME_FEATURE_IDS = [
   "actor.body-contact-sites",
   "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
+  "shot.semantic-intent-plan",
+  "shot.hard-soft-constraints",
+  "shot.relationship-solver",
+  "shot.camera-candidate-solver",
+  "shot.render-space-verification",
+  "shot.semantic-revision",
 ] as const;
 
 export interface ActorPuppetCapability {

@@ -116,6 +116,10 @@ const stableActionIds = new Set([
   "scene.load",
   "patch.apply",
   "patch.submit",
+  "shot.solve",
+  "shot.revise",
+  "shot.candidates",
+  "shot.accept",
   "composition.inspect",
   "pose.inspect",
   "export.png",
@@ -130,6 +134,8 @@ const fileActionIds = new Set([
   "scene.load",
   "patch.apply",
   "patch.submit",
+  "shot.solve",
+  "shot.revise",
   "export.png",
 ]);
 const windowsDriveRelativePathPattern = /^[A-Za-z]:(?![\\/])/;
@@ -553,6 +559,12 @@ const actionFromArgs = (args) => {
     ["apply", "submit"].includes(args[1])
   ) {
     return { kind: "target", action: `patch.${args[1]}` };
+  }
+  if (
+    command === "shot" &&
+    ["solve", "revise", "candidates", "accept"].includes(args[1])
+  ) {
+    return { kind: "target", action: `shot.${args[1]}` };
   }
   if (command === "composition" && args[1] === "inspect") {
     return { kind: "target", action: "composition.inspect" };

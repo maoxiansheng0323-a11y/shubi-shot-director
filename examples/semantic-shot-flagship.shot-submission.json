@@ -1,0 +1,364 @@
+{
+  "intentReport": {
+    "schemaVersion": 6,
+    "operation": "create",
+    "allowPartial": false,
+    "recognizedConstraints": [
+      {
+        "id": "flagship_support_behind_1",
+        "kind": "relationship",
+        "required": true,
+        "targets": ["actor_generic_1", "prop_back_support_1"],
+        "evidence": [{
+          "type": "scene-constraint",
+          "constraintId": "contact_flagship_upper_back_support_1"
+        }]
+      },
+      {
+        "id": "flagship_blocking_1",
+        "kind": "contact",
+        "required": true,
+        "targets": ["actor_generic_1", "prop_back_support_1"],
+        "evidence": [
+          {
+            "type": "scene-constraint",
+            "constraintId": "contact_flagship_pelvis_ground_1"
+          },
+          {
+            "type": "scene-constraint",
+            "constraintId": "contact_flagship_upper_back_support_1"
+          }
+        ]
+      },
+      {
+        "id": "flagship_visibility_face_1",
+        "kind": "composition-safety",
+        "required": true,
+        "targets": ["camera_shot_1", "actor_generic_1"],
+        "evidence": [{
+          "type": "scene-constraint",
+          "constraintId": "flagship_visibility_face_1"
+        }]
+      },
+      {
+        "id": "flagship_framing_full_1",
+        "kind": "framing",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [{
+          "type": "scene-property",
+          "path": "scene.compositionGoals.framing"
+        }]
+      },
+      {
+        "id": "flagship_camera_clearance_1",
+        "kind": "composition-safety",
+        "required": true,
+        "targets": ["camera_shot_1"],
+        "evidence": [{
+          "type": "scene-property",
+          "path": "scene.activeCameraId"
+        }]
+      },
+      {
+        "id": "flagship_partial_limb_1",
+        "kind": "actor-limb-presence",
+        "required": true,
+        "targets": ["actor_generic_1"],
+        "evidence": [
+          {
+            "type": "entity-property",
+            "entityId": "actor_generic_1",
+            "path": "entity.body.limbPresence.upper_arm_l"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "actor_generic_1",
+            "path": "entity.body.limbPresence.forearm_l"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "actor_generic_1",
+            "path": "entity.body.limbPresence.hand_l"
+          }
+        ]
+      }
+    ],
+    "unsupportedConstraints": [],
+    "unresolvedRelations": [],
+    "warnings": [],
+    "canApplySafely": true
+  },
+  "scene": {
+    "schemaVersion": 6,
+    "sceneId": "scene_semantic_flagship_1",
+    "revision": 0,
+    "title": "Generic semantic flagship shot",
+    "coordinateSystem": {
+      "handedness": "right",
+      "upAxis": "+Y",
+      "cameraForwardAxis": "-Z",
+      "lengthUnit": "meter"
+    },
+    "activeCameraId": "camera_shot_1",
+    "output": {
+      "aspect": { "width": 16, "height": 9 },
+      "resolutionPx": { "width": 1920, "height": 1080 }
+    },
+    "spatialLayout": null,
+    "actorBlueprints": [],
+    "entities": [
+      {
+        "id": "environment_room_1",
+        "label": "Generic graybox room",
+        "parentId": null,
+        "transform": {
+          "positionM": [0, 0, 0],
+          "rotation": [0, 0, 0, 1],
+          "scale": [1, 1, 1]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "kind": "environment",
+        "preset": {
+          "registry": "builtin",
+          "id": "room.small-v1",
+          "version": 1,
+          "parameters": {
+            "widthM": 10,
+            "depthM": 10,
+            "heightM": 3.5,
+            "wallThicknessM": 0.08
+          }
+        },
+        "color": "#7d8794"
+      },
+      {
+        "id": "actor_generic_1",
+        "label": "Generic partial-limb actor",
+        "parentId": null,
+        "transform": {
+          "positionM": [0, 0.5, 0],
+          "rotation": [0, 0, 0, 1],
+          "scale": [1, 1, 1]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "kind": "actor",
+        "slot": "actor_generic_1",
+        "rig": {
+          "registry": "builtin",
+          "id": "rig.humanoid-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "body": {
+          "heightM": 1.72,
+          "shoulderWidthM": 0.42,
+          "build": "average",
+          "limbPresence": {
+            "upper_arm_l": "absent",
+            "forearm_l": "absent",
+            "hand_l": "absent",
+            "upper_arm_r": "present",
+            "forearm_r": "present",
+            "hand_r": "present",
+            "upper_leg_l": "present",
+            "lower_leg_l": "present",
+            "foot_l": "present",
+            "upper_leg_r": "present",
+            "lower_leg_r": "present",
+            "foot_r": "present"
+          }
+        },
+        "pose": {
+          "preset": {
+            "registry": "builtin",
+            "id": "pose.standing-neutral-v1",
+            "version": 1,
+            "parameters": { "contactOffsetM": 0.977 }
+          },
+          "joints": {
+            "pelvis": [0, 0, 0, 1],
+            "spine": [0, 0, 0, 1],
+            "neck": [0, 0, 0, 1],
+            "upper_arm_l": [0, 0, 0, 1],
+            "forearm_l": [0, 0, 0, 1],
+            "hand_l": [0, 0, 0, 1],
+            "upper_arm_r": [0, 0, 0, 1],
+            "forearm_r": [0, 0, 0, 1],
+            "hand_r": [0, 0, 0, 1],
+            "upper_leg_l": [0, 0, 0, 1],
+            "lower_leg_l": [0, 0, 0, 1],
+            "foot_l": [0, 0, 0, 1],
+            "upper_leg_r": [0, 0, 0, 1],
+            "lower_leg_r": [0, 0, 0, 1],
+            "foot_r": [0, 0, 0, 1]
+          }
+        },
+        "color": "#c7ced8"
+      },
+      {
+        "id": "prop_back_support_1",
+        "label": "Generic low back support",
+        "parentId": null,
+        "transform": {
+          "positionM": [0, 0.5, -0.5],
+          "rotation": [0, 0, 0, 1],
+          "scale": [1, 1, 1]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "kind": "prop",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [1.4, 0.5, 0.3]
+        },
+        "color": "#9ba6b2"
+      },
+      {
+        "id": "camera_shot_1",
+        "label": "Shot camera",
+        "parentId": null,
+        "transform": {
+          "positionM": [4.2, 2.2, 5.8],
+          "rotation": [
+            -0.07888221809080909,
+            0.30720602011585857,
+            0.025561698555928904,
+            0.9480235526824135
+          ],
+          "scale": [1, 1, 1]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "kind": "camera",
+        "lens": {
+          "projection": "perspective",
+          "focalLengthMm": 45,
+          "sensorWidthMm": 36,
+          "nearM": 0.05,
+          "farM": 200
+        }
+      }
+    ],
+    "constraints": []
+  },
+  "plan": {
+    "schemaVersion": 1,
+    "planId": "plan_semantic_flagship_1",
+    "operation": "create",
+    "cameraId": "camera_shot_1",
+    "primaryTargetIds": ["actor_generic_1"],
+    "hardConstraints": [
+      {
+        "id": "flagship_support_behind_1",
+        "kind": "spatial-relationship",
+        "subjectId": "prop_back_support_1",
+        "referenceId": "actor_generic_1",
+        "relation": "behind",
+        "distance": { "minM": 0.5, "maxM": 0.5 },
+        "axisFrame": "reference"
+      },
+      {
+        "id": "flagship_blocking_1",
+        "kind": "actor-blocking",
+        "plan": {
+          "schemaVersion": 1,
+          "planId": "blocking_semantic_flagship_1",
+          "actorId": "actor_generic_1",
+          "trunk": {
+            "lean": { "direction": "backward", "angleDeg": 20 }
+          },
+          "legPosture": "bent-resting",
+          "contacts": [
+            {
+              "constraintId": "contact_flagship_pelvis_ground_1",
+              "bodySite": "pelvis",
+              "surfaceEntityId": null,
+              "surfaceFace": "top",
+              "role": "support"
+            },
+            {
+              "constraintId": "contact_flagship_upper_back_support_1",
+              "bodySite": "upper-back",
+              "surfaceEntityId": "prop_back_support_1",
+              "surfaceFace": "front",
+              "role": "support"
+            }
+          ],
+          "relaxedLimbs": [
+            {
+              "constraintId": "relaxed_flagship_arm_r_ground_1",
+              "limb": "arm-r",
+              "restSurface": {
+                "surfaceEntityId": null,
+                "surfaceFace": "top"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "flagship_visibility_face_1",
+        "kind": "visibility",
+        "entityId": "actor_generic_1",
+        "anchor": "face",
+        "requiredPartIds": ["head"],
+        "minVisibleRatio": 0.35
+      },
+      {
+        "id": "flagship_framing_full_1",
+        "kind": "framing",
+        "mode": "full",
+        "targetEntityIds": ["actor_generic_1"]
+      },
+      {
+        "id": "flagship_camera_clearance_1",
+        "kind": "camera-clearance",
+        "minimumEntityDistanceM": 0.05
+      }
+    ],
+    "softPreferences": [
+      {
+        "id": "flagship_camera_low_1",
+        "kind": "camera-height",
+        "tendency": "low",
+        "weight": 1
+      },
+      {
+        "id": "flagship_actor_right_1",
+        "kind": "screen-placement",
+        "entityId": "actor_generic_1",
+        "horizontal": "right",
+        "weight": 1
+      },
+      {
+        "id": "flagship_view_three_quarter_1",
+        "kind": "view-angle",
+        "tendency": "three-quarter",
+        "side": "either",
+        "weight": 0.8
+      },
+      {
+        "id": "flagship_lens_normal_1",
+        "kind": "lens",
+        "tendency": "normal",
+        "weight": 0.6
+      },
+      {
+        "id": "flagship_face_readability_1",
+        "kind": "face-readability",
+        "actorId": "actor_generic_1",
+        "weight": 1
+      }
+    ],
+    "candidateCount": 3
+  }
+}
