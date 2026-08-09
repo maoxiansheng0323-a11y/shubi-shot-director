@@ -49,22 +49,35 @@ export const SemanticShotCandidates = () => {
   if (!solve && !error) return null;
 
   return (
-    <section className="semantic-candidate-strip" aria-label="Semantic shot candidates">
+    <section
+      className="semantic-candidate-strip"
+      aria-label="Semantic shot candidates"
+    >
       <header className="semantic-candidate-heading">
         <div>
           <strong>Semantic Shot Candidates</strong>
-          <span>generation {solve?.generation ?? "—"} · browser ID-mask verification</span>
+          <span>
+            generation {solve?.generation ?? "—"} · browser ID-mask verification
+          </span>
         </div>
-        {error ? <span className="semantic-candidate-error">{error}</span> : null}
+        {error ? (
+          <span className="semantic-candidate-error">{error}</span>
+        ) : null}
       </header>
       {solve ? (
         <div className="semantic-candidate-list">
           {solve.candidates.map((candidate) => {
             const verified = candidate.renderVerification?.status === "pass";
             return (
-              <article className="semantic-candidate" key={candidate.candidateId}>
+              <article
+                className="semantic-candidate"
+                key={candidate.candidateId}
+              >
                 <div className="semantic-candidate-preview">
-                  <Canvas dpr={1} gl={{ antialias: false, preserveDrawingBuffer: false }}>
+                  <Canvas
+                    dpr={1}
+                    gl={{ antialias: false, preserveDrawingBuffer: false }}
+                  >
                     <color attach="background" args={["#20252c"]} />
                     <ShotCamera scene={candidate.scene} />
                     <SceneWorld
@@ -77,7 +90,7 @@ export const SemanticShotCandidates = () => {
                       <RenderSpaceVerifier
                         solveId={solve.solveId}
                         candidateId={candidate.candidateId}
-                        sceneSha256={candidate.sceneSha256}
+                        sceneSpec={candidate.scene}
                         plan={solve.plan}
                         onEvidence={submitEvidence}
                       />
@@ -87,7 +100,8 @@ export const SemanticShotCandidates = () => {
                 <div className="semantic-candidate-meta">
                   <strong>{candidate.label}</strong>
                   <span>
-                    {candidate.finalScore ?? candidate.score} · {candidate.renderVerification?.status ?? "verifying"}
+                    {candidate.finalScore ?? candidate.score} ·{" "}
+                    {candidate.renderVerification?.status ?? "verifying"}
                   </span>
                   <button
                     type="button"
