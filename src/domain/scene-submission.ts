@@ -19,6 +19,10 @@ import {
 } from "./scene-migrations";
 import { scenePatchSchema } from "./scene-patch";
 import { sceneSpecSchema } from "./scene-schema";
+import {
+  staticBlockingPlanSchema,
+} from "./static-blocking-schema";
+import { materializeStaticBlockingPlans } from "./static-blocking";
 
 export { IntentSubmissionError };
 export type { IntentSubmissionErrorCode } from "./intent-submission-error";
@@ -27,6 +31,7 @@ export const sceneSubmissionSchema = z
   .object({
     intentReport: intentReportSchema,
     scene: sceneSpecSchema,
+    blockingPlans: z.array(staticBlockingPlanSchema).max(16).optional(),
   })
   .strict();
 
@@ -145,6 +150,7 @@ const sceneSubmissionEnvelopeSchema = z
   .object({
     intentReport: z.unknown(),
     scene: z.unknown(),
+    blockingPlans: z.unknown().optional(),
   })
   .strict();
 
@@ -170,11 +176,15 @@ const validateSubmissionPolicy = (
 
 export const parseSceneSubmission = (input: unknown): SceneSubmission => {
   const submission = normalizeSceneSubmissionInput(input);
+  const materializedScene = materializeStaticBlockingPlans(
+    submission.scene,
+    submission.blockingPlans ?? [],
+  );
   validateSubmissionPolicy(submission.intentReport, "create");
   validateIntentCoverage(submission.intentReport, {
-    after: submission.scene,
+    after: materializedScene,
   });
-  return submission;
+  return { ...submission, scene: materializedScene };
 };
 
 export const normalizeSceneSubmissionInput = (
@@ -183,7 +193,14 @@ export const normalizeSceneSubmissionInput = (
   const envelope = sceneSubmissionEnvelopeSchema.parse(input);
   const intentReport = parseIntentReport(envelope.intentReport);
   const scene = parseSceneSpecInput(envelope.scene);
-  return { intentReport, scene };
+  const blockingPlans = z
+    .array(staticBlockingPlanSchema)
+    .max(16)
+    .optional()
+    .parse(envelope.blockingPlans);
+  return blockingPlans === undefined
+    ? { intentReport, scene }
+    : { intentReport, scene, blockingPlans };
 };
 
 export const normalizePatchSubmissionInput = (

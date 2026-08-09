@@ -4,6 +4,9 @@ import { ZodError } from "zod";
 import { getRuntimeCapabilityManifest } from "../cli/runtime-capabilities";
 import { SceneDomainError } from "../src/domain/apply-scene-patch";
 import { ContactConstraintError } from "../src/domain/contact-constraints";
+import { BodyContactError } from "../src/domain/body-contacts";
+import { PoseDiagnosticsError } from "../src/domain/pose-diagnostics";
+import { StaticBlockingError } from "../src/domain/static-blocking";
 import { actorPuppetInputErrorCode } from "../src/domain/scene-patch";
 import {
   IntentSubmissionError,
@@ -374,6 +377,23 @@ export const createApiApp = (
           error: {
             code: error.code,
             message: safeContactConstraintMessage(error.code),
+          },
+        });
+        return;
+      }
+      if (
+        error instanceof BodyContactError ||
+        error instanceof StaticBlockingError ||
+        error instanceof PoseDiagnosticsError
+      ) {
+        response.status(400).json({
+          ok: false,
+          error: {
+            code: error.code,
+            message:
+              error instanceof PoseDiagnosticsError
+                ? "The scene contains an invalid pose or unresolved contact."
+                : "The static blocking request could not be satisfied.",
           },
         });
         return;

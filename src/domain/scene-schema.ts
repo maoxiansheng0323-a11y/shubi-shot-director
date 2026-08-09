@@ -16,6 +16,11 @@ import { isActorHeightWithinRange } from "./actor-stature-limits";
 import { entityLockModeSchema } from "./entity-lock";
 import { SCENE_SCHEMA_VERSION } from "./schema-versions";
 import {
+  actorBodySiteSchema,
+  contactSurfaceFaceSchema,
+  relaxedLimbSchema,
+} from "./static-blocking-schema";
+import {
   entityIdSchema,
   finiteNumberSchema,
   positiveFiniteNumberSchema,
@@ -293,6 +298,33 @@ export const sceneConstraintSchema = z.discriminatedUnion("type", [
       type: z.literal("ground-contact"),
       entityId,
       surfaceEntityId: entityId.nullable(),
+      enabled: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      id: entityId,
+      type: z.literal("body-contact"),
+      actorId: entityId,
+      bodySite: actorBodySiteSchema,
+      surfaceEntityId: entityId.nullable(),
+      surfaceFace: contactSurfaceFaceSchema,
+      role: z.enum(["contact", "support"]),
+      toleranceM: positiveFiniteNumber.min(0.001).max(0.05),
+      enabled: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      id: entityId,
+      type: z.literal("relaxed-limb"),
+      actorId: entityId,
+      limb: relaxedLimbSchema,
+      gravityDirection: vec3Schema.refine(
+        ([x, y, z]) => Math.abs(Math.hypot(x, y, z) - 1) < 0.001,
+        "Relaxed-limb gravity direction must be normalized.",
+      ),
+      maxDeviationDeg: positiveFiniteNumber.min(5).max(90),
       enabled: z.boolean(),
     })
     .strict(),
@@ -608,6 +640,9 @@ export const sceneSpecSchema = z
 
     const constraintIds = new Set<string>();
     const enabledGroundSubjects = new Set<string>();
+    const enabledBodySubjects = new Set<string>();
+    const enabledBodySites = new Set<string>();
+    const enabledRelaxedLimbs = new Set<string>();
     const entityById = new Map(
       scene.entities.map((entity) => [entity.id, entity] as const),
     );
@@ -622,10 +657,18 @@ export const sceneSpecSchema = z
       }
       constraintIds.add(constraint.id);
 
-      const referencedIds =
-        constraint.type === "ground-contact"
-          ? [constraint.entityId, constraint.surfaceEntityId]
-          : [constraint.cameraId, constraint.subjectEntityId];
+      const referencedIds = (() => {
+        switch (constraint.type) {
+          case "ground-contact":
+            return [constraint.entityId, constraint.surfaceEntityId];
+          case "body-contact":
+            return [constraint.actorId, constraint.surfaceEntityId];
+          case "relaxed-limb":
+            return [constraint.actorId];
+          case "keep-visible":
+            return [constraint.cameraId, constraint.subjectEntityId];
+        }
+      })();
       for (const referencedId of referencedIds) {
         if (referencedId !== null && !ids.has(referencedId)) {
           context.addIssue({
@@ -647,6 +690,13 @@ export const sceneSpecSchema = z
             });
           }
           enabledGroundSubjects.add(constraint.entityId);
+          if (enabledBodySubjects.has(constraint.entityId)) {
+            context.addIssue({
+              code: "custom",
+              message: "Ground contact and body contact cannot both control one actor.",
+              path: ["constraints"],
+            });
+          }
         }
         const subject = entityById.get(constraint.entityId);
         const surface =
@@ -679,6 +729,101 @@ export const sceneSpecSchema = z
             message: "A contact subject cannot be its own surface.",
             path: ["constraints"],
           });
+        }
+      } else if (constraint.type === "body-contact") {
+        const actor = entityById.get(constraint.actorId);
+        const surface =
+          constraint.surfaceEntityId === null
+            ? null
+            : entityById.get(constraint.surfaceEntityId);
+        if (actor?.kind !== "actor") {
+          context.addIssue({
+            code: "custom",
+            message: "Body contact requires an actor subject.",
+            path: ["constraints"],
+          });
+        }
+        if (
+          surface !== null &&
+          surface !== undefined &&
+          surface.kind !== "environment" &&
+          surface.kind !== "prop"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: "Body contact requires an environment or prop surface.",
+            path: ["constraints"],
+          });
+        }
+        if (
+          (constraint.surfaceEntityId === null ||
+            surface?.kind === "environment" ||
+            (surface?.kind === "prop" &&
+              surface.geometry.primitive === "plane")) &&
+          constraint.surfaceFace !== "top"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: "The selected contact surface exposes only its top face.",
+            path: ["constraints"],
+          });
+        }
+        if (
+          surface?.kind === "prop" &&
+          surface.geometry.primitive !== "box" &&
+          surface.geometry.primitive !== "plane"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: "Body contact requires a box or plane prop surface.",
+            path: ["constraints"],
+          });
+        }
+        if (constraint.actorId === constraint.surfaceEntityId) {
+          context.addIssue({
+            code: "custom",
+            message: "A contact subject cannot be its own surface.",
+            path: ["constraints"],
+          });
+        }
+        if (constraint.enabled) {
+          const siteKey = `${constraint.actorId}:${constraint.bodySite}`;
+          if (enabledBodySites.has(siteKey)) {
+            context.addIssue({
+              code: "custom",
+              message: "An actor body site cannot have multiple enabled contacts.",
+              path: ["constraints"],
+            });
+          }
+          enabledBodySites.add(siteKey);
+          enabledBodySubjects.add(constraint.actorId);
+          if (enabledGroundSubjects.has(constraint.actorId)) {
+            context.addIssue({
+              code: "custom",
+              message: "Ground contact and body contact cannot both control one actor.",
+              path: ["constraints"],
+            });
+          }
+        }
+      } else if (constraint.type === "relaxed-limb") {
+        const actor = entityById.get(constraint.actorId);
+        if (actor?.kind !== "actor") {
+          context.addIssue({
+            code: "custom",
+            message: "Relaxed-limb constraints require an actor subject.",
+            path: ["constraints"],
+          });
+        }
+        if (constraint.enabled) {
+          const limbKey = `${constraint.actorId}:${constraint.limb}`;
+          if (enabledRelaxedLimbs.has(limbKey)) {
+            context.addIssue({
+              code: "custom",
+              message: "An actor limb cannot have multiple enabled relaxed goals.",
+              path: ["constraints"],
+            });
+          }
+          enabledRelaxedLimbs.add(limbKey);
         }
       } else {
         const camera = entityById.get(constraint.cameraId);

@@ -83,6 +83,7 @@ const expectedCommandIds = [
   "patch.apply",
   "patch.submit",
   "composition.inspect",
+  "pose.inspect",
   "export.png",
   "undo",
   "redo",
@@ -104,6 +105,9 @@ const expectedFeatureIds = [
   "actor.resolved-projection",
   "actor.height",
   "actor.pose-joints",
+  "actor.static-blocking",
+  "actor.body-contact-sites",
+  "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
 ] as const;
 const temporaryDirectories: string[] = [];
@@ -736,12 +740,20 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
         "lower_leg_r",
         "foot_r",
       ],
-      operationIds: ["actor.height.set", "actor.pose.joints.set"],
+      operationIds: [
+        "actor.height.set",
+        "actor.pose.joints.set",
+        "actor.blocking.solve",
+      ],
       errorCodes: [
         "ACTOR_HEIGHT_TARGET_INVALID",
         "ACTOR_HEIGHT_RANGE_INVALID",
         "ACTOR_JOINT_TARGET_INVALID",
         "ACTOR_JOINT_ID_INVALID",
+        "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+        "STATIC_BLOCKING_CONSTRAINT_CONFLICT",
+        "STATIC_BLOCKING_POSE_PRESET_INVALID",
+        "POSE_DIAGNOSTICS_FAILED",
       ],
     },
     actorBlueprint: {
@@ -1600,7 +1612,6 @@ describe.sequential("offline structured Director real-process workflow", () => {
         (entity) => entity.lockMode !== "none",
       ),
     ).toBe(true);
-
     const loaded = await runDirectCli<{
       sceneId: string;
       revision: number;

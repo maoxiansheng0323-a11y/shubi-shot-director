@@ -28,6 +28,7 @@ import {
   vec3Schema,
 } from "./shared-schemas";
 import { PATCH_SCHEMA_VERSION } from "./schema-versions";
+import { staticBlockingPlanSchema } from "./static-blocking-schema";
 import {
   entityRegionMembershipSchema,
   spatialBoundarySchema,
@@ -220,6 +221,12 @@ const operationSchemas = [
           (updates) => Object.keys(updates).length > 0,
           "Actor joint updates must contain at least one joint.",
         ),
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("actor.blocking.solve"),
+      plan: staticBlockingPlanSchema,
     })
     .strict(),
   z

@@ -1,6 +1,14 @@
 # Visual QA
 
-Run deterministic composition inspection before visual confirmation:
+Run deterministic pose/contact diagnostics before composition or visual confirmation:
+
+```text
+node scripts/director.mjs pose inspect --json
+```
+
+Require `report.status: "pass"` for final acceptance. Joint-limit or preferred-bend violations, required contact gap/penetration, out-of-bounds support, unavailable body sites, and failed relaxed-limb targets must be resolved before screenshot review. A `check` remains explicit and export reports `POSE_DIAGNOSTICS_CHECK`; a `fail` blocks composition inspection and export. These checks provide `actor.pose-diagnostics`, `actor.body-contact-sites`, and `actor.static-blocking` evidence.
+
+Then run deterministic composition inspection:
 
 ```text
 node scripts/director.mjs composition inspect --json

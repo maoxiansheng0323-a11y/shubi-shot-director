@@ -13,6 +13,9 @@ import {
 } from "../src/domain/actor-blueprint";
 import { analyzeComposition } from "../src/domain/composition-safety";
 import {
+  analyzePoseDiagnostics,
+} from "../src/domain/pose-diagnostics";
+import {
   actorPuppetInputErrorCode,
 } from "../src/domain/scene-patch";
 import {
@@ -99,6 +102,8 @@ const actorPuppetErrorMessage = (code: string): string | undefined => {
       return "The requested actor joint target is invalid.";
     case "ACTOR_JOINT_ID_INVALID":
       return "The requested actor joint ID is unsupported.";
+    case "POSE_DIAGNOSTICS_FAILED":
+      return "The scene contains an invalid pose or unresolved contact.";
     default:
       return undefined;
   }
@@ -617,6 +622,28 @@ const runDirectorCommand = async (
   }
 
   if (
+    command === "pose" &&
+    args[1] === "inspect"
+  ) {
+    parseCompositionInspectOptions(args.slice(2));
+    await requireBridgeHealth(configuration);
+    const snapshot = await requestBridge(
+      configuration,
+      "/api/v1/scene",
+    );
+    const scene = readSceneFromEnvelope(snapshot);
+    output({
+      ok: true,
+      data: {
+        sceneId: scene.sceneId,
+        revision: scene.revision,
+        report: analyzePoseDiagnostics(scene),
+      },
+    });
+    return;
+  }
+
+  if (
     command === "composition" &&
     args[1] === "inspect"
   ) {
@@ -627,6 +654,13 @@ const runDirectorCommand = async (
       "/api/v1/scene",
     );
     const scene = readSceneFromEnvelope(snapshot);
+    const poseDiagnostics = analyzePoseDiagnostics(scene);
+    if (poseDiagnostics.status === "fail") {
+      throw new CliCommandError(
+        "POSE_DIAGNOSTICS_FAILED",
+        "The scene contains an invalid pose or unresolved contact.",
+      );
+    }
     const checkedConstraintCount = scene.constraints.filter(
       (constraint) =>
         constraint.type === "keep-visible" &&
@@ -652,6 +686,13 @@ const runDirectorCommand = async (
       "/api/v1/scene",
     );
     const scene = readSceneFromEnvelope(snapshot);
+    const poseDiagnostics = analyzePoseDiagnostics(scene);
+    if (poseDiagnostics.status === "fail") {
+      throw new CliCommandError(
+        "POSE_DIAGNOSTICS_FAILED",
+        "The scene contains an invalid pose or unresolved contact.",
+      );
+    }
     const rendered = await requestPreviewPng(
       configuration,
       options.width,
@@ -677,6 +718,9 @@ const runDirectorCommand = async (
         entity.id === scene.activeCameraId,
     );
     const warnings: string[] = [];
+    if (poseDiagnostics.status === "check") {
+      warnings.push("POSE_DIAGNOSTICS_CHECK");
+    }
     if (activeCamera?.lockMode === "none") {
       warnings.push("ACTIVE_CAMERA_UNLOCKED");
     }

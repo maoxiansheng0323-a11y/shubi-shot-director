@@ -34,6 +34,12 @@ export interface ActorVisibleRigBounds {
   supportOffsetM: number;
 }
 
+export interface ActorVisiblePrimitivePointCloud {
+  primitiveId: ActorVisiblePrimitiveId;
+  localPoints: Vec3[];
+  worldPoints: Vec3[];
+}
+
 const axisDirections: readonly Vec3[] = [
   [1, 0, 0],
   [-1, 0, 0],
@@ -254,13 +260,12 @@ const pointBounds = (points: readonly Vec3[]): { min: Vec3; max: Vec3 } => ({
   ],
 });
 
-export const actorVisibleRigBounds = (
+export const actorVisiblePrimitivePointClouds = (
   sceneOrActor: SceneSpec | LegacyActorEntity,
   actorOrTransform?: AnyActorEntity | TransformSpec,
   transformOverride?: TransformSpec,
-): ActorVisibleRigBounds => {
-  const scene =
-    "sceneId" in sceneOrActor ? sceneOrActor : null;
+): ActorVisiblePrimitivePointCloud[] => {
+  const scene = "sceneId" in sceneOrActor ? sceneOrActor : null;
   const actor = (
     scene === null ? sceneOrActor : actorOrTransform
   ) as AnyActorEntity;
@@ -273,9 +278,9 @@ export const actorVisibleRigBounds = (
     scene === null
       ? resolveLegacyActorProjection(actor as LegacyActorEntity)
       : resolveActorProjection(scene, actor);
-  const primitiveIds = primitives.map(({ id }) => id);
-  const localPoints: Vec3[] = [];
-  for (const primitive of primitives) {
+
+  return primitives.map((primitive) => {
+    const localPoints: Vec3[] = [];
     switch (primitive.kind) {
       case "sphere":
         localPoints.push(
@@ -307,17 +312,12 @@ export const actorVisibleRigBounds = (
         );
         break;
       }
-      case "cylinder": {
+      case "cylinder":
         localPoints.push(...cylinderPoints(primitive));
         break;
-      }
       case "box":
         localPoints.push(
-          ...boxPoints(
-            primitive.frame,
-            primitive.center,
-            primitive.size,
-          ),
+          ...boxPoints(primitive.frame, primitive.center, primitive.size),
         );
         break;
       case "profile":
@@ -327,9 +327,39 @@ export const actorVisibleRigBounds = (
         localPoints.push(...ellipsoidPoints(primitive, transform));
         break;
     }
-  }
+    return {
+      primitiveId: primitive.id,
+      localPoints,
+      worldPoints: localPoints.map((point) => transformPoint(transform, point)),
+    };
+  });
+};
 
-  const worldPoints = localPoints.map((point) => transformPoint(transform, point));
+export const actorVisibleRigBounds = (
+  sceneOrActor: SceneSpec | LegacyActorEntity,
+  actorOrTransform?: AnyActorEntity | TransformSpec,
+  transformOverride?: TransformSpec,
+): ActorVisibleRigBounds => {
+  const scene =
+    "sceneId" in sceneOrActor ? sceneOrActor : null;
+  const actor = (
+    scene === null ? sceneOrActor : actorOrTransform
+  ) as AnyActorEntity;
+  const transform =
+    transformOverride ??
+    (scene === null && actorOrTransform && "positionM" in actorOrTransform
+      ? actorOrTransform
+      : actor.transform);
+  const pointClouds =
+    scene === null
+      ? actorVisiblePrimitivePointClouds(
+          actor as LegacyActorEntity,
+          transform,
+        )
+      : actorVisiblePrimitivePointClouds(scene, actor, transform);
+  const primitiveIds = pointClouds.map(({ primitiveId }) => primitiveId);
+  const localPoints = pointClouds.flatMap(({ localPoints: points }) => points);
+  const worldPoints = pointClouds.flatMap(({ worldPoints: points }) => points);
   const localBounds = pointBounds(localPoints);
   const worldBounds = pointBounds(worldPoints);
   return {
