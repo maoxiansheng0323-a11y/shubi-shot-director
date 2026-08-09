@@ -9,7 +9,7 @@ This is a still-pose solver. It has no prompt input, model call, animation, time
 - Body sites: `pelvis`, `upper-back`, `chest`, `head`, left/right `hand`, `knee`, and `foot`.
 - Surfaces: implicit world ground with `surfaceEntityId: null` and `surfaceFace: "top"`; room floors; box prop faces; plane prop top faces.
 - Contact roles: `support` for a load-bearing relation and `contact` for required touching.
-- Relaxed limbs: `arm-l` and `arm-r`, targeting normalized world gravity `[0, -1, 0]` for both upper arm and forearm, with a small preferred-direction elbow bend and no physical simulation.
+- Relaxed limbs: `arm-l` and `arm-r`. Without `restSurface`, both segments target normalized world gravity `[0, -1, 0]` with a small preferred-direction elbow bend. With `restSurface`, the runtime uses a deterministic two-bone static solve so the hand reaches the selected support surface while the elbow keeps its canonical bend direction.
 - Broad pose goals: an optional immutable built-in seed pose, trunk lean/side-bend/twist, and `legPosture: "bent-resting"`.
 
 The solver enforces canonical joint limits and preferred elbow/knee bend directions. It rejects a missing body site, conflicting contact ownership, invalid preset seed, joint reversal, unresolved required contact, surface penetration, out-of-bounds support, or unavailable relaxed limb before visual QA.
@@ -53,13 +53,19 @@ For a new scene, keep the authored SceneSpec generic and structurally valid, the
   "relaxedLimbs": [
     {
       "constraintId": "relaxed_arm_r_1",
-      "limb": "arm-r"
+      "limb": "arm-r",
+      "restSurface": {
+        "surfaceEntityId": null,
+        "surfaceFace": "top"
+      }
     }
   ]
 }
 ```
 
-The Host chooses broad values such as a 10-degree backward trunk goal. It must not author the resulting fifteen bespoke joint quaternions. Use built-in pose presets without a blocking plan when no additional support/contact relation is required. A pelvis contact on the infinite world floor is incompatible with a complete gravity-down arm when the actor's arm reach extends below the pelvis; use a real elevated support or omit the relaxed-arm goal instead of weakening diagnostics.
+The Host chooses broad values such as a 10-degree backward trunk goal. It must not author the resulting fifteen bespoke joint quaternions. Use built-in pose presets without a blocking plan when no additional support/contact relation is required. Omit `restSurface` for a free-hanging arm. Supply it only when the named world-ground, room-floor, plane-top, or box face must stop the relaxed hand; the runtime first materializes body contacts, then solves the shoulder-elbow-wrist chain against that final geometry.
+
+`restSurface` is a narrow resting-arm semantic, not a general IK target. The gravity ray from the shoulder must encounter a gravity-opposing surface within the legal two-bone reach. An unreachable surface, reversed elbow, joint-limit violation, terminal gap, surface penetration, or out-of-bounds terminal remains a diagnostic failure; the runtime does not force an extreme angle.
 
 ## Modify materialization
 
@@ -82,6 +88,6 @@ Run this before composition inspection or screenshot review:
 node scripts/director.mjs pose inspect --json
 ```
 
-Require `report.status: "pass"` for final acceptance. `check` requires explicit inspection and is emitted as `POSE_DIAGNOSTICS_CHECK` on export; `fail` blocks new static-blocking acceptance, composition inspection, and PNG export. Historical schema-valid scenes load without pose normalization; loading them does not convert a diagnostic failure into acceptance. For each required contact retain `gapM`, `penetrationM`, `boundsOverflowM`, `actorMinGapM`, and anatomical-surface orientation when the body site defines one. For relaxed limbs retain upper/lower gravity deviation. Joint violations include canonical joint, axis, measured angle, allowed range, and reversal code.
+Require `report.status: "pass"` for final acceptance. `check` requires explicit inspection and is emitted as `POSE_DIAGNOSTICS_CHECK` on export; `fail` blocks new static-blocking acceptance, composition inspection, and PNG export. Historical schema-valid scenes load without pose normalization; loading them does not convert a diagnostic failure into acceptance. For each required contact retain `gapM`, `penetrationM`, `boundsOverflowM`, `actorMinGapM`, and anatomical-surface orientation when the body site defines one. Relaxed-limb diagnostics report `mode: "free-hanging" | "surface-resting"`. Free-hanging limbs retain upper/lower gravity deviation. Surface-resting limbs additionally retain the terminal point and gap, arm minimum gap, bounds overflow, elbow bend, terminal gravity drop, upper-arm gravity alignment, and surface gravity opposition; their forearm is not required to remain gravity-parallel after contact. Joint violations include canonical joint, axis, measured angle, allowed range, and reversal code.
 
 Visual QA follows deterministic pose QA and is limited to final composition, readability, and visual confirmation. It is not the primary detector for joint reversal or missing support.

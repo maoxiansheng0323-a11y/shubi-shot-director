@@ -90,7 +90,7 @@ Portable or native relative `--file` paths are resolved against the directory wh
 ## Solve static blocking
 
 - Read [static-blocking.md](references/static-blocking.md) before authoring `blockingPlans` or `actor.blocking.solve`.
-- Host Codex authors only generic structured semantics: actor ID, available body sites, surface IDs/faces, support/contact roles, relaxed arm, optional preset seed, broad trunk goal, and bent-resting leg goal. It does not guess the materialized fifteen-joint quaternion set.
+- Host Codex authors only generic structured semantics: actor ID, available body sites, surface IDs/faces, support/contact roles, relaxed arm with an optional narrow `restSurface`, optional preset seed, broad trunk goal, and bent-resting leg goal. It does not guess the materialized fifteen-joint quaternion set.
 - The runtime deterministically materializes actor translation and canonical pose, persists ordinary body-contact/relaxed-limb constraints in SceneSpec, and rejects joint reversal, unresolved contact, surface penetration, missing support, or an unavailable limb.
 - Keep built-in pose presets as the fast path for ordinary actions. Keep direct joint manipulation as final manual refinement or recovery; do not require it for solver acceptance.
 - Run `pose inspect --json` before composition inspection. A diagnostic `fail` blocks a new static-blocking result and export; a `check` remains explicit and never becomes an automatic visual pass. Historical schema-valid scenes load without pose normalization, but their diagnostics are not retroactively accepted.

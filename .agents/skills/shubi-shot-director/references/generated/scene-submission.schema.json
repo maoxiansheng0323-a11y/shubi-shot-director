@@ -3283,6 +3283,40 @@
                     "minimum": 5,
                     "maximum": 90
                   },
+                  "restSurface": {
+                    "type": "object",
+                    "properties": {
+                      "surfaceEntityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "surfaceFace": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom",
+                          "left",
+                          "right",
+                          "front",
+                          "back"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "surfaceEntityId",
+                      "surfaceFace"
+                    ],
+                    "additionalProperties": false
+                  },
                   "enabled": {
                     "type": "boolean"
                   }
@@ -3544,6 +3578,40 @@
                     "arm-l",
                     "arm-r"
                   ]
+                },
+                "restSurface": {
+                  "type": "object",
+                  "properties": {
+                    "surfaceEntityId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 64,
+                          "pattern": "^[a-z][a-z0-9_-]*$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "surfaceFace": {
+                      "type": "string",
+                      "enum": [
+                        "top",
+                        "bottom",
+                        "left",
+                        "right",
+                        "front",
+                        "back"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "surfaceEntityId",
+                    "surfaceFace"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [

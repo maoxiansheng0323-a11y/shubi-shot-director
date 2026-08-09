@@ -53,6 +53,18 @@ export const blockingRelaxedLimbSchema = z
   .object({
     constraintId: entityIdSchema,
     limb: relaxedLimbSchema,
+    restSurface: z
+      .object({
+        surfaceEntityId: entityIdSchema.nullable(),
+        surfaceFace: contactSurfaceFaceSchema,
+      })
+      .strict()
+      .refine(
+        (surface) =>
+          surface.surfaceEntityId !== null || surface.surfaceFace === "top",
+        "Implicit world ground only exposes its top surface.",
+      )
+      .optional(),
   })
   .strict();
 

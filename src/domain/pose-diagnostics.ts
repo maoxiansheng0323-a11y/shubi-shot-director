@@ -18,12 +18,20 @@ import {
   jointEulerDegrees,
   type JointLimitViolation,
 } from "./joint-constraints";
+import {
+  measureSurfaceRestingArm,
+  RELAXED_ARM_SURFACE_EPSILON_M,
+} from "./relaxed-arm";
 import type {
   AnyActorEntity,
   SceneSpec,
   Vec3,
 } from "./scene-schema";
 import { rotateVector } from "./scene-math";
+import {
+  BODY_CONTACT_TOLERANCE_M,
+  type ContactSurfaceFace,
+} from "./static-blocking-schema";
 
 export const poseDiagnosticStatuses = ["pass", "check", "fail"] as const;
 export type PoseDiagnosticStatus =
@@ -41,7 +49,13 @@ export type PoseDiagnosticIssueCode =
   | "ACTOR_SURFACE_PENETRATION"
   | "SUPPORT_DIRECTION_INVALID"
   | "RELAXED_LIMB_UNAVAILABLE"
-  | "RELAXED_LIMB_DIRECTION";
+  | "RELAXED_LIMB_DIRECTION"
+  | "RELAXED_LIMB_SURFACE_INVALID"
+  | "RELAXED_LIMB_SURFACE_GAP"
+  | "RELAXED_LIMB_SURFACE_PENETRATION"
+  | "RELAXED_LIMB_SURFACE_OUT_OF_BOUNDS"
+  | "RELAXED_LIMB_ELBOW_BEND"
+  | "RELAXED_LIMB_GRAVITY_RELATION";
 
 export interface PoseDiagnosticIssue {
   readonly code: PoseDiagnosticIssueCode;
@@ -74,10 +88,23 @@ export interface RelaxedLimbDiagnostic {
   readonly constraintId: string;
   readonly actorId: string;
   readonly limb: "arm-l" | "arm-r";
+  readonly mode: "free-hanging" | "surface-resting";
   readonly gravityDirection: Vec3;
   readonly upperDeviationDeg: number | null;
   readonly lowerDeviationDeg: number | null;
   readonly maxDeviationDeg: number;
+  readonly restSurfaceEntityId: string | null;
+  readonly restSurfaceFace: ContactSurfaceFace | null;
+  readonly terminalBodySite: "hand-l" | "hand-r" | null;
+  readonly terminalPointWorld: Vec3 | null;
+  readonly terminalGapM: number | null;
+  readonly terminalPenetrationM: number | null;
+  readonly boundsOverflowM: number | null;
+  readonly armMinGapM: number | null;
+  readonly elbowBendDeg: number | null;
+  readonly terminalDropM: number | null;
+  readonly upperGravityAlignment: number | null;
+  readonly surfaceGravityOpposition: number | null;
   readonly status: PoseDiagnosticStatus;
 }
 
@@ -354,15 +381,32 @@ export const analyzePoseDiagnostics = (
       const directions = actor
         ? relaxedLimbDirections(scene, actor, constraint.limb)
         : null;
+      const mode = constraint.restSurface
+        ? "surface-resting"
+        : "free-hanging";
       if (!directions) {
         relaxedLimbs.push({
           constraintId: constraint.id,
           actorId: constraint.actorId,
           limb: constraint.limb,
+          mode,
           gravityDirection: constraint.gravityDirection,
           upperDeviationDeg: null,
           lowerDeviationDeg: null,
           maxDeviationDeg: constraint.maxDeviationDeg,
+          restSurfaceEntityId:
+            constraint.restSurface?.surfaceEntityId ?? null,
+          restSurfaceFace: constraint.restSurface?.surfaceFace ?? null,
+          terminalBodySite: null,
+          terminalPointWorld: null,
+          terminalGapM: null,
+          terminalPenetrationM: null,
+          boundsOverflowM: null,
+          armMinGapM: null,
+          elbowBendDeg: null,
+          terminalDropM: null,
+          upperGravityAlignment: null,
+          surfaceGravityOpposition: null,
           status: "fail",
         });
         issues.push({
@@ -381,6 +425,173 @@ export const analyzePoseDiagnostics = (
         directions.lower,
         constraint.gravityDirection,
       );
+      if (constraint.restSurface && actor) {
+        const forearmId = constraint.limb === "arm-l"
+          ? "forearm_l"
+          : "forearm_r";
+        const elbowBendDeg = jointEulerDegrees(
+          actor.pose.joints[forearmId],
+        )[0];
+        try {
+          const measurement = measureSurfaceRestingArm(
+            scene,
+            actor,
+            constraint.limb,
+            constraint.restSurface,
+          );
+          const upperGravityAlignment = Math.cos(
+            (upperDeviationDeg * Math.PI) / 180,
+          );
+          let status: PoseDiagnosticStatus = "pass";
+          const gapStatus = thresholdStatus(
+            Math.abs(measurement.terminalGapM),
+            BODY_CONTACT_TOLERANCE_M,
+          );
+          status = maximumStatus(status, gapStatus);
+          if (gapStatus !== "pass") {
+            issues.push({
+              code: "RELAXED_LIMB_SURFACE_GAP",
+              status: gapStatus,
+              actorId: constraint.actorId,
+              constraintId: constraint.id,
+              measured: measurement.terminalGapM,
+              tolerance: BODY_CONTACT_TOLERANCE_M,
+            });
+          }
+          const penetrationStatus: PoseDiagnosticStatus =
+            measurement.armMinGapM >= -RELAXED_ARM_SURFACE_EPSILON_M
+              ? "pass"
+              : "fail";
+          status = maximumStatus(status, penetrationStatus);
+          if (penetrationStatus !== "pass") {
+            issues.push({
+              code: "RELAXED_LIMB_SURFACE_PENETRATION",
+              status: penetrationStatus,
+              actorId: constraint.actorId,
+              constraintId: constraint.id,
+              measured: measurement.armMinGapM,
+              tolerance: RELAXED_ARM_SURFACE_EPSILON_M,
+            });
+          }
+          const boundsStatus = thresholdStatus(
+            measurement.boundsOverflowM,
+            BODY_CONTACT_TOLERANCE_M,
+          );
+          status = maximumStatus(status, boundsStatus);
+          if (boundsStatus !== "pass") {
+            issues.push({
+              code: "RELAXED_LIMB_SURFACE_OUT_OF_BOUNDS",
+              status: boundsStatus,
+              actorId: constraint.actorId,
+              constraintId: constraint.id,
+              measured: measurement.boundsOverflowM,
+              tolerance: BODY_CONTACT_TOLERANCE_M,
+            });
+          }
+          if (elbowBendDeg > -1 || elbowBendDeg < -150) {
+            status = "fail";
+            issues.push({
+              code: "RELAXED_LIMB_ELBOW_BEND",
+              status: "fail",
+              actorId: constraint.actorId,
+              constraintId: constraint.id,
+              jointId: forearmId,
+              axis: "x",
+              measured: elbowBendDeg,
+              minimum: -150,
+              maximum: -1,
+            });
+          }
+          if (upperGravityAlignment <= 0) {
+            status = "fail";
+            issues.push({
+              code: "RELAXED_LIMB_GRAVITY_RELATION",
+              status: "fail",
+              actorId: constraint.actorId,
+              constraintId: constraint.id,
+              measured: upperGravityAlignment,
+              minimum: 0,
+            });
+          }
+          if (measurement.terminalDropM <= BODY_CONTACT_TOLERANCE_M) {
+            status = "fail";
+            issues.push({
+              code: "RELAXED_LIMB_GRAVITY_RELATION",
+              status: "fail",
+              actorId: constraint.actorId,
+              constraintId: constraint.id,
+              measured: measurement.terminalDropM,
+              minimum: BODY_CONTACT_TOLERANCE_M,
+            });
+          }
+          if (measurement.surfaceGravityOpposition < 0.5) {
+            status = "fail";
+            issues.push({
+              code: "RELAXED_LIMB_GRAVITY_RELATION",
+              status: "fail",
+              actorId: constraint.actorId,
+              constraintId: constraint.id,
+              measured: measurement.surfaceGravityOpposition,
+              minimum: 0.5,
+            });
+          }
+          relaxedLimbs.push({
+            constraintId: constraint.id,
+            actorId: constraint.actorId,
+            limb: constraint.limb,
+            mode,
+            gravityDirection: constraint.gravityDirection,
+            upperDeviationDeg,
+            lowerDeviationDeg,
+            maxDeviationDeg: constraint.maxDeviationDeg,
+            restSurfaceEntityId: constraint.restSurface.surfaceEntityId,
+            restSurfaceFace: constraint.restSurface.surfaceFace,
+            terminalBodySite: measurement.terminalBodySite,
+            terminalPointWorld: measurement.terminalPointWorld,
+            terminalGapM: measurement.terminalGapM,
+            terminalPenetrationM: measurement.terminalPenetrationM,
+            boundsOverflowM: measurement.boundsOverflowM,
+            armMinGapM: measurement.armMinGapM,
+            elbowBendDeg,
+            terminalDropM: measurement.terminalDropM,
+            upperGravityAlignment,
+            surfaceGravityOpposition:
+              measurement.surfaceGravityOpposition,
+            status,
+          });
+        } catch {
+          relaxedLimbs.push({
+            constraintId: constraint.id,
+            actorId: constraint.actorId,
+            limb: constraint.limb,
+            mode,
+            gravityDirection: constraint.gravityDirection,
+            upperDeviationDeg,
+            lowerDeviationDeg,
+            maxDeviationDeg: constraint.maxDeviationDeg,
+            restSurfaceEntityId: constraint.restSurface.surfaceEntityId,
+            restSurfaceFace: constraint.restSurface.surfaceFace,
+            terminalBodySite: null,
+            terminalPointWorld: null,
+            terminalGapM: null,
+            terminalPenetrationM: null,
+            boundsOverflowM: null,
+            armMinGapM: null,
+            elbowBendDeg,
+            terminalDropM: null,
+            upperGravityAlignment: null,
+            surfaceGravityOpposition: null,
+            status: "fail",
+          });
+          issues.push({
+            code: "RELAXED_LIMB_SURFACE_INVALID",
+            status: "fail",
+            actorId: constraint.actorId,
+            constraintId: constraint.id,
+          });
+        }
+        continue;
+      }
       const maximumDeviation = Math.max(
         upperDeviationDeg,
         lowerDeviationDeg,
@@ -393,10 +604,23 @@ export const analyzePoseDiagnostics = (
         constraintId: constraint.id,
         actorId: constraint.actorId,
         limb: constraint.limb,
+        mode,
         gravityDirection: constraint.gravityDirection,
         upperDeviationDeg,
         lowerDeviationDeg,
         maxDeviationDeg: constraint.maxDeviationDeg,
+        restSurfaceEntityId: null,
+        restSurfaceFace: null,
+        terminalBodySite: null,
+        terminalPointWorld: null,
+        terminalGapM: null,
+        terminalPenetrationM: null,
+        boundsOverflowM: null,
+        armMinGapM: null,
+        elbowBendDeg: null,
+        terminalDropM: null,
+        upperGravityAlignment: null,
+        surfaceGravityOpposition: null,
         status,
       });
       if (status !== "pass") {

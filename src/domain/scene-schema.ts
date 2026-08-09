@@ -325,6 +325,19 @@ export const sceneConstraintSchema = z.discriminatedUnion("type", [
         "Relaxed-limb gravity direction must be normalized.",
       ),
       maxDeviationDeg: positiveFiniteNumber.min(5).max(90),
+      restSurface: z
+        .object({
+          surfaceEntityId: entityId.nullable(),
+          surfaceFace: contactSurfaceFaceSchema,
+        })
+        .strict()
+        .refine(
+          (surface) =>
+            surface.surfaceEntityId !== null ||
+            surface.surfaceFace === "top",
+          "Implicit world ground only exposes its top surface.",
+        )
+        .optional(),
       enabled: z.boolean(),
     })
     .strict(),
@@ -664,7 +677,10 @@ export const sceneSpecSchema = z
           case "body-contact":
             return [constraint.actorId, constraint.surfaceEntityId];
           case "relaxed-limb":
-            return [constraint.actorId];
+            return [
+              constraint.actorId,
+              constraint.restSurface?.surfaceEntityId ?? null,
+            ];
           case "keep-visible":
             return [constraint.cameraId, constraint.subjectEntityId];
         }
@@ -807,10 +823,62 @@ export const sceneSpecSchema = z
         }
       } else if (constraint.type === "relaxed-limb") {
         const actor = entityById.get(constraint.actorId);
+        const surface = constraint.restSurface?.surfaceEntityId === null
+          ? null
+          : constraint.restSurface?.surfaceEntityId === undefined
+            ? undefined
+            : entityById.get(constraint.restSurface.surfaceEntityId);
         if (actor?.kind !== "actor") {
           context.addIssue({
             code: "custom",
             message: "Relaxed-limb constraints require an actor subject.",
+            path: ["constraints"],
+          });
+        }
+        if (
+          surface !== null &&
+          surface !== undefined &&
+          surface.kind !== "environment" &&
+          surface.kind !== "prop"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "A relaxed-limb rest surface must be an environment or prop.",
+            path: ["constraints"],
+          });
+        }
+        if (
+          constraint.restSurface !== undefined &&
+          (constraint.restSurface.surfaceEntityId === null ||
+            surface?.kind === "environment" ||
+            (surface?.kind === "prop" &&
+              surface.geometry.primitive === "plane")) &&
+          constraint.restSurface.surfaceFace !== "top"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "The selected relaxed-limb rest surface exposes only its top face.",
+            path: ["constraints"],
+          });
+        }
+        if (
+          surface?.kind === "prop" &&
+          surface.geometry.primitive !== "box" &&
+          surface.geometry.primitive !== "plane"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "A relaxed-limb rest surface requires a box or plane prop.",
+            path: ["constraints"],
+          });
+        }
+        if (constraint.actorId === constraint.restSurface?.surfaceEntityId) {
+          context.addIssue({
+            code: "custom",
+            message: "A relaxed limb cannot rest on its own actor.",
             path: ["constraints"],
           });
         }

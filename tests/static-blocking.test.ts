@@ -125,6 +125,112 @@ const createDirectionalContactScene = (
   return enforceBodyContacts(sceneSpecSchema.parse(scene));
 };
 
+const createLowArmScene = (
+  surfaceHeightM = 0,
+  surfaceEntityId: string | null = null,
+): SceneSpec => {
+  const scene = createDefaultScene();
+  scene.constraints = [];
+  const actor = scene.entities.find((entity) => entity.kind === "actor");
+  const prop = scene.entities.find((entity) => entity.kind === "prop");
+  if (!actor || actor.kind !== "actor" || !prop || prop.kind !== "prop") {
+    throw new Error("Low arm fixture is incomplete.");
+  }
+  actor.transform.positionM = [0, 0.1, 0];
+  if (surfaceEntityId !== null) {
+    prop.id = surfaceEntityId;
+    prop.label = "Generic arm rest surface";
+    prop.transform.positionM = [0, surfaceHeightM - 0.1, 0];
+    prop.transform.rotation = [0, 0, 0, 1];
+    prop.geometry = {
+      primitive: "box",
+      sizeM: [2.4, 0.2, 2.4],
+    };
+  }
+  return sceneSpecSchema.parse(scene);
+};
+
+const restingArmPlan = (
+  limb: "arm-l" | "arm-r",
+  surfaceEntityId: string | null = null,
+): StaticBlockingPlan => ({
+  schemaVersion: 1,
+  planId: `blocking_rest_${limb.replace("-", "_")}_1`,
+  actorId: "actor_generic_1",
+  contacts: [],
+  relaxedLimbs: [
+    {
+      constraintId: `relaxed_rest_${limb.replace("-", "_")}_1`,
+      limb,
+      restSurface: {
+        surfaceEntityId,
+        surfaceFace: "top",
+      },
+    },
+  ],
+});
+
+const createGroundRestingProductionScene = (): SceneSpec => {
+  const scene = createDefaultScene();
+  scene.constraints = [];
+  const actor = scene.entities.find((entity) => entity.kind === "actor");
+  const prop = scene.entities.find((entity) => entity.kind === "prop");
+  if (!actor || actor.kind !== "actor" || !prop || prop.kind !== "prop") {
+    throw new Error("Ground resting production fixture is incomplete.");
+  }
+  actor.transform.positionM = [0, 0.1, 0];
+  if ("body" in actor) {
+    actor.body.limbPresence.upper_arm_l = "absent";
+    actor.body.limbPresence.forearm_l = "absent";
+    actor.body.limbPresence.hand_l = "absent";
+  }
+  prop.id = "prop_back_support_ground_1";
+  prop.label = "Generic low back support";
+  prop.transform.positionM = [0, 0.5, -0.5];
+  prop.transform.rotation = [0, 0, 0, 1];
+  prop.geometry = {
+    primitive: "box",
+    sizeM: [1.4, 0.5, 0.3],
+  };
+  return sceneSpecSchema.parse(scene);
+};
+
+const groundRestingProductionPlan = (): StaticBlockingPlan => ({
+  schemaVersion: 1,
+  planId: "blocking_ground_resting_production_1",
+  actorId: "actor_generic_1",
+  trunk: {
+    lean: { direction: "backward", angleDeg: 20 },
+  },
+  legPosture: "bent-resting",
+  contacts: [
+    {
+      constraintId: "contact_pelvis_world_ground_1",
+      bodySite: "pelvis",
+      surfaceEntityId: null,
+      surfaceFace: "top",
+      role: "support",
+    },
+    {
+      constraintId: "contact_upper_back_low_box_1",
+      bodySite: "upper-back",
+      surfaceEntityId: "prop_back_support_ground_1",
+      surfaceFace: "front",
+      role: "support",
+    },
+  ],
+  relaxedLimbs: [
+    {
+      constraintId: "relaxed_arm_r_world_ground_1",
+      limb: "arm-r",
+      restSurface: {
+        surfaceEntityId: null,
+        surfaceFace: "top",
+      },
+    },
+  ],
+});
+
 describe("deterministic static blocking", () => {
   it("materializes two body contacts and a gravity-down relaxed arm", () => {
     let solved: SceneSpec;
@@ -259,9 +365,202 @@ describe("deterministic static blocking", () => {
       const relaxed = analyzePoseDiagnostics(solved).relaxedLimbs[0];
 
       expect(relaxed?.status).toBe("pass");
+      expect(relaxed?.mode).toBe("free-hanging");
       expect(relaxed?.upperDeviationDeg).toBeLessThan(1);
       expect(relaxed?.lowerDeviationDeg).toBeCloseTo(12, 4);
       expect(relaxed?.maxDeviationDeg).toBe(20);
+    },
+  );
+
+  it.each(["arm-l", "arm-r"] as const)(
+    "solves a low %s onto world ground without arm penetration",
+    (limb) => {
+      const solved = materializeStaticBlockingPlan(
+        createLowArmScene(),
+        restingArmPlan(limb),
+      );
+      const report = analyzePoseDiagnostics(solved);
+      const relaxed = report.relaxedLimbs[0];
+
+      expect(report.status).toBe("pass");
+      expect(report.jointViolations).toEqual([]);
+      expect(relaxed).toMatchObject({
+        limb,
+        mode: "surface-resting",
+        restSurfaceEntityId: null,
+        restSurfaceFace: "top",
+        terminalBodySite: limb === "arm-l" ? "hand-l" : "hand-r",
+        status: "pass",
+      });
+      expect(Math.abs(relaxed?.terminalGapM ?? 1)).toBeLessThan(1e-6);
+      expect(relaxed?.terminalPenetrationM).toBeLessThan(1e-6);
+      expect(relaxed?.armMinGapM).toBeGreaterThanOrEqual(-0.00001);
+      expect(relaxed?.elbowBendDeg).toBeLessThan(-1);
+      expect(relaxed?.upperGravityAlignment).toBeGreaterThan(0);
+      expect(relaxed?.terminalDropM).toBeGreaterThan(0);
+    },
+  );
+
+  it("solves a surface-resting arm on a box top", () => {
+    const surfaceId = "prop_arm_rest_surface_1";
+    const solved = materializeStaticBlockingPlan(
+      createLowArmScene(0.06, surfaceId),
+      restingArmPlan("arm-r", surfaceId),
+    );
+    const relaxed = analyzePoseDiagnostics(solved).relaxedLimbs[0];
+
+    expect(relaxed).toMatchObject({
+      mode: "surface-resting",
+      restSurfaceEntityId: surfaceId,
+      restSurfaceFace: "top",
+      boundsOverflowM: 0,
+      status: "pass",
+    });
+    expect(Math.abs(relaxed?.terminalGapM ?? 1)).toBeLessThan(1e-6);
+    expect(relaxed?.armMinGapM).toBeGreaterThanOrEqual(-0.00001);
+  });
+
+  it("solves a sub-contact-tolerance penetration instead of accepting it", () => {
+    const surfaceId = "prop_shallow_arm_intercept_1";
+    const solved = materializeStaticBlockingPlan(
+      createLowArmScene(-0.15, surfaceId),
+      restingArmPlan("arm-r", surfaceId),
+    );
+    const relaxed = analyzePoseDiagnostics(solved).relaxedLimbs[0];
+
+    expect(relaxed?.status).toBe("pass");
+    expect(Math.abs(relaxed?.terminalGapM ?? 1)).toBeLessThan(1e-6);
+    expect(relaxed?.armMinGapM).toBeGreaterThanOrEqual(-0.00001);
+    expect(relaxed?.elbowBendDeg).not.toBeCloseTo(-12, 3);
+  });
+
+  it("changes elbow bend deterministically with rest-surface height", () => {
+    const surfaceId = "prop_variable_arm_rest_1";
+    const low = materializeStaticBlockingPlan(
+      createLowArmScene(0.02, surfaceId),
+      restingArmPlan("arm-r", surfaceId),
+    );
+    const high = materializeStaticBlockingPlan(
+      createLowArmScene(0.14, surfaceId),
+      restingArmPlan("arm-r", surfaceId),
+    );
+    const lowElbow = analyzePoseDiagnostics(low).relaxedLimbs[0]?.elbowBendDeg;
+    const highElbow = analyzePoseDiagnostics(high).relaxedLimbs[0]?.elbowBendDeg;
+
+    expect(lowElbow).toBeTypeOf("number");
+    expect(highElbow).toBeTypeOf("number");
+    expect(Math.abs(highElbow ?? 0)).toBeGreaterThan(
+      Math.abs(lowElbow ?? 0) + 5,
+    );
+    expect(high).toEqual(
+      materializeStaticBlockingPlan(
+        createLowArmScene(0.14, surfaceId),
+        restingArmPlan("arm-r", surfaceId),
+      ),
+    );
+  });
+
+  it("solves the generic ground-resting production geometry without an elevated pelvis", () => {
+    const solved = materializeStaticBlockingPlan(
+      createGroundRestingProductionScene(),
+      groundRestingProductionPlan(),
+    );
+    const report = analyzePoseDiagnostics(solved);
+    const relaxed = report.relaxedLimbs[0];
+    const actor = solved.entities.find(
+      (entity) => entity.id === "actor_generic_1",
+    );
+
+    expect(report.status).toBe("pass");
+    expect(report.contacts).toEqual([
+      expect.objectContaining({
+        constraintId: "contact_pelvis_world_ground_1",
+        gapM: expect.closeTo(0, 8),
+        actorMinGapM: expect.closeTo(0, 8),
+        status: "pass",
+      }),
+      expect.objectContaining({
+        constraintId: "contact_upper_back_low_box_1",
+        gapM: expect.closeTo(0, 8),
+        orientationDeviationDeg: expect.closeTo(20, 5),
+        status: "pass",
+      }),
+    ]);
+    expect(relaxed).toMatchObject({
+      mode: "surface-resting",
+      terminalGapM: expect.closeTo(0, 6),
+      elbowBendDeg: expect.closeTo(-76.8495, 4),
+      status: "pass",
+    });
+    expect(report.jointViolations).toEqual([]);
+    expect(actor).toMatchObject({
+      body: {
+        limbPresence: {
+          upper_arm_l: "absent",
+          forearm_l: "absent",
+          hand_l: "absent",
+        },
+      },
+    });
+  });
+
+  it("fails an unreachable rest surface without forcing extreme joints", () => {
+    const surfaceId = "prop_unreachable_arm_rest_1";
+    let failure: unknown;
+    try {
+      materializeStaticBlockingPlan(
+        createLowArmScene(0.5, surfaceId),
+        restingArmPlan("arm-r", surfaceId),
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
+      code: "POSE_DIAGNOSTICS_FAILED",
+      report: {
+        status: "fail",
+        relaxedLimbs: [
+          expect.objectContaining({
+            mode: "surface-resting",
+            status: "fail",
+          }),
+        ],
+      },
+    });
+    const report = (failure as { report: ReturnType<typeof analyzePoseDiagnostics> })
+      .report;
+    expect(report.jointViolations).toEqual([]);
+  });
+
+  it.each([
+    ["forearm_r", 35, "JOINT_BEND_REVERSED"],
+    ["upper_arm_r", 145, "JOINT_LIMIT_EXCEEDED"],
+  ] as const)(
+    "keeps a surface-resting arm failed after a %s violation",
+    (jointId, angleDeg, code) => {
+      const solved = materializeStaticBlockingPlan(
+        createLowArmScene(),
+        restingArmPlan("arm-r"),
+      );
+      const actor = solved.entities.find(
+        (entity) => entity.id === "actor_generic_1",
+      );
+      if (!actor || actor.kind !== "actor") {
+        throw new Error("Solved arm actor is missing.");
+      }
+      actor.pose.joints[jointId] = quaternionFromEulerDegrees([
+        angleDeg,
+        0,
+        0,
+      ]);
+      const report = analyzePoseDiagnostics(solved);
+
+      expect(report.status).toBe("fail");
+      expect(report.jointViolations).toEqual(
+        expect.arrayContaining([expect.objectContaining({ jointId, code })]),
+      );
+      expect(report.relaxedLimbs[0]?.status).toBe("fail");
     },
   );
 
@@ -323,6 +622,11 @@ describe("deterministic static blocking", () => {
 
       expect(loaded).toEqual(solved);
       expect(analyzePoseDiagnostics(loaded).status).toBe("pass");
+      expect(
+        loaded.constraints.find(
+          (constraint) => constraint.type === "relaxed-limb",
+        ),
+      ).not.toHaveProperty("restSurface");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

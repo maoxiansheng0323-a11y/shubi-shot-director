@@ -1,25 +1,22 @@
-import { Quaternion, Vector3 } from "three";
 import { actorStatureHeightM } from "./actor-stature";
-import {
-  resolveActorJointParentRotations,
-} from "./actor-projection";
 import { enforceBodyContacts } from "./body-contacts";
 import { mutationBlockedByLock } from "./entity-lock";
 import { assertPoseDiagnostics } from "./pose-diagnostics";
 import { materializePose } from "./presets/pose-presets";
+import {
+  materializeFreeHangingArm,
+  materializeSurfaceRestingArm,
+} from "./relaxed-arm";
 import { quaternionFromEulerDegrees } from "./scene-math";
 import {
   isBlueprintActorEntity,
   sceneSpecSchema,
   type AnyActorEntity,
-  type QuaternionTuple,
   type SceneSpec,
-  type Vec3,
 } from "./scene-schema";
 import {
   BODY_CONTACT_TOLERANCE_M,
   staticBlockingPlanSchema,
-  type RelaxedLimb,
   type StaticBlockingPlan,
 } from "./static-blocking-schema";
 
@@ -48,49 +45,6 @@ const actorById = (
     (entity): entity is AnyActorEntity =>
       entity.kind === "actor" && entity.id === actorId,
   );
-
-const quaternionTuple = (value: Quaternion): QuaternionTuple => [
-  value.x,
-  value.y,
-  value.z,
-  value.w,
-];
-
-const desiredDirectionInParent = (
-  actor: AnyActorEntity,
-  parentRotation: QuaternionTuple,
-  worldDirection: Vec3,
-): Vector3 => {
-  const actorRotation = new Quaternion(...actor.transform.rotation);
-  const parent = new Quaternion(...parentRotation);
-  return new Vector3(...worldDirection)
-    .applyQuaternion(actorRotation.multiply(parent).invert())
-    .normalize();
-};
-
-const relaxArm = (
-  scene: SceneSpec,
-  actor: AnyActorEntity,
-  limb: RelaxedLimb,
-): void => {
-  const side = limb === "arm-l" ? "l" : "r";
-  const upperId = `upper_arm_${side}` as const;
-  const forearmId = `forearm_${side}` as const;
-  const handId = `hand_${side}` as const;
-  const parents = resolveActorJointParentRotations(scene, actor);
-  const desired = desiredDirectionInParent(
-    actor,
-    parents[upperId],
-    [0, -1, 0],
-  );
-  const upper = new Quaternion().setFromUnitVectors(
-    new Vector3(0, -1, 0),
-    desired,
-  );
-  actor.pose.joints[upperId] = quaternionTuple(upper.normalize());
-  actor.pose.joints[forearmId] = quaternionFromEulerDegrees([-12, 0, 0]);
-  actor.pose.joints[handId] = quaternionFromEulerDegrees([0, 0, 0]);
-};
 
 const assertConstraintSlotsAvailable = (
   scene: SceneSpec,
@@ -255,9 +209,6 @@ export const materializeStaticBlockingPlan = (
     actor.pose.joints.foot_r = quaternionFromEulerDegrees([0, 0, 0]);
   }
 
-  for (const relaxed of plan.relaxedLimbs) {
-    relaxArm(scene, actor, relaxed.limb);
-  }
   actor.pose.preset = {
     ...actor.pose.preset,
     id: "pose.static-blocking-v1",
@@ -276,18 +227,6 @@ export const materializeStaticBlockingPlan = (
       enabled: true,
     });
   }
-  for (const relaxed of plan.relaxedLimbs) {
-    upsertConstraint(scene, {
-      id: relaxed.constraintId,
-      type: "relaxed-limb",
-      actorId: actor.id,
-      limb: relaxed.limb,
-      gravityDirection: [0, -1, 0],
-      maxDeviationDeg: 20,
-      enabled: true,
-    });
-  }
-
   const projected = enforceBodyContacts(
     sceneSpecSchema.parse(scene),
     new Set([
@@ -298,8 +237,40 @@ export const materializeStaticBlockingPlan = (
     ]),
     options,
   );
-  assertPoseDiagnostics(projected);
-  return projected;
+  const projectedActor = actorById(projected, actor.id);
+  if (!projectedActor) {
+    throw new StaticBlockingError(
+      "STATIC_BLOCKING_ACTOR_NOT_FOUND",
+      "The static blocking actor does not exist after contact projection.",
+    );
+  }
+  for (const relaxed of plan.relaxedLimbs) {
+    materializeFreeHangingArm(projected, projectedActor, relaxed.limb);
+    if (relaxed.restSurface) {
+      materializeSurfaceRestingArm(
+        projected,
+        projectedActor,
+        relaxed.limb,
+        relaxed.restSurface,
+      );
+    }
+    upsertConstraint(projected, {
+      id: relaxed.constraintId,
+      type: "relaxed-limb",
+      actorId: projectedActor.id,
+      limb: relaxed.limb,
+      gravityDirection: [0, -1, 0],
+      maxDeviationDeg: 20,
+      ...(relaxed.restSurface
+        ? { restSurface: relaxed.restSurface }
+        : {}),
+      enabled: true,
+    });
+  }
+
+  const materialized = sceneSpecSchema.parse(projected);
+  assertPoseDiagnostics(materialized);
+  return materialized;
 };
 
 export const materializeStaticBlockingPlans = (
