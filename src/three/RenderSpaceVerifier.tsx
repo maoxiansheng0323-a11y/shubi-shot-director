@@ -15,13 +15,15 @@ import {
   type Object3D,
   type WebGLRenderer,
 } from "three";
+import { canonicalJsonSha256 } from "../domain/canonical-json-sha256";
 import type { RenderSpaceEvidence } from "../domain/render-space-verification";
+import type { SceneSpec } from "../domain/scene-schema";
 import type { ShotIntentPlan } from "../domain/shot-intent";
 
 interface RenderSpaceVerifierProps {
   solveId: string;
   candidateId: string;
-  sceneSha256: string;
+  sceneSpec: SceneSpec;
   plan: ShotIntentPlan;
   onEvidence: (evidence: RenderSpaceEvidence) => void | Promise<void>;
 }
@@ -78,7 +80,10 @@ const readPixelAccumulators = (
   for (let y = 0; y < HEIGHT; y += 1) {
     for (let x = 0; x < WIDTH; x += 1) {
       const offset = (y * WIDTH + x) * 4;
-      const id = pixels[offset] | (pixels[offset + 1] << 8) | (pixels[offset + 2] << 16);
+      const id =
+        pixels[offset] |
+        (pixels[offset + 1] << 8) |
+        (pixels[offset + 2] << 16);
       const key = idToKey.get(id);
       if (!key) continue;
       const topY = HEIGHT - 1 - y;
@@ -109,7 +114,9 @@ const renderIdPass = (
   idToKey: Map<number, string>,
   include: (record: MeshRecord) => boolean,
 ): Map<string, PixelAccumulator> => {
-  for (const record of records) record.mesh.visible = record.visible && include(record);
+  for (const record of records) {
+    record.mesh.visible = record.visible && include(record);
+  }
   renderer.setRenderTarget(target);
   renderer.setViewport(0, 0, WIDTH, HEIGHT);
   renderer.setScissor(0, 0, WIDTH, HEIGHT);
@@ -159,17 +166,22 @@ const requiredEntityIds = (plan: ShotIntentPlan): string[] => [
   ]),
 ];
 
-const requiredParts = (plan: ShotIntentPlan): Array<{ actorId: string; partId: string }> =>
+const requiredParts = (
+  plan: ShotIntentPlan,
+): Array<{ actorId: string; partId: string }> =>
   plan.hardConstraints.flatMap((constraint) =>
     constraint.kind === "visibility"
-      ? constraint.requiredPartIds.map((partId) => ({ actorId: constraint.entityId, partId }))
+      ? constraint.requiredPartIds.map((partId) => ({
+          actorId: constraint.entityId,
+          partId,
+        }))
       : [],
   );
 
 export const RenderSpaceVerifier = ({
   solveId,
   candidateId,
-  sceneSha256,
+  sceneSpec,
   plan,
   onEvidence,
 }: RenderSpaceVerifierProps) => {
@@ -204,9 +216,15 @@ export const RenderSpaceVerifier = ({
           });
         });
 
-        const keys = [...new Set(records.flatMap(({ key }) => key ? [key] : []))].sort();
-        const keyToId = new Map(keys.map((key, index) => [key, index + 1] as const));
-        const idToKey = new Map([...keyToId].map(([key, id]) => [id, key] as const));
+        const keys = [
+          ...new Set(records.flatMap(({ key }) => (key ? [key] : []))),
+        ].sort();
+        const keyToId = new Map(
+          keys.map((key, index) => [key, index + 1] as const),
+        );
+        const idToKey = new Map(
+          [...keyToId].map(([key, id]) => [id, key] as const),
+        );
         const materials = new Map(
           [...keyToId].map(([key, id]) => [
             key,
@@ -227,7 +245,9 @@ export const RenderSpaceVerifier = ({
           depthWrite: true,
         });
         for (const record of records) {
-          record.mesh.material = record.key ? (materials.get(record.key) ?? black) : black;
+          record.mesh.material = record.key
+            ? (materials.get(record.key) ?? black)
+            : black;
         }
 
         const previousTarget = renderer.getRenderTarget();
@@ -259,11 +279,16 @@ export const RenderSpaceVerifier = ({
           );
           const entities = requiredEntityIds(plan).map((entityId) => {
             const entityKeys = records
-              .filter((record) => record.entityId === entityId && record.key !== null)
+              .filter(
+                (record) =>
+                  record.entityId === entityId && record.key !== null,
+              )
               .map(({ key }) => key as string);
             const fullEntries = [...new Set(entityKeys)]
               .map((key) => full.get(key))
-              .filter((entry): entry is PixelAccumulator => entry !== undefined);
+              .filter(
+                (entry): entry is PixelAccumulator => entry !== undefined,
+              );
             const isolated = renderIdPass(
               renderer,
               scene,
@@ -275,7 +300,10 @@ export const RenderSpaceVerifier = ({
             );
             return {
               entityId,
-              visiblePixelCount: fullEntries.reduce((sum, entry) => sum + entry.count, 0),
+              visiblePixelCount: fullEntries.reduce(
+                (sum, entry) => sum + entry.count,
+                0,
+              ),
               isolatedPixelCount: [...new Set(entityKeys)].reduce(
                 (sum, key) => sum + (isolated.get(key)?.count ?? 0),
                 0,
@@ -294,7 +322,8 @@ export const RenderSpaceVerifier = ({
               target,
               records,
               idToKey,
-              (record) => record.entityId === actorId && record.actorPartId === partId,
+              (record) =>
+                record.entityId === actorId && record.actorPartId === partId,
             ).get(key);
             return {
               actorId,
@@ -317,7 +346,7 @@ export const RenderSpaceVerifier = ({
               schemaVersion: 1,
               solveId,
               candidateId,
-              sceneSha256,
+              sceneSha256: canonicalJsonSha256(sceneSpec),
               width: WIDTH,
               height: HEIGHT,
               entities,
@@ -346,7 +375,16 @@ export const RenderSpaceVerifier = ({
       cancelAnimationFrame(firstFrame);
       cancelAnimationFrame(secondFrame);
     };
-  }, [camera, candidateId, onEvidence, plan, renderer, scene, sceneSha256, solveId]);
+  }, [
+    camera,
+    candidateId,
+    onEvidence,
+    plan,
+    renderer,
+    scene,
+    sceneSpec,
+    solveId,
+  ]);
 
   return null;
 };
