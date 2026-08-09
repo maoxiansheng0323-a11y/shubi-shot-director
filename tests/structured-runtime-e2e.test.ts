@@ -329,7 +329,10 @@ const runNode = async (
 const parseSuccessfulJsonLine = <T>(
   result: ProcessResult,
 ): JsonEnvelope<T> => {
-  expect(result).toMatchObject({
+  expect(
+    result,
+    `Director command failed: ${JSON.stringify(result)}`,
+  ).toMatchObject({
     exitCode: 0,
     signal: null,
     stderr: "",

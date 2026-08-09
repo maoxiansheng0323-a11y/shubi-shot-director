@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { createServer } from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -8,6 +10,22 @@ import { createServer as createViteServer } from "vite";
 import { createApiApp } from "./api";
 import { ScenePersistence } from "./scene-persistence";
 import { SceneSession } from "./scene-session";
+
+const INSTANCE_ID_PATTERN = /^instance_[0-9a-f]{32}$/u;
+
+export const resolveViteCacheDirectory = (
+  instanceId: string,
+  temporaryRoot = os.tmpdir(),
+): string => {
+  if (!INSTANCE_ID_PATTERN.test(instanceId)) {
+    throw new Error("The bridge instance ID is invalid.");
+  }
+  return path.join(
+    path.resolve(temporaryRoot),
+    "shubi-shot-vite-cache",
+    instanceId,
+  );
+};
 
 export const startServer = async (options: {
   production: boolean;
@@ -41,6 +59,7 @@ export const startServer = async (options: {
   });
 
   let vite: Awaited<ReturnType<typeof createViteServer>> | null = null;
+  let viteCacheDirectory: string | null = null;
   let closing = false;
   const server = createServer();
   const closeApplication = async (): Promise<void> => {
@@ -54,7 +73,15 @@ export const startServer = async (options: {
         server.closeAllConnections();
       }, 50);
     });
-    await vite?.close();
+    try {
+      await vite?.close();
+    } finally {
+      if (viteCacheDirectory !== null) {
+        await rm(viteCacheDirectory, { recursive: true, force: true }).catch(
+          () => undefined,
+        );
+      }
+    }
   };
   const app = createApiApp(session, {
     uiUrl,
@@ -77,16 +104,24 @@ export const startServer = async (options: {
       response.sendFile(path.join(distDirectory, "index.html"));
     });
   } else {
-    vite = await createViteServer({
-      root: repositoryRoot,
-      cacheDir: path.join(resolvedRuntimeDirectory, "vite-cache"),
-      server: {
-        host,
-        middlewareMode: true,
-        hmr: { host, server },
-      },
-      appType: "spa",
-    });
+    viteCacheDirectory = resolveViteCacheDirectory(instanceId);
+    try {
+      vite = await createViteServer({
+        root: repositoryRoot,
+        cacheDir: viteCacheDirectory,
+        server: {
+          host,
+          middlewareMode: true,
+          hmr: { host, server },
+        },
+        appType: "spa",
+      });
+    } catch (error) {
+      await rm(viteCacheDirectory, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+      throw error;
+    }
     app.use(vite.middlewares);
   }
 
