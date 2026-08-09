@@ -88,12 +88,16 @@ describe("ShotIntentPlan", () => {
     const plan = cameraPlan();
     expect(plan.hardConstraints).toHaveLength(3);
     expect(plan.softPreferences).toHaveLength(4);
-    expect(() => shotIntentPlanSchema.parse({ ...plan, prompt: "raw wording" })).toThrow();
+    expect(() =>
+      shotIntentPlanSchema.parse({ ...plan, prompt: "raw wording" }),
+    ).toThrow();
   });
 
   it("applies reference-local relationships on rotated geometry", () => {
     const scene = widenRoom();
-    const actor = scene.entities.find((entity) => entity.id === "actor_generic_1");
+    const actor = scene.entities.find(
+      (entity) => entity.id === "actor_generic_1",
+    );
     if (!actor) throw new Error("missing actor");
     actor.transform.rotation = quaternionFromEulerDegrees([0, 90, 0]);
     const plan = cameraPlan({
@@ -111,9 +115,17 @@ describe("ShotIntentPlan", () => {
       softPreferences: [],
     });
     const solved = solveSceneRelationships(scene, plan).scene;
-    const prop = solved.entities.find((entity) => entity.id === "prop_block_1");
-    expect(prop?.transform.positionM[0]).toBeCloseTo(actor.transform.positionM[0] - 1, 5);
-    expect(prop?.transform.positionM[2]).toBeCloseTo(actor.transform.positionM[2], 5);
+    const prop = solved.entities.find(
+      (entity) => entity.id === "prop_block_1",
+    );
+    expect(prop?.transform.positionM[0]).toBeCloseTo(
+      actor.transform.positionM[0] - 1,
+      5,
+    );
+    expect(prop?.transform.positionM[2]).toBeCloseTo(
+      actor.transform.positionM[2],
+      5,
+    );
   });
 
   it("fails contradictory hard relationships instead of guessing", () => {
@@ -154,27 +166,40 @@ describe("deterministic camera candidate solving", () => {
     const second = solveSemanticShot(scene, plan);
     expect(first.candidates).toHaveLength(3);
     expect(first).toEqual(second);
-    expect(first.candidates.map(({ profile }) => profile)).toEqual([
-      "dramatic-low",
+    expect(first.candidates.map(({ profile }) => profile).sort()).toEqual([
       "balanced",
+      "dramatic-low",
       "environmental",
     ]);
+    expect(first.candidates.map(({ score }) => score)).toEqual(
+      [...first.candidates.map(({ score }) => score)].sort((a, b) => b - a),
+    );
     for (const candidate of first.candidates) {
-      expect(candidate.composition.issues.filter(({ severity }) => severity === "error")).toEqual([]);
+      expect(
+        candidate.composition.issues.filter(
+          ({ severity }) => severity === "error",
+        ),
+      ).toEqual([]);
       expect(candidate.worldDiagnostics.pose.status).not.toBe("fail");
+      expect(candidate.worldDiagnostics.hardConstraints.status).toBe("pass");
       expect(candidate.metrics.targetCenterNdc[0]).toBeGreaterThan(0.15);
       const camera = candidate.scene.entities.find(
-        (entity) => entity.kind === "camera" && entity.id === candidate.scene.activeCameraId,
+        (entity) =>
+          entity.kind === "camera" &&
+          entity.id === candidate.scene.activeCameraId,
       );
       expect(camera?.transform.rotation).not.toEqual(
-        scene.entities.find((entity) => entity.kind === "camera")?.transform.rotation,
+        scene.entities.find((entity) => entity.kind === "camera")?.transform
+          .rotation,
       );
     }
   }, 15_000);
 
   it("fails an impossible camera request when every legal sample collides", () => {
     const scene = createDefaultScene();
-    const blocker = scene.entities.find((entity) => entity.id === "prop_block_1");
+    const blocker = scene.entities.find(
+      (entity) => entity.id === "prop_block_1",
+    );
     if (!blocker || blocker.kind !== "prop") throw new Error("missing blocker");
     blocker.transform.positionM = [0, 0, 0];
     blocker.geometry.sizeM = [100, 100, 100];
@@ -185,8 +210,12 @@ describe("deterministic camera candidate solving", () => {
 
   it("keeps a facing relationship physically directed at its target", () => {
     const scene = widenRoom();
-    const actor = scene.entities.find((entity) => entity.id === "actor_generic_1");
-    const prop = scene.entities.find((entity) => entity.id === "prop_block_1");
+    const actor = scene.entities.find(
+      (entity) => entity.id === "actor_generic_1",
+    );
+    const prop = scene.entities.find(
+      (entity) => entity.id === "prop_block_1",
+    );
     if (!actor || !prop) throw new Error("missing fixture entities");
     const plan = cameraPlan({
       hardConstraints: [
@@ -200,7 +229,9 @@ describe("deterministic camera candidate solving", () => {
       softPreferences: [],
     });
     const solved = solveSceneRelationships(scene, plan).scene;
-    const solvedActor = solved.entities.find((entity) => entity.id === actor.id);
+    const solvedActor = solved.entities.find(
+      (entity) => entity.id === actor.id,
+    );
     if (!solvedActor) throw new Error("missing solved actor");
     const forward = rotateVector([0, 0, 1], solvedActor.transform.rotation);
     const toTarget = [
@@ -208,7 +239,10 @@ describe("deterministic camera candidate solving", () => {
       prop.transform.positionM[1] - solvedActor.transform.positionM[1],
       prop.transform.positionM[2] - solvedActor.transform.positionM[2],
     ] as const;
-    const dot = forward[0] * toTarget[0] + forward[1] * toTarget[1] + forward[2] * toTarget[2];
+    const dot =
+      forward[0] * toTarget[0] +
+      forward[1] * toTarget[1] +
+      forward[2] * toTarget[2];
     expect(dot).toBeGreaterThan(0);
   });
 });
