@@ -73,7 +73,7 @@ const createFlagshipPlan = (sideOn: boolean): ShotIntentPlan =>
         subjectId: SUPPORT_ID,
         referenceId: ACTOR_ID,
         relation: "behind",
-        distance: { minM: 0.5, maxM: 0.5 },
+        distance: { minM: 0.2, maxM: 0.9 },
         axisFrame: "reference",
       },
       {
