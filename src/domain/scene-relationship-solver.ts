@@ -1,5 +1,9 @@
 import { Vector3 } from "three";
 import { actorVisibleRigBounds } from "./actor-visible-bounds";
+import {
+  analyzeFinalShotHardConstraints,
+  type ShotHardConstraintReport,
+} from "./shot-hard-constraint-verifier";
 import { lookAtQuaternion, rotateVector } from "./scene-math";
 import {
   sceneSpecSchema,
@@ -47,7 +51,11 @@ type Xz = readonly [number, number];
 
 const pointInsidePolygon = ([x, z]: Xz, polygon: readonly Xz[]): boolean => {
   let inside = false;
-  for (let index = 0, prior = polygon.length - 1; index < polygon.length; prior = index++) {
+  for (
+    let index = 0, prior = polygon.length - 1;
+    index < polygon.length;
+    prior = index++
+  ) {
     const [xi, zi] = polygon[index];
     const [xj, zj] = polygon[prior];
     if (
@@ -66,10 +74,14 @@ const distanceToSegment = (point: Xz, start: Xz, end: Xz): number => {
   const lengthSquared = dx * dx + dz * dz;
   const amount = lengthSquared === 0
     ? 0
-    : Math.max(0, Math.min(1,
-        ((point[0] - start[0]) * dx + (point[1] - start[1]) * dz) /
-          lengthSquared,
-      ));
+    : Math.max(
+        0,
+        Math.min(
+          1,
+          ((point[0] - start[0]) * dx + (point[1] - start[1]) * dz) /
+            lengthSquared,
+        ),
+      );
   return Math.hypot(
     point[0] - (start[0] + dx * amount),
     point[1] - (start[1] + dz * amount),
@@ -82,8 +94,13 @@ const pointHasPolygonMargin = (
   marginM: number,
 ): boolean =>
   pointInsidePolygon(point, polygon) &&
-  polygon.every((start, index) =>
-    distanceToSegment(point, start, polygon[(index + 1) % polygon.length]) >= marginM,
+  polygon.every(
+    (start, index) =>
+      distanceToSegment(
+        point,
+        start,
+        polygon[(index + 1) % polygon.length],
+      ) >= marginM,
   );
 
 const relationAxis = (
@@ -135,6 +152,9 @@ const inverseRelations = new Map<string, string>([
   ["below", "above"],
 ]);
 
+const distanceOnlyRelationship = (relation: string): boolean =>
+  relation === "near" || relation === "separated";
+
 const assertNoContradictoryRelationships = (plan: ShotIntentPlan): void => {
   const byDirectedPair = new Map<string, string>();
   const byUndirectedPair = new Map<string, ShotHardConstraint[]>();
@@ -145,15 +165,17 @@ const assertNoContradictoryRelationships = (plan: ShotIntentPlan): void => {
     if (
       prior !== undefined &&
       prior !== constraint.relation &&
-      constraint.relation !== "near" &&
-      constraint.relation !== "separated"
+      !distanceOnlyRelationship(prior) &&
+      !distanceOnlyRelationship(constraint.relation)
     ) {
       throw new SceneRelationshipError(
         "SHOT_CONSTRAINT_CONTRADICTION",
         "Two hard spatial relationships demand incompatible directions.",
       );
     }
-    byDirectedPair.set(directedKey, constraint.relation);
+    if (!distanceOnlyRelationship(constraint.relation)) {
+      byDirectedPair.set(directedKey, constraint.relation);
+    }
     const pair = normalizedPair(constraint.subjectId, constraint.referenceId);
     const entries = byUndirectedPair.get(pair) ?? [];
     entries.push(constraint);
@@ -161,13 +183,21 @@ const assertNoContradictoryRelationships = (plan: ShotIntentPlan): void => {
   }
   for (const entries of byUndirectedPair.values()) {
     for (const left of entries) {
-      if (left.kind !== "spatial-relationship") continue;
+      if (
+        left.kind !== "spatial-relationship" ||
+        distanceOnlyRelationship(left.relation)
+      ) {
+        continue;
+      }
       for (const right of entries) {
         if (
           right.kind !== "spatial-relationship" ||
+          distanceOnlyRelationship(right.relation) ||
           left.subjectId !== right.referenceId ||
           left.referenceId !== right.subjectId
-        ) continue;
+        ) {
+          continue;
+        }
         const expected = inverseRelations.get(left.relation);
         if (expected !== undefined && right.relation !== expected) {
           throw new SceneRelationshipError(
@@ -227,10 +257,14 @@ const solveSurfacePlacement = (
   };
   const localAxis = faceAxis[constraint.surfaceFace];
   const worldAxis = rotateVector(localAxis, surface.transform.rotation);
-  const surfaceDistance = Math.abs(localAxis[0]) * half[0] +
-    Math.abs(localAxis[1]) * half[1] + Math.abs(localAxis[2]) * half[2];
-  const subjectDistance = Math.abs(localAxis[0]) * subjectHalf[0] +
-    Math.abs(localAxis[1]) * subjectHalf[1] + Math.abs(localAxis[2]) * subjectHalf[2];
+  const surfaceDistance =
+    Math.abs(localAxis[0]) * half[0] +
+    Math.abs(localAxis[1]) * half[1] +
+    Math.abs(localAxis[2]) * half[2];
+  const subjectDistance =
+    Math.abs(localAxis[0]) * subjectHalf[0] +
+    Math.abs(localAxis[1]) * subjectHalf[1] +
+    Math.abs(localAxis[2]) * subjectHalf[2];
   const distance = surfaceDistance + subjectDistance + constraint.clearanceM;
   subject.transform.positionM = [
     surface.transform.positionM[0] + worldAxis[0] * distance,
@@ -280,9 +314,53 @@ const solveContainment = (
   entity.transform.positionM[2] = accepted[1];
 };
 
+const applyRelationshipProjectionPass = (
+  scene: SceneSpec,
+  plan: ShotIntentPlan,
+): SceneSpec => {
+  const next = structuredClone(scene);
+  for (const constraint of plan.hardConstraints) {
+    if (constraint.kind === "spatial-relationship") {
+      const subject = entityById(next, constraint.subjectId);
+      const reference = entityById(next, constraint.referenceId);
+      const distanceM = midpoint(
+        constraint.distance.minM,
+        constraint.distance.maxM,
+      );
+      setAtDistance(
+        subject,
+        reference,
+        relationAxis(constraint, reference),
+        distanceM,
+      );
+    } else if (constraint.kind === "facing") {
+      const subject = entityById(next, constraint.subjectId);
+      const target = entityById(next, constraint.targetEntityId);
+      const oppositeTarget: Vec3 = [
+        subject.transform.positionM[0] * 2 - target.transform.positionM[0],
+        subject.transform.positionM[1] * 2 - target.transform.positionM[1],
+        subject.transform.positionM[2] * 2 - target.transform.positionM[2],
+      ];
+      subject.transform.rotation = lookAtQuaternion(
+        subject.transform.positionM,
+        oppositeTarget,
+      );
+    } else if (constraint.kind === "surface-placement") {
+      solveSurfacePlacement(next, constraint);
+    } else if (
+      constraint.kind === "inside-region" &&
+      constraint.entityId !== plan.cameraId
+    ) {
+      solveContainment(next, constraint);
+    }
+  }
+  return sceneSpecSchema.parse(next);
+};
+
 export interface SceneRelationshipSolveResult {
   scene: SceneSpec;
   appliedConstraintIds: string[];
+  finalHardConstraints: ShotHardConstraintReport;
 }
 
 export const solveSceneRelationships = (
@@ -292,47 +370,41 @@ export const solveSceneRelationships = (
   const plan = shotIntentPlanSchema.parse(planInput);
   assertNoContradictoryRelationships(plan);
   let scene = structuredClone(sceneSpecSchema.parse(sceneInput));
-  const appliedConstraintIds: string[] = [];
+  const blockingPlans = plan.hardConstraints
+    .filter((constraint) => constraint.kind === "actor-blocking")
+    .map(({ plan: blockingPlan }) => blockingPlan);
+  const appliedConstraintIds = plan.hardConstraints
+    .filter((constraint) =>
+      constraint.kind === "spatial-relationship" ||
+      constraint.kind === "facing" ||
+      constraint.kind === "surface-placement" ||
+      (constraint.kind === "inside-region" && constraint.entityId !== plan.cameraId) ||
+      constraint.kind === "actor-blocking",
+    )
+    .map(({ id }) => id);
 
-  for (const constraint of plan.hardConstraints) {
-    if (constraint.kind === "spatial-relationship") {
-      const subject = entityById(scene, constraint.subjectId);
-      const reference = entityById(scene, constraint.referenceId);
-      const distanceM = midpoint(constraint.distance.minM, constraint.distance.maxM);
-      setAtDistance(subject, reference, relationAxis(constraint, reference), distanceM);
-      appliedConstraintIds.push(constraint.id);
-    } else if (constraint.kind === "facing") {
-      const subject = entityById(scene, constraint.subjectId);
-      const target = entityById(scene, constraint.targetEntityId);
-      const oppositeTarget: Vec3 = [
-        subject.transform.positionM[0] * 2 - target.transform.positionM[0],
-        subject.transform.positionM[1] * 2 - target.transform.positionM[1],
-        subject.transform.positionM[2] * 2 - target.transform.positionM[2],
-      ];
-      const rotation = lookAtQuaternion(
-        subject.transform.positionM,
-        oppositeTarget,
-      );
-      subject.transform.rotation = rotation;
-      appliedConstraintIds.push(constraint.id);
-    } else if (constraint.kind === "surface-placement") {
-      solveSurfacePlacement(scene, constraint);
-      appliedConstraintIds.push(constraint.id);
-    } else if (constraint.kind === "inside-region") {
-      solveContainment(scene, constraint);
-      appliedConstraintIds.push(constraint.id);
+  let report = analyzeFinalShotHardConstraints(scene, plan);
+  for (let iteration = 0; iteration < 6; iteration += 1) {
+    scene = applyRelationshipProjectionPass(scene, plan);
+    if (blockingPlans.length > 0) {
+      scene = materializeStaticBlockingPlans(scene, blockingPlans);
+    }
+    report = analyzeFinalShotHardConstraints(scene, plan);
+    if (report.status === "pass") {
+      return {
+        scene,
+        appliedConstraintIds,
+        finalHardConstraints: report,
+      };
     }
   }
 
-  scene = sceneSpecSchema.parse(scene);
-  const blockingPlans = plan.hardConstraints
-    .filter((constraint) => constraint.kind === "actor-blocking")
-    .map(({ id, plan: blockingPlan }) => {
-      appliedConstraintIds.push(id);
-      return blockingPlan;
-    });
-  if (blockingPlans.length > 0) {
-    scene = materializeStaticBlockingPlans(scene, blockingPlans);
-  }
-  return { scene, appliedConstraintIds };
+  const failed = report.checks
+    .filter(({ status }) => status === "fail")
+    .map(({ id }) => id)
+    .join(", ");
+  throw new SceneRelationshipError(
+    "SHOT_RELATIONSHIP_UNSOLVABLE",
+    `Final hard scene relationships could not be satisfied: ${failed || "unknown"}.`,
+  );
 };
