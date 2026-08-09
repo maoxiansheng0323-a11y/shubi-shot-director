@@ -1,4 +1,3 @@
-import { Vector3 } from "three";
 import { actorVisibleRigBounds } from "./actor-visible-bounds";
 import { rotateVector } from "./scene-math";
 import type { SceneEntity, SceneSpec, Vec3 } from "./scene-schema";
@@ -252,7 +251,10 @@ const surfacePlacementCheck = (
   }
   const subjectHalf = entityHalfSize(scene, subject);
   if (constraint.surfaceEntityId === null) {
-    const gap = subject.transform.positionM[1] - subjectHalf[1] - constraint.clearanceM;
+    const gap =
+      subject.transform.positionM[1] -
+      subjectHalf[1] -
+      constraint.clearanceM;
     return {
       id: constraint.id,
       kind: constraint.kind,
