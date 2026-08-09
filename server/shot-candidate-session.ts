@@ -51,6 +51,7 @@ interface StoredSolve {
   generation: number;
   baseSessionSceneId: string;
   baseSessionRevision: number;
+  baseSessionSceneSha256: string;
   submission: ShotSolveSubmission;
   candidates: StoredCandidate[];
 }
@@ -114,12 +115,26 @@ export class ShotCandidateSession {
 
   solve(input: unknown, baseSessionScene: SceneSpec): PublicShotSolve {
     const { submission, result } = solveShotSubmission(input);
+    if (
+      submission.plan.operation === "modify" &&
+      (
+        submission.scene.sceneId !== baseSessionScene.sceneId ||
+        submission.scene.revision !== baseSessionScene.revision ||
+        canonicalJsonSha256(submission.scene) !== canonicalJsonSha256(baseSessionScene)
+      )
+    ) {
+      throw new ShotCandidateSessionError(
+        "SHOT_SOLVE_STALE_SCENE",
+        "A modify semantic shot solve must use the exact authoritative SceneSession snapshot.",
+      );
+    }
     const solveId = `solve_${randomUUID().replaceAll("-", "")}`;
     this.currentSolve = {
       solveId,
       generation: 0,
       baseSessionSceneId: baseSessionScene.sceneId,
       baseSessionRevision: baseSessionScene.revision,
+      baseSessionSceneSha256: canonicalJsonSha256(baseSessionScene),
       submission,
       candidates: result.candidates.map((candidate) => ({
         ...candidate,
@@ -161,7 +176,9 @@ export class ShotCandidateSession {
   verify(evidenceInput: RenderSpaceEvidence): PublicShotSolve {
     const evidence = renderSpaceEvidenceSchema.parse(evidenceInput);
     const stored = this.requireSolve(evidence.solveId);
-    const candidate = stored.candidates.find(({ candidateId }) => candidateId === evidence.candidateId);
+    const candidate = stored.candidates.find(
+      ({ candidateId }) => candidateId === evidence.candidateId,
+    );
     if (!candidate) {
       throw new ShotCandidateSessionError(
         "SHOT_CANDIDATE_NOT_FOUND",
@@ -175,12 +192,15 @@ export class ShotCandidateSession {
       evidence,
     });
     candidate.finalScore = candidate.renderVerification.status === "pass"
-      ? Math.round((candidate.score + candidate.renderVerification.scoreAdjustment) * 1000) / 1000
+      ? Math.round(
+          (candidate.score + candidate.renderVerification.scoreAdjustment) * 1000,
+        ) / 1000
       : null;
-    stored.candidates.sort((left, right) =>
-      (right.finalScore ?? -Infinity) - (left.finalScore ?? -Infinity) ||
-      right.score - left.score ||
-      left.candidateId.localeCompare(right.candidateId),
+    stored.candidates.sort(
+      (left, right) =>
+        (right.finalScore ?? -Infinity) - (left.finalScore ?? -Infinity) ||
+        right.score - left.score ||
+        left.candidateId.localeCompare(right.candidateId),
     );
     return publicSolve(stored);
   }
@@ -192,7 +212,9 @@ export class ShotCandidateSession {
   ): SceneSpec {
     const stored = this.requireSolve(solveId);
     this.assertSessionFresh(stored, baseSessionScene);
-    const candidate = stored.candidates.find((entry) => entry.candidateId === candidateId);
+    const candidate = stored.candidates.find(
+      (entry) => entry.candidateId === candidateId,
+    );
     if (!candidate) {
       throw new ShotCandidateSessionError(
         "SHOT_CANDIDATE_NOT_FOUND",
@@ -227,7 +249,8 @@ export class ShotCandidateSession {
   private assertSessionFresh(stored: StoredSolve, scene: SceneSpec): void {
     if (
       scene.sceneId !== stored.baseSessionSceneId ||
-      scene.revision !== stored.baseSessionRevision
+      scene.revision !== stored.baseSessionRevision ||
+      canonicalJsonSha256(scene) !== stored.baseSessionSceneSha256
     ) {
       throw new ShotCandidateSessionError(
         "SHOT_SOLVE_STALE_SCENE",
