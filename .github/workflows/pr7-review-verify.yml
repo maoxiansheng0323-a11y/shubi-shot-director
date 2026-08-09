@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - codex/v1.0.0-semantic-shot-solver
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
