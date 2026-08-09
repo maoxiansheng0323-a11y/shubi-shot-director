@@ -263,7 +263,7 @@
         "subjectId": "prop_back_support_1",
         "referenceId": "actor_generic_1",
         "relation": "behind",
-        "distance": { "minM": 0.5, "maxM": 0.5 },
+        "distance": { "minM": 0.2, "maxM": 0.9 },
         "axisFrame": "reference"
       },
       {
