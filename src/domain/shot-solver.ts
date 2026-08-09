@@ -12,11 +12,16 @@ import {
   solveCameraCandidates,
   type SolvedCameraCandidate,
 } from "./camera-solver";
+import {
+  rankSemanticShotCandidates,
+} from "./shot-candidate-preferences";
+import type { ShotHardConstraintReport } from "./shot-hard-constraint-verifier";
 import { shotIntentPlanSchema, type ShotIntentPlan } from "./shot-intent";
 
 export interface ShotWorldDiagnostics {
   pose: PoseDiagnosticsReport;
   appliedRelationshipConstraintIds: string[];
+  hardConstraints: ShotHardConstraintReport;
 }
 
 export interface ShotSolveCandidate extends SolvedCameraCandidate {
@@ -41,13 +46,18 @@ export const solveSemanticShot = (
   if (pose.status !== "pass") {
     throw new PoseDiagnosticsError(pose);
   }
-  const candidates = solveCameraCandidates(relationshipResult.scene, plan).map(
+  const ranked = rankSemanticShotCandidates(
+    solveCameraCandidates(relationshipResult.scene, plan),
+    plan,
+  );
+  const candidates = ranked.map(
     (candidate): ShotSolveCandidate => ({
       ...candidate,
       worldDiagnostics: {
         pose,
         appliedRelationshipConstraintIds:
           relationshipResult.appliedConstraintIds,
+        hardConstraints: relationshipResult.finalHardConstraints,
       },
     }),
   );
