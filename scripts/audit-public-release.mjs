@@ -151,7 +151,7 @@ export const auditPackageMetadata = (value) => {
   const nodeEngine = packageJson.engines?.node;
   if (
     typeof nodeEngine !== "string" ||
-    !/^>=22\.12(?:\.0)?$/u.test(nodeEngine)
+    !/^>=22\.13(?:\.0)?$/u.test(nodeEngine)
   ) {
     findings.push(finding("PACKAGE_NODE_ENGINE_INVALID"));
   }
