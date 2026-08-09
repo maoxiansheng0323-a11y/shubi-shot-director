@@ -50,9 +50,9 @@ const loadAudit = async (): Promise<PublicReleaseAuditModule> => {
 };
 
 describe("public release audit", () => {
-  it("keeps the v0.9.3 direct manipulation contract generic and publication-safe", async () => {
+  it("keeps the v0.9.4 static blocking contract generic and publication-safe", async () => {
     const root = fileURLToPath(new URL("../", import.meta.url));
-    const releasePath = path.join(root, "docs", "releases", "v0.9.3.md");
+    const releasePath = path.join(root, "docs", "releases", "v0.9.4.md");
     const [packageSource, skillSource, releaseSource] = await Promise.all([
       readFile(path.join(root, "package.json"), "utf8"),
       readFile(
@@ -70,11 +70,11 @@ describe("public release audit", () => {
     const { auditPackageMetadata, auditText } = await loadAudit();
     const packageMetadata = JSON.parse(packageSource) as Record<string, unknown>;
 
-    expect(packageMetadata.version).toBe("0.9.3");
+    expect(packageMetadata.version).toBe("0.9.4");
     expect(auditPackageMetadata(packageMetadata)).toEqual([]);
     expect(releaseSource).not.toBe("");
     expect(auditText("SKILL.md", skillSource)).toEqual([]);
-    expect(auditText("docs/releases/v0.9.3.md", releaseSource)).toEqual([]);
+    expect(auditText("docs/releases/v0.9.4.md", releaseSource)).toEqual([]);
   });
 
   it("accepts generic repository text", async () => {

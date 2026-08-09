@@ -8,7 +8,7 @@ Shubi Shot Director is a local, browser-based 3D graybox camera-previsualization
 
 **[Watch the 49-second launch demo](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/shubi-shot-director-launch-demo.mp4)** · [Exported PNG](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/final-perspective.png) · [English subtitles](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.en.srt) · [中文字幕](https://github.com/maoxiansheng0323-a11y/shubi-shot-director/releases/download/v0.2.1/captions.zh-CN.srt)
 
-Current release contract: [v0.9.3 release notes](docs/releases/v0.9.3.md).
+Current release contract: [v0.9.4 release notes](docs/releases/v0.9.4.md).
 
 Shubi Shot Director is open-source graybox camera previs: it turns natural-language shot intent into a structured, editable 3D scene, shows the actual final camera through the real browser Shot Preview, and exports a verified 1920 × 1080 PNG. The project is [MIT licensed](LICENSE).
 
@@ -262,7 +262,7 @@ Never pass a profile path, profile content, alias, prompt, credential, private a
 
 ## Verified platform
 
-The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.9.3 verification evidence is recorded in [`docs/releases/v0.9.3.md`](docs/releases/v0.9.3.md). macOS and Linux are not claimed as verified for v0.9.3.
+The repository has historically been verified on Windows 11 Pro, 64-bit (build 26200). Fresh v0.9.4 verification evidence is recorded in [`docs/releases/v0.9.4.md`](docs/releases/v0.9.4.md). macOS and Linux are not claimed as verified for v0.9.4.
 
 ## Origin & Maintainer
 
