@@ -200,7 +200,7 @@ describe("public release audit", () => {
       version: "0.5.0",
       private: true,
       license: "MIT",
-      engines: { node: ">=22.12" },
+      engines: { node: ">=22.13" },
       packageManager: "pnpm@11.9.0",
     };
 
@@ -268,7 +268,7 @@ describe("public release audit", () => {
           name: "shubi-shot-director",
           private: true,
           license: "MIT",
-          engines: { node: ">=22.12" },
+          engines: { node: ">=22.13" },
           packageManager: "pnpm@11.9.0",
         }),
       );
