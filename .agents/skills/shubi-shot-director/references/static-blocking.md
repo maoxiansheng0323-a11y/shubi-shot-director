@@ -65,7 +65,7 @@ For a new scene, keep the authored SceneSpec generic and structurally valid, the
 
 The Host chooses broad values such as a 10-degree backward trunk goal. It must not author the resulting fifteen bespoke joint quaternions. Use built-in pose presets without a blocking plan when no additional support/contact relation is required. Omit `restSurface` for a free-hanging arm. Supply it only when the named world-ground, room-floor, plane-top, or box face must stop the relaxed hand; the runtime first materializes body contacts, then solves the shoulder-elbow-wrist chain against that final geometry.
 
-`restSurface` is a narrow resting-arm semantic, not a general IK target. The gravity ray from the shoulder must encounter a gravity-opposing surface within the legal two-bone reach. An unreachable surface, reversed elbow, joint-limit violation, terminal gap, surface penetration, or out-of-bounds terminal remains a diagnostic failure; the runtime does not force an extreme angle.
+`restSurface` is a narrow resting-arm semantic, not a general IK target. The gravity ray from the shoulder must encounter a gravity-opposing surface within the legal two-bone reach. For a low-profile or supine torso, the runtime first tries a bounded set of same-surface points on the actor's own side so the hand can rest beside the body or extend on the support instead of folding under the shoulder. An unreachable surface, reversed elbow, joint-limit violation, terminal gap, surface penetration, or out-of-bounds terminal remains a diagnostic failure; the runtime does not force an extreme angle.
 
 ## Modify materialization
 
