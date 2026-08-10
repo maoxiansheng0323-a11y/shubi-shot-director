@@ -9,6 +9,8 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
+  Quaternion,
+  Vector3,
 } from "three";
 import { describe, expect, it } from "vitest";
 import type {
@@ -20,6 +22,7 @@ import type {
 import {
   BUILT_IN_REFINED_MANNEQUIN_URL,
   REFINED_MANNEQUIN_MAX_BYTES,
+  REFINED_PROFILE_ATTACHMENT_CALIBRATION,
   REFINED_SECTION_IDS,
   createRefinedGeometryCatalog,
   parseBuiltInRefinedMannequinManifest,
@@ -381,10 +384,32 @@ describe("built-in refined mannequin asset", () => {
       radialSegments: 12,
     };
 
-    expect(refinedPrimitiveTransform(primitive)).toEqual({
-      position: [0.1, -0.2, 0.3],
-      scale: [0.3, 0.8, 0.225],
-    });
+    const transform = refinedPrimitiveTransform(primitive);
+    expect(transform).not.toBeNull();
+    if (!transform) throw new Error("Expected refined upper-arm transform.");
+    expect(transform.scale).toEqual([0.3, 0.8, 0.225]);
+    expect(transform.rotation).not.toEqual([0, 0, 0, 1]);
+    const calibration = REFINED_PROFILE_ATTACHMENT_CALIBRATION.upper_arm_l;
+    if (!calibration) throw new Error("Expected upper-arm calibration.");
+    const transformedEndpoint = (point: readonly number[]) =>
+      new Vector3(
+        point[0] * transform.scale[0],
+        point[1] * transform.scale[1],
+        point[2] * transform.scale[2],
+      )
+        .applyQuaternion(new Quaternion(...transform.rotation))
+        .add(new Vector3(...transform.position));
+    const proximal = transformedEndpoint(calibration.proximalCenter);
+    const distal = transformedEndpoint(calibration.distalCenter);
+
+    expect(proximal.toArray()).toEqual([
+      expect.closeTo(0.1, 9),
+      expect.closeTo(0.2, 9),
+      expect.closeTo(0.3, 9),
+    ]);
+    expect(distal.x).toBeCloseTo(0.1, 9);
+    expect(distal.z).toBeCloseTo(0.3, 9);
+    expect(proximal.y - distal.y).toBeGreaterThan(0.72);
     expect(primitive.frame).toEqual({
       position: [1, 2, 3],
       rotation: [0, 0, Math.SQRT1_2, Math.SQRT1_2],
@@ -405,7 +430,50 @@ describe("built-in refined mannequin asset", () => {
     expect(refinedPrimitiveTransform(primitive)).toEqual({
       position: [0.02, -0.04, 0.08],
       scale: [0.12, 0.08, 0.24],
+      rotation: [0, 0, 0, 1],
     });
+  });
+
+  it("anchors every calibrated profile section on its analytical proximal axis", () => {
+    for (const [sectionId, calibration] of Object.entries(
+      REFINED_PROFILE_ATTACHMENT_CALIBRATION,
+    )) {
+      if (!calibration) continue;
+      for (const statureScale of [0.82, 1, 1.18]) {
+        const primitive: ActorProjectionProfilePrimitive = {
+          id: sectionId as ActorProjectionProfilePrimitive["id"],
+          kind: "profile",
+          frame: identityFrame,
+          center: [0.04, -0.02, 0.03],
+          points: [
+            { y: -0.42 * statureScale, radius: 0.11 * statureScale },
+            { y: 0, radius: 0.14 * statureScale },
+          ],
+          depthScale: 0.76,
+          radialSegments: 12,
+        };
+        const transform = refinedPrimitiveTransform(primitive);
+        if (!transform) throw new Error(`Missing transform for ${sectionId}.`);
+        const rotation = new Quaternion(...transform.rotation);
+        const mapped = (point: readonly number[]) =>
+          new Vector3(
+            point[0] * transform.scale[0],
+            point[1] * transform.scale[1],
+            point[2] * transform.scale[2],
+          )
+            .applyQuaternion(rotation)
+            .add(new Vector3(...transform.position));
+        const proximal = mapped(calibration.proximalCenter);
+        const distal = mapped(calibration.distalCenter);
+
+        expect(proximal.x).toBeCloseTo(primitive.center[0], 9);
+        expect(proximal.y).toBeCloseTo(primitive.center[1], 9);
+        expect(proximal.z).toBeCloseTo(primitive.center[2], 9);
+        expect(distal.x).toBeCloseTo(primitive.center[0], 9);
+        expect(distal.z).toBeCloseTo(primitive.center[2], 9);
+        expect(distal.y).toBeLessThan(proximal.y - 0.35 * statureScale);
+      }
+    }
   });
 
   it("matches the committed GLB integrity, topology, and normalized bounds", async () => {
