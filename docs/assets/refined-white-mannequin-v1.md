@@ -37,6 +37,15 @@ each hand and toes join each foot; they are visible shape detail, not separate
 pose controls. Each section receives one Catmull-Clark subdivision level,
 smooth normals, one neutral white material, and centered unit bounds.
 
+Centered unit bounds do not define a rig pivot. The committed section shapes
+retain small source-manikin centerline tilts after independent AABB
+normalization. Runtime rendering therefore applies the closed per-section
+attachment calibration in `src/three/mannequin-asset.ts`, aligning each mapped
+profile's measured proximal axis with the authoritative analytical primitive.
+This calibration is renderer mapping only: SceneSpec joints, Blueprint mounts,
+limb presence, bounds, contact, composition, persistence, and diagnostics keep
+using `resolveActorProjection` as their single structural authority.
+
 ## Reproduction
 
 From the repository root, run Blender in background mode with an explicit

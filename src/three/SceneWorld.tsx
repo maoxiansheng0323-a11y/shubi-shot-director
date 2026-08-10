@@ -235,6 +235,7 @@ interface GrayMeshProps {
   geometry?: BufferGeometry;
   position?: [number, number, number];
   rotation?: [number, number, number];
+  quaternion?: QuaternionTuple;
   scale?: [number, number, number];
   castShadow?: boolean;
   receiveShadow?: boolean;
@@ -256,6 +257,7 @@ const GrayMesh = ({
   geometry,
   position,
   rotation,
+  quaternion,
   scale,
   castShadow = true,
   receiveShadow = true,
@@ -276,6 +278,7 @@ const GrayMesh = ({
       geometry={geometry}
       position={position}
       rotation={rotation}
+      quaternion={quaternion}
       scale={scale}
       castShadow={castShadow && resolvedOpacity >= 0.99}
       receiveShadow={receiveShadow}
@@ -892,6 +895,7 @@ const ActorRigPrimitiveMesh = ({
           selected={selected}
           geometry={refinedGeometry}
           position={refinedTransform?.position ?? primitive.center}
+          quaternion={refinedTransform?.rotation}
           onPointerDown={onJointPointerDown}
           onPointerMove={onJointPointerMove}
           onPointerUp={onJointPointerUp}

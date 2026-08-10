@@ -1,5 +1,6 @@
-import { z } from "zod";
+import { Quaternion, Vector3 } from "three";
 import type { BufferGeometry, Object3D } from "three";
+import { z } from "zod";
 import {
   BUILT_IN_REFINED_MANNEQUIN_MANIFEST_URL,
   BUILT_IN_REFINED_MANNEQUIN_URL,
@@ -9,7 +10,10 @@ import type {
   ActorProjectionPrimitive,
   ActorProjectionProfilePrimitive,
 } from "../domain/actor-projection";
-import type { Vec3 } from "../domain/scene-schema";
+import type {
+  QuaternionTuple,
+  Vec3,
+} from "../domain/scene-schema";
 
 export {
   BUILT_IN_REFINED_MANNEQUIN_MANIFEST_URL,
@@ -386,13 +390,92 @@ export const refinedSectionForPrimitive = (
 export interface RefinedPrimitiveTransform {
   readonly position: Vec3;
   readonly scale: Vec3;
+  readonly rotation: QuaternionTuple;
 }
+
+interface RefinedProfileAttachmentCalibration {
+  readonly proximalCenter: Vec3;
+  readonly distalCenter: Vec3;
+}
+
+/*
+ * The GLB sections are deliberately closed, normalized geometry. Their local
+ * AABB is not a rig: the endpoint centroids retain the source mannequin's
+ * natural section tilt. Calibrate those endpoints back onto the analytical
+ * section axis before applying the primitive's dimensions. This keeps the
+ * mesh a visual projection of the canonical frame instead of a second rig.
+ */
+export const REFINED_PROFILE_ATTACHMENT_CALIBRATION: Readonly<
+  Partial<Record<RefinedSectionId, RefinedProfileAttachmentCalibration>>
+> = Object.freeze({
+  pelvis: {
+    proximalCenter: [0, 0.481606, -0.033824],
+    distalCenter: [0.000005, -0.479164, -0.069609],
+  },
+  torso: {
+    proximalCenter: [0.000017, 0.480775, -0.177568],
+    distalCenter: [0.000016, -0.478601, 0.184767],
+  },
+  neck: {
+    proximalCenter: [0, 0.480045, -0.131828],
+    distalCenter: [0, -0.480711, 0.108682],
+  },
+  upper_arm_l: {
+    proximalCenter: [-0.014627, 0.482593, 0.157637],
+    distalCenter: [-0.087196, -0.482459, -0.14014],
+  },
+  forearm_l: {
+    proximalCenter: [0.039858, 0.48087, 0.093435],
+    distalCenter: [-0.021837, -0.482445, -0.016274],
+  },
+  upper_arm_r: {
+    proximalCenter: [0.014258, 0.482609, 0.15722],
+    distalCenter: [0.086313, -0.482492, -0.140231],
+  },
+  forearm_r: {
+    proximalCenter: [-0.039499, 0.480879, 0.093594],
+    distalCenter: [0.023206, -0.482436, -0.015951],
+  },
+  upper_leg_l: {
+    proximalCenter: [0.031388, 0.480217, -0.041401],
+    distalCenter: [0.018354, -0.47555, 0.019946],
+  },
+  lower_leg_l: {
+    proximalCenter: [-0.031007, 0.479787, 0.128183],
+    distalCenter: [-0.192131, -0.484848, -0.288841],
+  },
+  upper_leg_r: {
+    proximalCenter: [-0.031389, 0.480217, -0.041401],
+    distalCenter: [-0.018353, -0.47555, 0.019947],
+  },
+  lower_leg_r: {
+    proximalCenter: [0.031004, 0.479787, 0.128183],
+    distalCenter: [0.192134, -0.484848, -0.288841],
+  },
+});
 
 const stableNumber = (value: number): number =>
   Math.round(value * 1_000_000_000_000) / 1_000_000_000_000;
 
+const identityRotation: QuaternionTuple = [0, 0, 0, 1];
+
+const scaledPoint = (point: Vec3, scale: Vec3): Vector3 =>
+  new Vector3(
+    point[0] * scale[0],
+    point[1] * scale[1],
+    point[2] * scale[2],
+  );
+
+const tupleFromQuaternion = (value: Quaternion): QuaternionTuple => [
+  stableNumber(value.x),
+  stableNumber(value.y),
+  stableNumber(value.z),
+  stableNumber(value.w),
+];
+
 const profileTransform = (
   primitive: ActorProjectionProfilePrimitive,
+  section: RefinedSectionId,
 ): RefinedPrimitiveTransform | null => {
   if (primitive.points.length === 0) return null;
   const minimumY = Math.min(...primitive.points.map(({ y }) => y));
@@ -402,17 +485,46 @@ const profileTransform = (
   );
   const height = maximumY - minimumY;
   if (height <= 0 || maximumRadius <= 0) return null;
+  const scale: Vec3 = [
+    stableNumber(maximumRadius * 2),
+    stableNumber(height),
+    stableNumber(maximumRadius * primitive.depthScale * 2),
+  ];
+  const calibration = REFINED_PROFILE_ATTACHMENT_CALIBRATION[section];
+  if (!calibration) {
+    return {
+      position: [
+        primitive.center[0],
+        stableNumber(primitive.center[1] + (minimumY + maximumY) / 2),
+        primitive.center[2],
+      ],
+      scale,
+      rotation: identityRotation,
+    };
+  }
+
+  const proximal = scaledPoint(calibration.proximalCenter, scale);
+  const distal = scaledPoint(calibration.distalCenter, scale);
+  const sectionAxis = proximal.clone().sub(distal);
+  if (sectionAxis.lengthSq() <= 1e-12) return null;
+  const rotation = new Quaternion().setFromUnitVectors(
+    sectionAxis.normalize(),
+    new Vector3(0, 1, 0),
+  );
+  const targetProximal = new Vector3(
+    primitive.center[0],
+    primitive.center[1] + maximumY,
+    primitive.center[2],
+  );
+  const position = targetProximal.sub(proximal.applyQuaternion(rotation));
   return {
     position: [
-      primitive.center[0],
-      stableNumber(primitive.center[1] + (minimumY + maximumY) / 2),
-      primitive.center[2],
+      stableNumber(position.x),
+      stableNumber(position.y),
+      stableNumber(position.z),
     ],
-    scale: [
-      stableNumber(maximumRadius * 2),
-      stableNumber(height),
-      stableNumber(maximumRadius * primitive.depthScale * 2),
-    ],
+    scale,
+    rotation: tupleFromQuaternion(rotation),
   };
 };
 
@@ -423,6 +535,7 @@ const ellipsoidTransform = (
   return {
     position: [...primitive.center],
     scale: primitive.radii.map((radius) => stableNumber(radius * 2)) as Vec3,
+    rotation: identityRotation,
   };
 };
 
@@ -431,7 +544,7 @@ export const refinedPrimitiveTransform = (
 ): RefinedPrimitiveTransform | null => {
   const section = refinedSectionForPrimitive(primitive);
   if (!section) return null;
-  if (primitive.kind === "profile") return profileTransform(primitive);
+  if (primitive.kind === "profile") return profileTransform(primitive, section);
   if (primitive.kind === "ellipsoid") return ellipsoidTransform(primitive);
   return null;
 };
