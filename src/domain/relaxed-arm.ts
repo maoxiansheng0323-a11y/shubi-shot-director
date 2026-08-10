@@ -64,6 +64,17 @@ const addScaled = (point: Vec3, direction: Vec3, scale: number): Vec3 => [
   point[2] + direction[2] * scale,
 ];
 
+const projectedDirection = (
+  from: Vec3,
+  to: Vec3,
+  planeNormal: Vec3,
+): Vector3 | null => {
+  const direction = new Vector3(...subtract(to, from));
+  const normal = new Vector3(...planeNormal);
+  direction.addScaledVector(normal, -direction.dot(normal));
+  return normalized(direction);
+};
+
 const normalized = (value: Vector3): Vector3 | null =>
   value.lengthSq() <= 1e-18 ? null : value.normalize();
 
@@ -156,6 +167,7 @@ const perpendicularReference = (
 const clearsDeclaredBodyContactSurfaces = (
   scene: SceneSpec,
   actorId: string,
+  ignoredSurface?: RelaxedArmRestSurface,
 ): boolean =>
   scene.constraints
     .filter(
@@ -165,7 +177,10 @@ const clearsDeclaredBodyContactSurfaces = (
       > =>
         constraint.type === "body-contact" &&
         constraint.enabled &&
-        constraint.actorId === actorId,
+        constraint.actorId === actorId &&
+        (!ignoredSurface ||
+          constraint.surfaceEntityId !== ignoredSurface.surfaceEntityId ||
+          constraint.surfaceFace !== ignoredSurface.surfaceFace),
     )
     .every((constraint) => {
       try {
@@ -183,6 +198,10 @@ const solveTwoBoneToWrist = (
   actor: AnyActorEntity,
   limb: RelaxedLimb,
   wristTargetWorld: Vec3,
+  options?: {
+    ignoredContactSurface?: RelaxedArmRestSurface;
+    referenceIndex?: number;
+  },
 ): boolean => {
   const {
     side,
@@ -252,7 +271,11 @@ const solveTwoBoneToWrist = (
     hand: actor.pose.joints[handId],
   };
 
-  for (const reference of references) {
+  const candidateReferences =
+    options?.referenceIndex === undefined
+      ? references
+      : references.slice(options.referenceIndex, options.referenceIndex + 1);
+  for (const reference of candidateReferences) {
     const elbowOffset = perpendicularReference(targetDirection, reference);
     if (!elbowOffset) continue;
     const upperDirection = targetDirection
@@ -304,7 +327,11 @@ const solveTwoBoneToWrist = (
     );
     if (
       !invalidCandidate &&
-      clearsDeclaredBodyContactSurfaces(scene, actor.id)
+      clearsDeclaredBodyContactSurfaces(
+        scene,
+        actor.id,
+        options?.ignoredContactSurface,
+      )
     ) {
       return true;
     }
@@ -426,33 +453,141 @@ export const materializeSurfaceRestingArm = (
       surface.normal,
     ),
   );
-  let wristTarget = addScaled(
-    contactTarget,
+  const projection = resolveActorProjection(scene, actor);
+  const totalArmLength =
+    projection.dimensions.upperArmLength + projection.dimensions.forearmLength;
+  const shoulderSurfaceGapM = dot(
+    subtract(initial.shoulderPointWorld, surface.point),
     surface.normal,
-    initialWristClearance,
   );
+  const lowProfile = shoulderSurfaceGapM <= totalArmLength * 0.45;
+  const contactTargets: Vec3[] = [];
+  const addContactTarget = (target: Vec3): void => {
+    if (
+      contactTargets.some(
+        (existing) =>
+          Math.hypot(...subtract(existing, target)) <= 0.000001,
+      )
+    ) {
+      return;
+    }
+    contactTargets.push(target);
+  };
 
-  for (let iteration = 0; iteration < 12; iteration += 1) {
-    if (!solveTwoBoneToWrist(scene, actor, limb, wristTarget)) return false;
-    const measurement = measureSurfaceRestingArm(
-      scene,
-      actor,
-      limb,
-      restSurface,
-    );
-    if (Math.abs(measurement.terminalGapM) <= 1e-7) break;
-    wristTarget = addScaled(
-      wristTarget,
-      surface.normal,
-      -measurement.terminalGapM,
-    );
+  if (lowProfile) {
+    const pelvis = projection.primitives.find(({ id }) => id === "pelvis");
+    const torso = projection.primitives.find(({ id }) => id === "torso");
+    if (pelvis && torso) {
+      const pelvisWorld = transformPoint(actor.transform, pelvis.frame.position);
+      const torsoWorld = transformPoint(actor.transform, torso.frame.position);
+      const alongTorso = projectedDirection(
+        torsoWorld,
+        pelvisWorld,
+        surface.normal,
+      );
+      const rawOutward = projectedDirection(
+        torsoWorld,
+        initial.shoulderPointWorld,
+        surface.normal,
+      );
+      const outward =
+        alongTorso && rawOutward
+          ? normalized(
+              rawOutward
+                .clone()
+                .addScaledVector(
+                  alongTorso,
+                  -rawOutward.dot(alongTorso),
+                ),
+            )
+          : null;
+      if (alongTorso && outward) {
+        const candidateDirections = [
+          alongTorso.clone().multiplyScalar(0.92).addScaledVector(outward, 0.38),
+          alongTorso.clone().multiplyScalar(0.78).addScaledVector(outward, 0.62),
+          outward.clone().addScaledVector(alongTorso, 0.18),
+          alongTorso.clone(),
+        ];
+        const reachRatios = [0.72, 0.8, 0.9, 0.84];
+        for (const [index, direction] of candidateDirections.entries()) {
+          const normalizedDirection = normalized(direction);
+          if (!normalizedDirection) continue;
+          addContactTarget(
+            addScaled(
+              contactTarget,
+              [
+                normalizedDirection.x,
+                normalizedDirection.y,
+                normalizedDirection.z,
+              ],
+              totalArmLength * reachRatios[index]!,
+            ),
+          );
+        }
+      }
+    }
+  }
+  addContactTarget(contactTarget);
+
+  const { upperId, forearmId, handId } = jointIdsFor(limb);
+  const initialJoints = {
+    upper: actor.pose.joints[upperId],
+    forearm: actor.pose.joints[forearmId],
+    hand: actor.pose.joints[handId],
+  };
+  const restoreInitialJoints = (): void => {
+    actor.pose.joints[upperId] = initialJoints.upper;
+    actor.pose.joints[forearmId] = initialJoints.forearm;
+    actor.pose.joints[handId] = initialJoints.hand;
+  };
+
+  for (const candidate of contactTargets) {
+    for (let referenceIndex = 0; referenceIndex < 3; referenceIndex += 1) {
+      restoreInitialJoints();
+      let wristTarget = addScaled(
+        candidate,
+        surface.normal,
+        initialWristClearance,
+      );
+      let materialized = false;
+      for (let iteration = 0; iteration < 12; iteration += 1) {
+        if (
+          !solveTwoBoneToWrist(scene, actor, limb, wristTarget, {
+            ignoredContactSurface: restSurface,
+            referenceIndex,
+          })
+        ) {
+          break;
+        }
+        materialized = true;
+        const measurement = measureSurfaceRestingArm(
+          scene,
+          actor,
+          limb,
+          restSurface,
+        );
+        if (Math.abs(measurement.terminalGapM) <= 1e-7) break;
+        wristTarget = addScaled(
+          wristTarget,
+          surface.normal,
+          -measurement.terminalGapM,
+        );
+      }
+      if (!materialized) continue;
+
+      const solved = measureSurfaceRestingArm(scene, actor, limb, restSurface);
+      if (
+        Math.abs(solved.terminalGapM) <= RELAXED_ARM_SURFACE_EPSILON_M &&
+        solved.boundsOverflowM <= BODY_CONTACT_TOLERANCE_M &&
+        solved.armMinGapM >= -RELAXED_ARM_SURFACE_EPSILON_M &&
+        solved.terminalDropM > BODY_CONTACT_TOLERANCE_M &&
+        clearsDeclaredBodyContactSurfaces(scene, actor.id)
+      ) {
+        return true;
+      }
+    }
   }
 
-  const solved = measureSurfaceRestingArm(scene, actor, limb, restSurface);
-  return (
-    Math.abs(solved.terminalGapM) <= RELAXED_ARM_SURFACE_EPSILON_M &&
-    solved.boundsOverflowM <= BODY_CONTACT_TOLERANCE_M &&
-    solved.armMinGapM >= -RELAXED_ARM_SURFACE_EPSILON_M &&
-    solved.terminalDropM > BODY_CONTACT_TOLERANCE_M
-  );
+  restoreInitialJoints();
+  return false;
 };

@@ -6,11 +6,21 @@ import {
   applyScenePatch,
   SceneDomainError,
 } from "../src/domain/apply-scene-patch";
+import {
+  createActorBlueprintSnapshot,
+  resolveActorBlueprintInstance,
+} from "../src/domain/actor-blueprint";
 import { enforceBodyContacts } from "../src/domain/body-contacts";
 import { createDefaultScene } from "../src/domain/default-scene";
+import { jointEulerDegrees } from "../src/domain/joint-constraints";
 import { analyzePoseDiagnostics } from "../src/domain/pose-diagnostics";
+import { measureSurfaceRestingArm } from "../src/domain/relaxed-arm";
 import { quaternionFromEulerDegrees } from "../src/domain/scene-math";
-import { sceneSpecSchema, type SceneSpec } from "../src/domain/scene-schema";
+import {
+  isBlueprintActorEntity,
+  sceneSpecSchema,
+  type SceneSpec,
+} from "../src/domain/scene-schema";
 import { PATCH_SCHEMA_VERSION } from "../src/domain/schema-versions";
 import {
   materializeStaticBlockingPlan,
@@ -20,6 +30,10 @@ import type { StaticBlockingPlan } from "../src/domain/static-blocking-schema";
 import { parseSceneSubmission } from "../src/domain/scene-submission";
 import { ScenePersistence } from "../server/scene-persistence";
 import { SceneSession } from "../server/scene-session";
+import {
+  createBlueprintActor,
+  createGenericActorBlueprintDocument,
+} from "./helpers/actor-blueprint-fixtures";
 import { createIntentReport } from "./helpers/structured-fixtures";
 
 const createBlockingScene = (): SceneSpec => {
@@ -223,6 +237,61 @@ const groundRestingProductionPlan = (): StaticBlockingPlan => ({
     {
       constraintId: "relaxed_arm_r_world_ground_1",
       limb: "arm-r",
+      restSurface: {
+        surfaceEntityId: null,
+        surfaceFace: "top",
+      },
+    },
+  ],
+});
+
+const createSupineDamagedBlueprintScene = (): SceneSpec => {
+  const scene: SceneSpec = sceneSpecSchema.parse(createDefaultScene());
+  const blueprintDocument = createGenericActorBlueprintDocument();
+  blueprintDocument.proportions.handOffsetHeightRatios = [0, -0.08, 0.025];
+  const snapshot = createActorBlueprintSnapshot(
+    blueprintDocument,
+  );
+  scene.actorBlueprints = [snapshot];
+  scene.entities = scene.entities.filter(
+    (entity) => entity.kind !== "actor" && entity.kind !== "prop",
+  );
+  scene.constraints = [];
+  const actor = createBlueprintActor({ variantId: "damaged" });
+  actor.transform.positionM = [0, 0.8, 0];
+  scene.entities.push(actor);
+  return sceneSpecSchema.parse(scene);
+};
+
+const supineDamagedBlueprintPlan = (): StaticBlockingPlan => ({
+  schemaVersion: 1,
+  planId: "blocking_supine_damaged_blueprint_1",
+  actorId: "actor_entity_blueprint_1",
+  seedPose: {
+    registry: "builtin",
+    id: "pose.lying-supine-v1",
+    version: 1,
+  },
+  contacts: [
+    {
+      constraintId: "contact_supine_pelvis_ground_1",
+      bodySite: "pelvis",
+      surfaceEntityId: null,
+      surfaceFace: "top",
+      role: "support",
+    },
+    {
+      constraintId: "contact_supine_back_ground_1",
+      bodySite: "upper-back",
+      surfaceEntityId: null,
+      surfaceFace: "top",
+      role: "support",
+    },
+  ],
+  relaxedLimbs: [
+    {
+      constraintId: "relaxed_supine_arm_l_ground_1",
+      limb: "arm-l",
       restSurface: {
         surfaceEntityId: null,
         surfaceFace: "top",
@@ -504,12 +573,77 @@ describe("deterministic static blocking", () => {
     });
   });
 
+  it("rests a supine damaged Blueprint arm with a large terminal hand offset", () => {
+    const solved = materializeStaticBlockingPlan(
+      createSupineDamagedBlueprintScene(),
+      supineDamagedBlueprintPlan(),
+    );
+    const report = analyzePoseDiagnostics(solved);
+    const actor = solved.entities.find(isBlueprintActorEntity);
+    if (!actor) throw new Error("Supine Blueprint actor is missing.");
+    const measurement = measureSurfaceRestingArm(
+      solved,
+      actor,
+      "arm-l",
+      { surfaceEntityId: null, surfaceFace: "top" },
+    );
+    const handEuler = jointEulerDegrees(actor.pose.joints.hand_l);
+    const elbowBendDeg = jointEulerDegrees(actor.pose.joints.forearm_l)[0];
+    const snapshot = solved.actorBlueprints.find(
+      ({ blueprintId }) => blueprintId === actor.blueprintInstance.blueprintId,
+    );
+    if (!snapshot) throw new Error("Supine Blueprint snapshot is missing.");
+    const resolvedBlueprint = resolveActorBlueprintInstance(
+      snapshot,
+      actor.blueprintInstance.variantId,
+      actor.blueprintInstance.limbPresenceOverrides,
+    );
+
+    expect(report.status).toBe("pass");
+    expect(report.jointViolations).toEqual([]);
+    expect(report.relaxedLimbs[0]).toMatchObject({
+      limb: "arm-l",
+      mode: "surface-resting",
+      terminalGapM: expect.closeTo(0, 6),
+      status: "pass",
+    });
+    expect(measurement.armMinGapM).toBeGreaterThanOrEqual(-0.00001);
+    expect(measurement.wristPointWorld[1]).toBeLessThan(0.12);
+    expect(
+      Math.hypot(
+        measurement.terminalPointWorld[0] - measurement.shoulderPointWorld[0],
+        measurement.terminalPointWorld[2] - measurement.shoulderPointWorld[2],
+      ),
+    ).toBeGreaterThan(0.3);
+    expect(measurement.terminalPointWorld[0]).toBeGreaterThan(0.18);
+    expect(handEuler.every((angle) => Math.abs(angle) <= 0.001)).toBe(true);
+    expect(elbowBendDeg).toBeLessThan(-20);
+    expect(elbowBendDeg).toBeGreaterThan(-110);
+    expect(actor.blueprintInstance).toMatchObject({
+      variantId: "damaged",
+      heightScale: 1,
+      limbPresenceOverrides: {},
+    });
+    expect(resolvedBlueprint.limbPresence).toMatchObject({
+      upper_arm_l: "present",
+      forearm_l: "present",
+      hand_l: "present",
+      upper_arm_r: "absent",
+      forearm_r: "absent",
+      hand_r: "absent",
+      lower_leg_l: "absent",
+      foot_l: "absent",
+      lower_leg_r: "absent",
+      foot_r: "absent",
+    });
+  });
+
   it("fails an unreachable rest surface without forcing extreme joints", () => {
     const surfaceId = "prop_unreachable_arm_rest_1";
     let failure: unknown;
     try {
       materializeStaticBlockingPlan(
-        createLowArmScene(0.5, surfaceId),
+        createLowArmScene(0.8, surfaceId),
         restingArmPlan("arm-r", surfaceId),
       );
     } catch (error) {
