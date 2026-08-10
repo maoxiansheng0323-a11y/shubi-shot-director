@@ -1,0 +1,2804 @@
+{
+  "intentReport": {
+    "schemaVersion": 6,
+    "operation": "create",
+    "allowPartial": false,
+    "recognizedConstraints": [
+      {
+        "id": "intent_region_1",
+        "kind": "spatial-region",
+        "required": true,
+        "targets": [
+          "region_generic_studio"
+        ],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.spatialLayout.regions"
+          }
+        ]
+      },
+      {
+        "id": "intent_boundaries_1",
+        "kind": "spatial-boundary",
+        "required": true,
+        "targets": [
+          "boundary_studio_near",
+          "boundary_studio_left",
+          "boundary_studio_far",
+          "boundary_studio_right"
+        ],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.spatialLayout.boundaries"
+          }
+        ]
+      },
+      {
+        "id": "intent_openings_1",
+        "kind": "spatial-opening",
+        "required": true,
+        "targets": [
+          "opening_studio_entrance",
+          "opening_studio_window"
+        ],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.spatialLayout.openings"
+          }
+        ]
+      },
+      {
+        "id": "intent_presence_1",
+        "kind": "entity-presence",
+        "required": true,
+        "targets": [
+          "prop_sleep_base",
+          "prop_sleep_mattress",
+          "prop_sleep_headboard",
+          "prop_sleep_pillow",
+          "prop_sleep_bedding",
+          "prop_sleep_side_storage",
+          "prop_sleep_books_low",
+          "prop_sleep_books_high",
+          "prop_sleep_lamp_stem",
+          "prop_sleep_lamp_shade",
+          "prop_work_top",
+          "prop_work_storage",
+          "prop_work_leg_a",
+          "prop_work_leg_b",
+          "prop_work_screen",
+          "prop_work_screen_foot",
+          "prop_work_book_a",
+          "prop_work_book_b",
+          "prop_work_cup",
+          "prop_work_shelf",
+          "prop_work_shelf_bin_a",
+          "prop_work_shelf_bin_b",
+          "prop_work_chair_seat",
+          "prop_work_chair_back",
+          "prop_work_chair_base",
+          "prop_service_base_near",
+          "prop_service_base_far",
+          "prop_service_top"
+        ],
+        "evidence": [
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_base"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_mattress"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_headboard"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_pillow"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_bedding"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_side_storage"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_books_low"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_books_high"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_lamp_stem"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_sleep_lamp_shade"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_top"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_storage"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_leg_a"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_leg_b"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_screen"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_screen_foot"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_book_a"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_book_b"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_cup"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_shelf"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_shelf_bin_a"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_shelf_bin_b"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_chair_seat"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_chair_back"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_work_chair_base"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_service_base_near"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_service_base_far"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_service_top"
+          }
+        ]
+      },
+      {
+        "id": "intent_presence_2",
+        "kind": "entity-presence",
+        "required": true,
+        "targets": [
+          "prop_service_sink",
+          "prop_service_upper_near",
+          "prop_service_upper_far",
+          "prop_service_tall",
+          "prop_service_small_appliance",
+          "prop_service_canister",
+          "prop_entry_bench",
+          "prop_entry_support_a",
+          "prop_entry_support_b",
+          "prop_entry_box_low",
+          "prop_entry_box_high",
+          "prop_entry_bag",
+          "prop_center_rug",
+          "prop_floor_bin",
+          "prop_floor_stack_low",
+          "prop_floor_stack_high"
+        ],
+        "evidence": [
+          {
+            "type": "entity",
+            "entityId": "prop_service_sink"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_service_upper_near"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_service_upper_far"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_service_tall"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_service_small_appliance"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_service_canister"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_entry_bench"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_entry_support_a"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_entry_support_b"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_entry_box_low"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_entry_box_high"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_entry_bag"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_center_rug"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_floor_bin"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_floor_stack_low"
+          },
+          {
+            "type": "entity",
+            "entityId": "prop_floor_stack_high"
+          }
+        ]
+      },
+      {
+        "id": "intent_relationship_sleep",
+        "kind": "relationship",
+        "required": true,
+        "targets": [
+          "prop_sleep_base",
+          "prop_sleep_mattress",
+          "prop_sleep_headboard",
+          "prop_sleep_pillow",
+          "prop_sleep_bedding",
+          "prop_sleep_side_storage",
+          "prop_sleep_books_low",
+          "prop_sleep_books_high",
+          "prop_sleep_lamp_stem",
+          "prop_sleep_lamp_shade"
+        ],
+        "evidence": [
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_base",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_mattress",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_headboard",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_pillow",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_bedding",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_side_storage",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_books_low",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_books_high",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_lamp_stem",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_sleep_lamp_shade",
+            "path": "entity.transform.positionM"
+          }
+        ]
+      },
+      {
+        "id": "intent_relationship_work",
+        "kind": "relationship",
+        "required": true,
+        "targets": [
+          "prop_work_top",
+          "prop_work_storage",
+          "prop_work_leg_a",
+          "prop_work_leg_b",
+          "prop_work_screen",
+          "prop_work_screen_foot",
+          "prop_work_book_a",
+          "prop_work_book_b",
+          "prop_work_cup",
+          "prop_work_shelf",
+          "prop_work_shelf_bin_a",
+          "prop_work_shelf_bin_b",
+          "prop_work_chair_seat",
+          "prop_work_chair_back",
+          "prop_work_chair_base"
+        ],
+        "evidence": [
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_top",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_storage",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_leg_a",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_leg_b",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_screen",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_screen_foot",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_book_a",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_book_b",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_cup",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_shelf",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_shelf_bin_a",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_shelf_bin_b",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_chair_seat",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_chair_back",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_work_chair_base",
+            "path": "entity.transform.positionM"
+          }
+        ]
+      },
+      {
+        "id": "intent_relationship_service",
+        "kind": "relationship",
+        "required": true,
+        "targets": [
+          "prop_service_base_near",
+          "prop_service_base_far",
+          "prop_service_top",
+          "prop_service_sink",
+          "prop_service_upper_near",
+          "prop_service_upper_far",
+          "prop_service_tall",
+          "prop_service_small_appliance",
+          "prop_service_canister"
+        ],
+        "evidence": [
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_base_near",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_base_far",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_top",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_sink",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_upper_near",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_upper_far",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_tall",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_small_appliance",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_service_canister",
+            "path": "entity.transform.positionM"
+          }
+        ]
+      },
+      {
+        "id": "intent_relationship_density",
+        "kind": "relationship",
+        "required": true,
+        "targets": [
+          "prop_entry_bench",
+          "prop_entry_support_a",
+          "prop_entry_support_b",
+          "prop_entry_box_low",
+          "prop_entry_box_high",
+          "prop_entry_bag",
+          "prop_center_rug",
+          "prop_floor_bin",
+          "prop_floor_stack_low",
+          "prop_floor_stack_high"
+        ],
+        "evidence": [
+          {
+            "type": "entity-property",
+            "entityId": "prop_entry_bench",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_entry_support_a",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_entry_support_b",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_entry_box_low",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_entry_box_high",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_entry_bag",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_center_rug",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_floor_bin",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_floor_stack_low",
+            "path": "entity.transform.positionM"
+          },
+          {
+            "type": "entity-property",
+            "entityId": "prop_floor_stack_high",
+            "path": "entity.transform.positionM"
+          }
+        ]
+      },
+      {
+        "id": "intent_camera_1",
+        "kind": "entity-presence",
+        "required": true,
+        "targets": [
+          "camera_reconstruction_1"
+        ],
+        "evidence": [
+          {
+            "type": "entity",
+            "entityId": "camera_reconstruction_1"
+          }
+        ]
+      },
+      {
+        "id": "intent_output_1",
+        "kind": "output",
+        "required": true,
+        "targets": [],
+        "evidence": [
+          {
+            "type": "scene-property",
+            "path": "scene.output"
+          }
+        ]
+      }
+    ],
+    "unsupportedConstraints": [],
+    "unresolvedRelations": [],
+    "warnings": [
+      {
+        "code": "APPROXIMATE_PLACEMENT",
+        "targetIds": [
+          "region_generic_studio",
+          "opening_studio_entrance",
+          "opening_studio_window"
+        ]
+      }
+    ],
+    "canApplySafely": true
+  },
+  "scene": {
+    "schemaVersion": 6,
+    "sceneId": "scene_generic_reconstruction_1",
+    "revision": 0,
+    "title": "Reference-guided generic studio reconstruction",
+    "coordinateSystem": {
+      "handedness": "right",
+      "upAxis": "+Y",
+      "cameraForwardAxis": "-Z",
+      "lengthUnit": "meter"
+    },
+    "activeCameraId": "camera_reconstruction_1",
+    "output": {
+      "aspect": {
+        "width": 16,
+        "height": 9
+      },
+      "resolutionPx": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    "actorBlueprints": [],
+    "entities": [
+      {
+        "id": "prop_sleep_base",
+        "label": "Sleeping base",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.22,
+            0.2,
+            -1.05
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            1.28,
+            0.4,
+            2.3
+          ]
+        },
+        "color": "#87939e"
+      },
+      {
+        "id": "prop_sleep_mattress",
+        "label": "Sleeping mattress",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.22,
+            0.5,
+            -1.03
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            1.23,
+            0.2,
+            2.2
+          ]
+        },
+        "color": "#d8dbdd"
+      },
+      {
+        "id": "prop_sleep_headboard",
+        "label": "Sleeping headboard",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.22,
+            0.8,
+            -2.16
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            1.35,
+            1,
+            0.11
+          ]
+        },
+        "color": "#76838f"
+      },
+      {
+        "id": "prop_sleep_pillow",
+        "label": "Sleeping pillow",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.22,
+            0.7,
+            -1.82
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "capsule",
+          "sizeM": [
+            0.68,
+            0.18,
+            0.4
+          ]
+        },
+        "color": "#e7e7e5"
+      },
+      {
+        "id": "prop_sleep_bedding",
+        "label": "Sleeping bedding mass",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.22,
+            0.7,
+            -0.52
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            1.08,
+            0.14,
+            0.82
+          ]
+        },
+        "color": "#aec1bb"
+      },
+      {
+        "id": "prop_sleep_side_storage",
+        "label": "Bedside storage",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -1.32,
+            0.34,
+            -1.92
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.46,
+            0.68,
+            0.48
+          ]
+        },
+        "color": "#7e8994"
+      },
+      {
+        "id": "prop_sleep_books_low",
+        "label": "Bedside books lower",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -1.32,
+            0.74,
+            -1.92
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.31,
+            0.07,
+            0.25
+          ]
+        },
+        "color": "#b58472"
+      },
+      {
+        "id": "prop_sleep_books_high",
+        "label": "Bedside books upper",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -1.3,
+            0.82,
+            -1.9
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.26,
+            0.06,
+            0.22
+          ]
+        },
+        "color": "#7894a4"
+      },
+      {
+        "id": "prop_sleep_lamp_stem",
+        "label": "Bedside lamp stem",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -1.45,
+            0.94,
+            -2.03
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "cylinder",
+          "sizeM": [
+            0.12,
+            0.28,
+            0.12
+          ]
+        },
+        "color": "#c2aa70"
+      },
+      {
+        "id": "prop_sleep_lamp_shade",
+        "label": "Bedside lamp shade",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -1.45,
+            1.12,
+            -2.03
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "cylinder",
+          "sizeM": [
+            0.25,
+            0.24,
+            0.25
+          ]
+        },
+        "color": "#d9cda7"
+      },
+      {
+        "id": "prop_work_top",
+        "label": "Work surface",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.35,
+            0.79,
+            -2.11
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            1.62,
+            0.1,
+            0.66
+          ]
+        },
+        "color": "#83929e"
+      },
+      {
+        "id": "prop_work_storage",
+        "label": "Work storage support",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -0.12,
+            0.38,
+            -2.11
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.48,
+            0.76,
+            0.58
+          ]
+        },
+        "color": "#6f7e8b"
+      },
+      {
+        "id": "prop_work_leg_a",
+        "label": "Work leg front",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.98,
+            0.38,
+            -1.9
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.08,
+            0.76,
+            0.08
+          ]
+        },
+        "color": "#63717d"
+      },
+      {
+        "id": "prop_work_leg_b",
+        "label": "Work leg rear",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.98,
+            0.38,
+            -2.32
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.08,
+            0.76,
+            0.08
+          ]
+        },
+        "color": "#63717d"
+      },
+      {
+        "id": "prop_work_screen",
+        "label": "Work screen",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.34,
+            1.15,
+            -2.22
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.67,
+            0.44,
+            0.07
+          ]
+        },
+        "color": "#606c77"
+      },
+      {
+        "id": "prop_work_screen_foot",
+        "label": "Work screen foot",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.34,
+            0.9,
+            -2.18
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.22,
+            0.07,
+            0.17
+          ]
+        },
+        "color": "#606c77"
+      },
+      {
+        "id": "prop_work_book_a",
+        "label": "Work clutter book one",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.82,
+            0.88,
+            -1.96
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.31,
+            0.06,
+            0.23
+          ]
+        },
+        "color": "#b67e6f"
+      },
+      {
+        "id": "prop_work_book_b",
+        "label": "Work clutter book two",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.82,
+            0.96,
+            -1.96
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.25,
+            0.06,
+            0.19
+          ]
+        },
+        "color": "#759487"
+      },
+      {
+        "id": "prop_work_cup",
+        "label": "Work clutter cup",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -0.04,
+            0.95,
+            -1.94
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "cylinder",
+          "sizeM": [
+            0.13,
+            0.19,
+            0.13
+          ]
+        },
+        "color": "#c0a267"
+      },
+      {
+        "id": "prop_work_shelf",
+        "label": "Work wall shelf",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.34,
+            1.68,
+            -2.43
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            1.5,
+            0.08,
+            0.26
+          ]
+        },
+        "color": "#788591"
+      },
+      {
+        "id": "prop_work_shelf_bin_a",
+        "label": "Shelf bin left",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -0.06,
+            1.86,
+            -2.42
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.4,
+            0.32,
+            0.23
+          ]
+        },
+        "color": "#9e8b74"
+      },
+      {
+        "id": "prop_work_shelf_bin_b",
+        "label": "Shelf bin right",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.67,
+            1.84,
+            -2.42
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.46,
+            0.28,
+            0.23
+          ]
+        },
+        "color": "#75919a"
+      },
+      {
+        "id": "prop_work_chair_seat",
+        "label": "Work chair seat",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.42,
+            0.45,
+            -1.35
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.52,
+            0.12,
+            0.52
+          ]
+        },
+        "color": "#77828d"
+      },
+      {
+        "id": "prop_work_chair_back",
+        "label": "Work chair back",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.42,
+            0.78,
+            -1.57
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.52,
+            0.62,
+            0.1
+          ]
+        },
+        "color": "#707c88"
+      },
+      {
+        "id": "prop_work_chair_base",
+        "label": "Work chair base",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            0.42,
+            0.2,
+            -1.35
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "cylinder",
+          "sizeM": [
+            0.45,
+            0.4,
+            0.45
+          ]
+        },
+        "color": "#606d78"
+      },
+      {
+        "id": "prop_service_base_near",
+        "label": "Service base near",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            2.98,
+            0.43,
+            0.85
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.8,
+            0.86,
+            0.98
+          ]
+        },
+        "color": "#87949d"
+      },
+      {
+        "id": "prop_service_base_far",
+        "label": "Service base far",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            2.98,
+            0.43,
+            -0.17
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.8,
+            0.86,
+            0.96
+          ]
+        },
+        "color": "#7d8b96"
+      },
+      {
+        "id": "prop_service_top",
+        "label": "Service worktop",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            2.94,
+            0.91,
+            0.34
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.9,
+            0.1,
+            2.08
+          ]
+        },
+        "color": "#c7c9c7"
+      },
+      {
+        "id": "prop_service_sink",
+        "label": "Service sink mass",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            2.85,
+            0.98,
+            -0.14
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.45,
+            0.07,
+            0.5
+          ]
+        },
+        "color": "#6a8188"
+      },
+      {
+        "id": "prop_service_upper_near",
+        "label": "Service upper storage near",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            3.15,
+            1.76,
+            0.82
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.62,
+            0.7,
+            0.82
+          ]
+        },
+        "color": "#97a2a8"
+      },
+      {
+        "id": "prop_service_upper_far",
+        "label": "Service upper storage far",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            3.15,
+            1.76,
+            -0.09
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.62,
+            0.7,
+            0.82
+          ]
+        },
+        "color": "#8e9aa2"
+      },
+      {
+        "id": "prop_service_tall",
+        "label": "Tall storage appliance",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            2.95,
+            0.98,
+            -1.78
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.95,
+            1.96,
+            0.78
+          ]
+        },
+        "color": "#76848e"
+      },
+      {
+        "id": "prop_service_small_appliance",
+        "label": "Small service appliance",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            2.82,
+            1.11,
+            0.62
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.37,
+            0.34,
+            0.39
+          ]
+        },
+        "color": "#64727b"
+      },
+      {
+        "id": "prop_service_canister",
+        "label": "Service canister",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            2.82,
+            1.1,
+            0.1
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "cylinder",
+          "sizeM": [
+            0.17,
+            0.3,
+            0.17
+          ]
+        },
+        "color": "#ad9469"
+      },
+      {
+        "id": "prop_entry_bench",
+        "label": "Entrance bench top",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.42,
+            0.35,
+            2.03
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.95,
+            0.12,
+            0.42
+          ]
+        },
+        "color": "#7d8993"
+      },
+      {
+        "id": "prop_entry_support_a",
+        "label": "Entrance bench support left",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.75,
+            0.17,
+            2.03
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.1,
+            0.34,
+            0.35
+          ]
+        },
+        "color": "#6c7882"
+      },
+      {
+        "id": "prop_entry_support_b",
+        "label": "Entrance bench support right",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.09,
+            0.17,
+            2.03
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.1,
+            0.34,
+            0.35
+          ]
+        },
+        "color": "#6c7882"
+      },
+      {
+        "id": "prop_entry_box_low",
+        "label": "Entrance box lower",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -1.55,
+            0.22,
+            2.02
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.58,
+            0.44,
+            0.54
+          ]
+        },
+        "color": "#9c896f"
+      },
+      {
+        "id": "prop_entry_box_high",
+        "label": "Entrance box upper",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -1.53,
+            0.57,
+            2.02
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.47,
+            0.26,
+            0.46
+          ]
+        },
+        "color": "#86958a"
+      },
+      {
+        "id": "prop_entry_bag",
+        "label": "Entrance bag mass",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -2.87,
+            0.32,
+            1.52
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "capsule",
+          "sizeM": [
+            0.4,
+            0.64,
+            0.37
+          ]
+        },
+        "color": "#78848d"
+      },
+      {
+        "id": "prop_center_rug",
+        "label": "Center occupied rug",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            -0.65,
+            0.02,
+            0.38
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "plane",
+          "sizeM": [
+            2.35,
+            0.025,
+            1.62
+          ]
+        },
+        "color": "#98a8a1"
+      },
+      {
+        "id": "prop_floor_bin",
+        "label": "Floor storage bin",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            1.28,
+            0.28,
+            0.7
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.48,
+            0.56,
+            0.48
+          ]
+        },
+        "color": "#82939b"
+      },
+      {
+        "id": "prop_floor_stack_low",
+        "label": "Floor clutter lower",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            1.72,
+            0.1,
+            0.8
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.54,
+            0.2,
+            0.4
+          ]
+        },
+        "color": "#a2866e"
+      },
+      {
+        "id": "prop_floor_stack_high",
+        "label": "Floor clutter upper",
+        "parentId": null,
+        "kind": "prop",
+        "transform": {
+          "positionM": [
+            1.74,
+            0.27,
+            0.79
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "preset": {
+          "registry": "builtin",
+          "id": "prop.block-v1",
+          "version": 1,
+          "parameters": {}
+        },
+        "geometry": {
+          "primitive": "box",
+          "sizeM": [
+            0.43,
+            0.15,
+            0.32
+          ]
+        },
+        "color": "#7b9099"
+      },
+      {
+        "id": "camera_reconstruction_1",
+        "label": "Manual reconstruction review camera",
+        "parentId": null,
+        "kind": "camera",
+        "transform": {
+          "positionM": [
+            0.15,
+            3.35,
+            6.35
+          ],
+          "rotation": [
+            -0.18836675560683247,
+            0.014875100361617778,
+            0.0028533868544406357,
+            0.9819819524588252
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "visible": true,
+        "lockMode": "none",
+        "lens": {
+          "projection": "perspective",
+          "focalLengthMm": 30,
+          "sensorWidthMm": 36,
+          "nearM": 0.05,
+          "farM": 100
+        }
+      }
+    ],
+    "constraints": [],
+    "spatialLayout": {
+      "floorY": 0,
+      "regions": [
+        {
+          "id": "region_generic_studio",
+          "label": "Generic studio room",
+          "footprintXZ": [
+            [
+              -3.5,
+              -2.7
+            ],
+            [
+              3.5,
+              -2.7
+            ],
+            [
+              3.5,
+              2.7
+            ],
+            [
+              -3.5,
+              2.7
+            ]
+          ],
+          "heightM": 2.7,
+          "visible": true
+        }
+      ],
+      "boundaries": [
+        {
+          "id": "boundary_studio_near",
+          "label": "Near wall",
+          "regionIds": [
+            "region_generic_studio"
+          ],
+          "startXZ": [
+            -3.5,
+            2.7
+          ],
+          "endXZ": [
+            3.5,
+            2.7
+          ],
+          "heightM": 2.7,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_studio_left",
+          "label": "Left wall",
+          "regionIds": [
+            "region_generic_studio"
+          ],
+          "startXZ": [
+            -3.5,
+            -2.7
+          ],
+          "endXZ": [
+            -3.5,
+            2.7
+          ],
+          "heightM": 2.7,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_studio_far",
+          "label": "Far wall",
+          "regionIds": [
+            "region_generic_studio"
+          ],
+          "startXZ": [
+            3.5,
+            -2.7
+          ],
+          "endXZ": [
+            -3.5,
+            -2.7
+          ],
+          "heightM": 2.7,
+          "thicknessM": 0.1,
+          "visible": true
+        },
+        {
+          "id": "boundary_studio_right",
+          "label": "Right wall",
+          "regionIds": [
+            "region_generic_studio"
+          ],
+          "startXZ": [
+            3.5,
+            2.7
+          ],
+          "endXZ": [
+            3.5,
+            -2.7
+          ],
+          "heightM": 2.7,
+          "thicknessM": 0.1,
+          "visible": true
+        }
+      ],
+      "openings": [
+        {
+          "id": "opening_studio_entrance",
+          "label": "Entrance opening",
+          "boundaryId": "boundary_studio_near",
+          "offsetM": 0.48,
+          "widthM": 0.94,
+          "bottomM": 0,
+          "heightM": 2.08,
+          "visible": true
+        },
+        {
+          "id": "opening_studio_window",
+          "label": "Wide window",
+          "boundaryId": "boundary_studio_far",
+          "offsetM": 1.95,
+          "widthM": 2.95,
+          "bottomM": 0.86,
+          "heightM": 1.28,
+          "visible": true
+        }
+      ],
+      "connections": [],
+      "memberships": [
+        {
+          "entityId": "prop_sleep_base",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_mattress",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_headboard",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_pillow",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_bedding",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_side_storage",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_books_low",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_books_high",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_lamp_stem",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_sleep_lamp_shade",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_top",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_storage",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_leg_a",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_leg_b",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_screen",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_screen_foot",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_book_a",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_book_b",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_cup",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_shelf",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_shelf_bin_a",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_shelf_bin_b",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_chair_seat",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_chair_back",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_work_chair_base",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_base_near",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_base_far",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_top",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_sink",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_upper_near",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_upper_far",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_tall",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_small_appliance",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_service_canister",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_entry_bench",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_entry_support_a",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_entry_support_b",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_entry_box_low",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_entry_box_high",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_entry_bag",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_center_rug",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_floor_bin",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_floor_stack_low",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "prop_floor_stack_high",
+          "regionId": "region_generic_studio"
+        },
+        {
+          "entityId": "camera_reconstruction_1",
+          "regionId": "region_generic_studio"
+        }
+      ]
+    }
+  }
+}
