@@ -32,6 +32,8 @@ ordering, wall penetration, key-prop completeness, headroom, look room,
 caption clearance, and the requested shot size. Approximate domain checks do
 not replace the rendered view.
 
+For semantic candidates, require `shot candidates` to report at least one renderer-verified `pass` before acceptance. The browser verification layer uses an entity/actor-part ID pass plus isolated silhouette passes to measure actual visible pixels, visible ratio, screen-space bounds, clipping, body-part visibility, safe-area overlap, and depth ordering. A failed or missing render report blocks `shot accept`; do not replace it with model screenshot self-confirmation.
+
 First inspect Overview for the whole actor and scene. Confirm requested resolved stature against nearby geometry and compare actor branches at the same meter scale when relevant. Then inspect every affected Local preview for edited limb chains, wrist/ankle articulation, and any contact correction. Finally inspect Shot Preview from the authoritative final camera. Do not claim visual success until stature, missing limbs, pose, contact, framing, persistence across snapshot/save-load, and export state have all been verified.
 
 For a connected layout, inspect Overview for complete region footprints,

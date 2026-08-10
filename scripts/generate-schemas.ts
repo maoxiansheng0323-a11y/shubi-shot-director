@@ -9,6 +9,12 @@ import {
   sceneSubmissionSchema,
 } from "../src/domain/scene-submission";
 import {
+  shotIntentPatchSchema,
+  shotIntentPlanSchema,
+} from "../src/domain/shot-intent";
+import { shotSolveSubmissionSchema } from "../src/domain/shot-solve-submission";
+import { renderSpaceEvidenceSchema } from "../src/domain/render-space-verification";
+import {
   ACTOR_LIMB_CHAINS,
   ACTOR_LIMB_PART_IDS,
 } from "../src/domain/actor-anatomy";
@@ -35,6 +41,10 @@ const schemas = [
   ["intent-report.schema.json", intentReportSchema],
   ["scene-submission.schema.json", sceneSubmissionSchema],
   ["patch-submission.schema.json", patchSubmissionSchema],
+  ["shot-intent-plan.schema.json", shotIntentPlanSchema],
+  ["shot-intent-patch.schema.json", shotIntentPatchSchema],
+  ["shot-solve-submission.schema.json", shotSolveSubmissionSchema],
+  ["render-space-evidence.schema.json", renderSpaceEvidenceSchema],
 ] as const;
 
 type JsonSchemaNode = {

@@ -68,6 +68,42 @@ export const ACTION_POLICY = Object.freeze({
     schemas: ["patch", "intent"],
     requiresBridge: true,
   }),
+  "shot.solve": policy("shot.solve", {
+    features: [
+      "shot.semantic-intent-plan",
+      "shot.hard-soft-constraints",
+      "shot.relationship-solver",
+      "shot.camera-candidate-solver",
+      "shot.render-space-verification",
+    ],
+    schemas: ["scene", "intent"],
+    requiresBridge: true,
+  }),
+  "shot.revise": policy("shot.revise", {
+    features: [
+      "shot.semantic-intent-plan",
+      "shot.hard-soft-constraints",
+      "shot.relationship-solver",
+      "shot.camera-candidate-solver",
+      "shot.render-space-verification",
+      "shot.semantic-revision",
+    ],
+    requiresBridge: true,
+  }),
+  "shot.candidates": policy("shot.candidates", {
+    features: [
+      "shot.camera-candidate-solver",
+      "shot.render-space-verification",
+    ],
+    requiresBridge: true,
+  }),
+  "shot.accept": policy("shot.accept", {
+    features: [
+      "shot.camera-candidate-solver",
+      "shot.render-space-verification",
+    ],
+    requiresBridge: true,
+  }),
   "composition.inspect": policy("composition.inspect", {
     features: ["composition.segmented-report"],
     requiresBridge: true,
@@ -105,6 +141,12 @@ const REQUIRED_FEATURE_IDS = Object.freeze([
   "actor.body-contact-sites",
   "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
+  "shot.semantic-intent-plan",
+  "shot.hard-soft-constraints",
+  "shot.relationship-solver",
+  "shot.camera-candidate-solver",
+  "shot.render-space-verification",
+  "shot.semantic-revision",
 ]);
 const ENTITY_LOCK_MODES = Object.freeze(["none", "workflow", "user"]);
 const PATCH_POLICY_FIELDS = Object.freeze(["preserveLock"]);

@@ -1,6 +1,6 @@
 {
   "name": "shubi-shot-director",
-  "version": "0.9.4",
+  "version": "1.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -49,7 +49,7 @@
     "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.13"
   },
   "packageManager": "pnpm@11.9.0"
 }

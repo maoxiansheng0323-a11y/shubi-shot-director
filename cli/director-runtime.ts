@@ -39,6 +39,11 @@ import {
   type PatchSubmission,
   type SceneSubmission,
 } from "../src/domain/scene-submission";
+import { parseShotSolveSubmission } from "../src/domain/shot-solve-submission";
+import {
+  shotIntentPatchSchema,
+  type ShotIntentPatch,
+} from "../src/domain/shot-intent";
 import {
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_SERVICE,
@@ -210,6 +215,107 @@ const readValidatedPatchSubmissionFile = async (
       "The supplied file is not a valid patch submission.",
     );
   }
+};
+
+const readValidatedShotSolveSubmissionFile = async (
+  filePath: string,
+): Promise<ReturnType<typeof parseShotSolveSubmission>> => {
+  const input = await readBoundedJsonFile(filePath);
+  try {
+    return parseShotSolveSubmission(input);
+  } catch {
+    throw new CliCommandError(
+      "SHOT_SOLVE_SUBMISSION_FILE_INVALID",
+      "The supplied file is not a valid semantic shot solve submission.",
+    );
+  }
+};
+
+const readValidatedShotIntentPatchFile = async (
+  filePath: string,
+): Promise<ShotIntentPatch> => {
+  try {
+    return shotIntentPatchSchema.parse(await readBoundedJsonFile(filePath));
+  } catch {
+    throw new CliCommandError(
+      "SHOT_INTENT_PATCH_FILE_INVALID",
+      "The supplied file is not a valid semantic shot intent patch.",
+    );
+  }
+};
+
+const shotSolveEnvelopeSchema = z
+  .object({
+    solve: z
+      .object({
+        solveId: z.string(),
+        generation: z.number().int().nonnegative(),
+        solverVersion: z.literal(1),
+        baseSessionSceneId: z.string(),
+        baseSessionRevision: z.number().int().nonnegative(),
+        candidates: z.array(
+          z
+            .object({
+              candidateId: z.string(),
+              label: z.string(),
+              profile: z.string(),
+              score: z.number(),
+              finalScore: z.number().nullable(),
+              renderVerification: z
+                .object({ status: z.enum(["pass", "fail"]) })
+                .passthrough()
+                .nullable(),
+            })
+            .passthrough(),
+        ),
+      })
+      .passthrough()
+      .nullable(),
+  })
+  .passthrough();
+
+const readShotSolveFromEnvelope = (envelope: JsonEnvelope) => {
+  const parsed = shotSolveEnvelopeSchema.safeParse(envelope.data);
+  if (!parsed.success) {
+    throw new BridgeError(
+      "BRIDGE_RESPONSE_INVALID",
+      "The local bridge returned an invalid semantic shot response.",
+    );
+  }
+  return parsed.data.solve;
+};
+
+const shotSolveSummary = (solve: NonNullable<ReturnType<typeof readShotSolveFromEnvelope>>) => ({
+  solveId: solve.solveId,
+  generation: solve.generation,
+  solverVersion: solve.solverVersion,
+  baseSessionSceneId: solve.baseSessionSceneId,
+  baseSessionRevision: solve.baseSessionRevision,
+  candidates: solve.candidates.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    label: candidate.label,
+    profile: candidate.profile,
+    worldScore: candidate.score,
+    finalScore: candidate.finalScore,
+    renderStatus: candidate.renderVerification?.status ?? "pending",
+  })),
+});
+
+const parseCandidateId = (args: string[]): string => {
+  if (args.length !== 2 || args[0] !== "--candidate") {
+    throw new CliCommandError(
+      "CLI_ARGUMENT_REQUIRED",
+      "shot accept requires --candidate <candidate-id>.",
+    );
+  }
+  const candidateId = args[1];
+  if (!/^[a-z][a-z0-9_-]{2,63}$/u.test(candidateId)) {
+    throw new CliCommandError(
+      "CLI_ARGUMENT_INVALID",
+      "The candidate id is invalid.",
+    );
+  }
+  return candidateId;
 };
 
 const historyStatusSchema = z
@@ -616,6 +722,98 @@ const runDirectorCommand = async (
         operationCount: normalized.patch.operations.length,
         history: accepted.history,
         intentSummary: accepted.intentSummary,
+      },
+    });
+    return;
+  }
+
+  if (command === "shot" && args[1] === "solve") {
+    const options = parseFileCommandOptions(args.slice(2));
+    const submission = await readValidatedShotSolveSubmissionFile(options.file);
+    await requireBridgeHealth(configuration);
+    const response = await requestBridge(
+      configuration,
+      "/api/v1/shot-solves",
+      {
+        method: "POST",
+        body: JSON.stringify(submission),
+      },
+    );
+    const solve = readShotSolveFromEnvelope(response);
+    if (!solve) {
+      throw new BridgeError(
+        "BRIDGE_RESPONSE_INVALID",
+        "The local bridge did not return semantic shot candidates.",
+      );
+    }
+    output({ ok: true, data: shotSolveSummary(solve) });
+    return;
+  }
+
+  if (command === "shot" && args[1] === "revise") {
+    const options = parseFileCommandOptions(args.slice(2));
+    const patch = await readValidatedShotIntentPatchFile(options.file);
+    await requireBridgeHealth(configuration);
+    const response = await requestBridge(
+      configuration,
+      "/api/v1/shot-solves/modify",
+      {
+        method: "POST",
+        body: JSON.stringify(patch),
+      },
+    );
+    const solve = readShotSolveFromEnvelope(response);
+    if (!solve) {
+      throw new BridgeError(
+        "BRIDGE_RESPONSE_INVALID",
+        "The local bridge did not return revised semantic shot candidates.",
+      );
+    }
+    output({ ok: true, data: shotSolveSummary(solve) });
+    return;
+  }
+
+  if (command === "shot" && args[1] === "candidates") {
+    assertNoArguments(args.slice(2));
+    await requireBridgeHealth(configuration);
+    const solve = readShotSolveFromEnvelope(
+      await requestBridge(configuration, "/api/v1/shot-solves/current"),
+    );
+    output({
+      ok: true,
+      data: solve ? shotSolveSummary(solve) : { solve: null },
+    });
+    return;
+  }
+
+  if (command === "shot" && args[1] === "accept") {
+    const candidateId = parseCandidateId(args.slice(2));
+    await requireBridgeHealth(configuration);
+    const solve = readShotSolveFromEnvelope(
+      await requestBridge(configuration, "/api/v1/shot-solves/current"),
+    );
+    if (!solve) {
+      throw new CliCommandError(
+        "SHOT_SOLVE_NOT_FOUND",
+        "No semantic shot solve is available for acceptance.",
+      );
+    }
+    const response = await requestBridge(
+      configuration,
+      `/api/v1/shot-solves/${solve.solveId}/accept`,
+      {
+        method: "POST",
+        body: JSON.stringify({ candidateId }),
+      },
+    );
+    const accepted = readSceneFromEnvelope(response);
+    output({
+      ok: true,
+      data: {
+        action: "accept",
+        candidateId,
+        sceneId: accepted.sceneId,
+        revision: accepted.revision,
       },
     });
     return;

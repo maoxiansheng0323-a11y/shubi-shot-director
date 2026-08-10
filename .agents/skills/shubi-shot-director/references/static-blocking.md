@@ -4,6 +4,8 @@ Use static blocking when a requested still pose depends on support, body-surface
 
 This is a still-pose solver. It has no prompt input, model call, animation, timeline, physics, ragdoll, or gameplay state.
 
+In v1 semantic shot solving, include the complete StaticBlocking plan as an `actor-blocking` hard constraint inside `ShotIntentPlan`. The higher-level relationship solver runs first, then this unchanged subsystem materializes actor translation, canonical joints, body-contact constraints, and relaxed limbs before camera search. The plan remains transient and the final candidate stores only ordinary SceneSpec state.
+
 ## Supported structured goals
 
 - Body sites: `pelvis`, `upper-back`, `chest`, `head`, left/right `hand`, `knee`, and `foot`.

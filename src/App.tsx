@@ -53,6 +53,7 @@ import type { SpatialPreviewMode } from "./editor/spatial-preview";
 import { userFacingError } from "./editor/error-messages";
 import type { ShotExporterHandle } from "./three/ShotExporter";
 import { connectPreviewExportBridge } from "./three/preview-export-client";
+import { SemanticShotCandidates } from "./editor/SemanticShotCandidates";
 
 const connectionLabels = {
   idle: "未连接",
@@ -1016,6 +1017,7 @@ export const App = () => {
               {loading ? "读取场景" : "写入 revision"}
             </div>
           ) : null}
+          <SemanticShotCandidates />
         </section>
         <Inspector
           scene={scene}

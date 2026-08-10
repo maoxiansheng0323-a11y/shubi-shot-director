@@ -71,7 +71,7 @@ describe("public onboarding", () => {
       "historically been verified on Windows 11 Pro, 64-bit (build 26200).",
     );
     expect(readme).toContain(
-      "macOS and Linux are not claimed as verified for v0.9.4.",
+      "macOS and Linux are not claimed as verified for the v1.0.0 candidate.",
     );
     expect(readme).toMatch(/generic limb presence/iu);
     expect(readme).toMatch(
@@ -141,25 +141,25 @@ describe("public onboarding", () => {
     expect(releaseGuide).toMatch(/do not publish to npm/iu);
   });
 
-  it("ships reusable v0.9.4 public release notes", async () => {
-    const [readme, releaseNotes] = await Promise.all([
+  it("ships stable v0.9.4 notes and a clearly unpublished v1.0.0 candidate record", async () => {
+    const [readme, stableNotes, candidateNotes] = await Promise.all([
       readRepositoryFile("README.md"),
       readRepositoryFile("docs/releases/v0.9.4.md"),
+      readRepositoryFile("docs/releases/v1.0.0.md"),
     ]);
 
     expect(readme).toContain(
-      "[v0.9.4 release notes](docs/releases/v0.9.4.md)",
+      "[v0.9.4](docs/releases/v0.9.4.md)",
     );
-    expect(readme).not.toMatch(/release candidate/iu);
-    expect(releaseNotes).toContain("# Shubi Shot Director v0.9.4");
-    expect(releaseNotes).toMatch(/StaticBlockingPlan/iu);
-    expect(releaseNotes).toMatch(/surface-resting/iu);
-    expect(releaseNotes).toMatch(/body-site[\s\S]*orientation/iu);
-    expect(releaseNotes).toMatch(/SceneSpec/iu);
-    expect(releaseNotes).toMatch(/workspace routing:\s*1/iu);
-    expect(releaseNotes).toContain("actor.pose-joints");
-    expect(releaseNotes).toMatch(/schema version:\s*6/iu);
-    expect(releaseNotes).toMatch(/capability contract:\s*2/iu);
+    expect(readme).toContain("[v1.0.0 release notes](docs/releases/v1.0.0.md)");
+    expect(stableNotes).toContain("# Shubi Shot Director v0.9.4");
+    expect(candidateNotes).toContain("# Shubi Shot Director v1.0.0 candidate");
+    expect(candidateNotes).toMatch(/Draft PR candidate only/iu);
+    expect(candidateNotes).toMatch(/ShotIntentPlan/iu);
+    expect(candidateNotes).toMatch(/render-space/iu);
+    expect(candidateNotes).toMatch(/SceneSpec[\s\S]*schema version 6/iu);
+    expect(candidateNotes).toMatch(/capability contract version 2/iu);
+    expect(candidateNotes).not.toMatch(/tag or GitHub Release has been created[\s\S]*yes/iu);
   });
 
   it("locks the public package metadata without enabling npm publication", async () => {
@@ -175,7 +175,7 @@ describe("public onboarding", () => {
 
     expect(packageJson).toMatchObject({
       name: "shubi-shot-director",
-      version: "0.9.4",
+      version: "1.0.0",
       private: true,
       license: "MIT",
     });

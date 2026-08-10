@@ -82,6 +82,10 @@ const expectedCommandIds = [
   "scene.load",
   "patch.apply",
   "patch.submit",
+  "shot.solve",
+  "shot.revise",
+  "shot.candidates",
+  "shot.accept",
   "composition.inspect",
   "pose.inspect",
   "export.png",
@@ -109,6 +113,12 @@ const expectedFeatureIds = [
   "actor.body-contact-sites",
   "actor.pose-diagnostics",
   "actor.blueprint-instance-limb-overrides",
+  "shot.semantic-intent-plan",
+  "shot.hard-soft-constraints",
+  "shot.relationship-solver",
+  "shot.camera-candidate-solver",
+  "shot.render-space-verification",
+  "shot.semantic-revision",
 ] as const;
 const temporaryDirectories: string[] = [];
 
@@ -319,7 +329,10 @@ const runNode = async (
 const parseSuccessfulJsonLine = <T>(
   result: ProcessResult,
 ): JsonEnvelope<T> => {
-  expect(result).toMatchObject({
+  expect(
+    result,
+    `Director command failed: ${JSON.stringify(result)}`,
+  ).toMatchObject({
     exitCode: 0,
     signal: null,
     stderr: "",
@@ -685,7 +698,7 @@ const expectV2Boundary = (data: Record<string, unknown>): void => {
   expect(data).toEqual(expect.objectContaining({
     service: "shubi-shot-director",
     capabilitiesContractVersion: 2,
-    applicationVersion: "0.9.4",
+    applicationVersion: "1.0.0",
     bridgeProtocolVersion: 1,
     workspaceRoutingVersion: 1,
     sceneSchemaVersion: 6,

@@ -1,0 +1,1117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "patchId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "solveId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "baseGeneration": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "operations": {
+      "minItems": 1,
+      "maxItems": 64,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "hard-constraint.set"
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "spatial-relationship"
+                      },
+                      "subjectId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "referenceId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "relation": {
+                        "type": "string",
+                        "enum": [
+                          "in-front-of",
+                          "behind",
+                          "left-of",
+                          "right-of",
+                          "beside",
+                          "near",
+                          "separated",
+                          "above",
+                          "below"
+                        ]
+                      },
+                      "distance": {
+                        "type": "object",
+                        "properties": {
+                          "minM": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "maxM": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100
+                          }
+                        },
+                        "required": [
+                          "minM",
+                          "maxM"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "axisFrame": {
+                        "default": "reference",
+                        "type": "string",
+                        "enum": [
+                          "world",
+                          "reference"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "subjectId",
+                      "referenceId",
+                      "relation",
+                      "distance",
+                      "axisFrame"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "facing"
+                      },
+                      "subjectId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "targetEntityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "subjectId",
+                      "targetEntityId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "surface-placement"
+                      },
+                      "subjectId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "surfaceEntityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "surfaceFace": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom",
+                          "left",
+                          "right",
+                          "front",
+                          "back"
+                        ]
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "on",
+                          "against"
+                        ]
+                      },
+                      "clearanceM": {
+                        "default": 0,
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 2
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "subjectId",
+                      "surfaceEntityId",
+                      "surfaceFace",
+                      "mode",
+                      "clearanceM"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "inside-region"
+                      },
+                      "entityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "regionId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "marginM": {
+                        "default": 0.05,
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "entityId",
+                      "regionId",
+                      "marginM"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "actor-blocking"
+                      },
+                      "plan": {
+                        "type": "object",
+                        "properties": {
+                          "schemaVersion": {
+                            "type": "number",
+                            "const": 1
+                          },
+                          "planId": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          "actorId": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 64,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          "seedPose": {
+                            "type": "object",
+                            "properties": {
+                              "registry": {
+                                "type": "string",
+                                "const": "builtin"
+                              },
+                              "id": {
+                                "type": "string",
+                                "minLength": 3,
+                                "maxLength": 80,
+                                "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                              },
+                              "version": {
+                                "type": "number",
+                                "const": 1
+                              }
+                            },
+                            "required": [
+                              "registry",
+                              "id",
+                              "version"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "trunk": {
+                            "type": "object",
+                            "properties": {
+                              "lean": {
+                                "type": "object",
+                                "properties": {
+                                  "direction": {
+                                    "type": "string",
+                                    "enum": [
+                                      "forward",
+                                      "backward"
+                                    ]
+                                  },
+                                  "angleDeg": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  }
+                                },
+                                "required": [
+                                  "direction",
+                                  "angleDeg"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "sideBendDeg": {
+                                "type": "number",
+                                "minimum": -60,
+                                "maximum": 60
+                              },
+                              "twistDeg": {
+                                "type": "number",
+                                "minimum": -75,
+                                "maximum": 75
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "legPosture": {
+                            "type": "string",
+                            "const": "bent-resting"
+                          },
+                          "contacts": {
+                            "default": [],
+                            "maxItems": 8,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "constraintId": {
+                                  "type": "string",
+                                  "minLength": 3,
+                                  "maxLength": 64,
+                                  "pattern": "^[a-z][a-z0-9_-]*$"
+                                },
+                                "bodySite": {
+                                  "type": "string",
+                                  "enum": [
+                                    "pelvis",
+                                    "upper-back",
+                                    "chest",
+                                    "head",
+                                    "hand-l",
+                                    "hand-r",
+                                    "knee-l",
+                                    "knee-r",
+                                    "foot-l",
+                                    "foot-r"
+                                  ]
+                                },
+                                "surfaceEntityId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 3,
+                                      "maxLength": 64,
+                                      "pattern": "^[a-z][a-z0-9_-]*$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "surfaceFace": {
+                                  "type": "string",
+                                  "enum": [
+                                    "top",
+                                    "bottom",
+                                    "left",
+                                    "right",
+                                    "front",
+                                    "back"
+                                  ]
+                                },
+                                "role": {
+                                  "type": "string",
+                                  "enum": [
+                                    "contact",
+                                    "support"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "constraintId",
+                                "bodySite",
+                                "surfaceEntityId",
+                                "surfaceFace",
+                                "role"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "relaxedLimbs": {
+                            "default": [],
+                            "maxItems": 2,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "constraintId": {
+                                  "type": "string",
+                                  "minLength": 3,
+                                  "maxLength": 64,
+                                  "pattern": "^[a-z][a-z0-9_-]*$"
+                                },
+                                "limb": {
+                                  "type": "string",
+                                  "enum": [
+                                    "arm-l",
+                                    "arm-r"
+                                  ]
+                                },
+                                "restSurface": {
+                                  "type": "object",
+                                  "properties": {
+                                    "surfaceEntityId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "minLength": 3,
+                                          "maxLength": 64,
+                                          "pattern": "^[a-z][a-z0-9_-]*$"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "surfaceFace": {
+                                      "type": "string",
+                                      "enum": [
+                                        "top",
+                                        "bottom",
+                                        "left",
+                                        "right",
+                                        "front",
+                                        "back"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "surfaceEntityId",
+                                    "surfaceFace"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": [
+                                "constraintId",
+                                "limb"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "schemaVersion",
+                          "planId",
+                          "actorId",
+                          "contacts",
+                          "relaxedLimbs"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "plan"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "visibility"
+                      },
+                      "entityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "anchor": {
+                        "type": "string",
+                        "enum": [
+                          "face",
+                          "head",
+                          "chest",
+                          "pelvis",
+                          "root"
+                        ]
+                      },
+                      "requiredPartIds": {
+                        "default": [],
+                        "maxItems": 24,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80,
+                          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                        }
+                      },
+                      "minVisibleRatio": {
+                        "default": 0.5,
+                        "type": "number",
+                        "minimum": 0.01,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "entityId",
+                      "requiredPartIds",
+                      "minVisibleRatio"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "framing"
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "close",
+                          "medium-close",
+                          "medium",
+                          "full",
+                          "whole-prop"
+                        ]
+                      },
+                      "targetEntityIds": {
+                        "minItems": 1,
+                        "maxItems": 16,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 64,
+                          "pattern": "^[a-z][a-z0-9_-]*$"
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "mode",
+                      "targetEntityIds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "safe-area"
+                      },
+                      "captionBottomFraction": {
+                        "type": "number",
+                        "minimum": 0.05,
+                        "maximum": 0.45
+                      },
+                      "sideUi": {
+                        "type": "object",
+                        "properties": {
+                          "side": {
+                            "type": "string",
+                            "enum": [
+                              "left",
+                              "right",
+                              "both"
+                            ]
+                          },
+                          "widthFraction": {
+                            "type": "number",
+                            "minimum": 0.05,
+                            "maximum": 0.4
+                          }
+                        },
+                        "required": [
+                          "side",
+                          "widthFraction"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "depth-ordering"
+                      },
+                      "foregroundEntityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "backgroundEntityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "minimumDepthSeparationM": {
+                        "default": 0.05,
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "foregroundEntityId",
+                      "backgroundEntityId",
+                      "minimumDepthSeparationM"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "camera-clearance"
+                      },
+                      "minimumEntityDistanceM": {
+                        "default": 0.05,
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "minimumEntityDistanceM"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "hard-constraint.remove"
+              },
+              "constraintId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            },
+            "required": [
+              "op",
+              "constraintId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "soft-preference.set"
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "camera-height"
+                      },
+                      "tendency": {
+                        "type": "string",
+                        "enum": [
+                          "low",
+                          "eye-level",
+                          "high"
+                        ]
+                      },
+                      "weight": {
+                        "default": 1,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "tendency",
+                      "weight"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "view-angle"
+                      },
+                      "tendency": {
+                        "type": "string",
+                        "enum": [
+                          "frontal",
+                          "three-quarter",
+                          "side",
+                          "rear"
+                        ]
+                      },
+                      "side": {
+                        "default": "either",
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "right",
+                          "either"
+                        ]
+                      },
+                      "weight": {
+                        "default": 1,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "tendency",
+                      "side",
+                      "weight"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "screen-placement"
+                      },
+                      "entityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "horizontal": {
+                        "type": "string",
+                        "enum": [
+                          "left",
+                          "center",
+                          "right"
+                        ]
+                      },
+                      "weight": {
+                        "default": 1,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "entityId",
+                      "horizontal",
+                      "weight"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "lens"
+                      },
+                      "tendency": {
+                        "type": "string",
+                        "enum": [
+                          "mild-wide",
+                          "normal",
+                          "mild-telephoto"
+                        ]
+                      },
+                      "weight": {
+                        "default": 1,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "tendency",
+                      "weight"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "headroom"
+                      },
+                      "tendency": {
+                        "type": "string",
+                        "enum": [
+                          "tight",
+                          "balanced",
+                          "generous"
+                        ]
+                      },
+                      "weight": {
+                        "default": 1,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "tendency",
+                      "weight"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "look-room"
+                      },
+                      "entityId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "tendency": {
+                        "type": "string",
+                        "enum": [
+                          "compact",
+                          "balanced",
+                          "generous"
+                        ]
+                      },
+                      "weight": {
+                        "default": 1,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "entityId",
+                      "tendency",
+                      "weight"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "environment-context"
+                      },
+                      "tendency": {
+                        "type": "string",
+                        "enum": [
+                          "minimal",
+                          "balanced",
+                          "wide"
+                        ]
+                      },
+                      "weight": {
+                        "default": 1,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "tendency",
+                      "weight"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "face-readability"
+                      },
+                      "actorId": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 64,
+                        "pattern": "^[a-z][a-z0-9_-]*$"
+                      },
+                      "weight": {
+                        "default": 1,
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 10
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "actorId",
+                      "weight"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "soft-preference.remove"
+              },
+              "preferenceId": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            },
+            "required": [
+              "op",
+              "preferenceId"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "patchId",
+    "solveId",
+    "baseGeneration",
+    "operations"
+  ],
+  "additionalProperties": false
+}
