@@ -71,7 +71,7 @@ describe("public onboarding", () => {
       "historically been verified on Windows 11 Pro, 64-bit (build 26200).",
     );
     expect(readme).toContain(
-      "macOS and Linux are not claimed as verified for v0.9.4.",
+      "macOS and Linux are not claimed as verified for v0.10.0.",
     );
     expect(readme).toMatch(/generic limb presence/iu);
     expect(readme).toMatch(
@@ -131,35 +131,39 @@ describe("public onboarding", () => {
     expect(releaseGuide).toContain("Visibility: `public`");
     expect(releaseGuide).toContain("Default branch: `main`");
     expect(releaseGuide).toContain(
-      "## Fixed v0.9.4 publication parameters",
+      "## Fixed v0.10.0 publication parameters",
     );
-    expect(releaseGuide).toContain("Release version: `v0.9.4`");
-    expect(releaseGuide).toContain("git tag -a v0.9.4");
+    expect(releaseGuide).toContain("Release version: `v0.10.0`");
+    expect(releaseGuide).toContain("git tag -a v0.10.0");
     expect(releaseGuide).not.toContain("git tag v0.4.0");
     expect(releaseGuide).toContain("License: `MIT`");
     expect(releaseGuide).not.toContain("git init -b main");
     expect(releaseGuide).toMatch(/do not publish to npm/iu);
   });
 
-  it("ships reusable v0.9.4 public release notes", async () => {
+  it("ships reusable v0.10.0 Graybox Craftsman release notes", async () => {
     const [readme, releaseNotes] = await Promise.all([
       readRepositoryFile("README.md"),
-      readRepositoryFile("docs/releases/v0.9.4.md"),
+      readRepositoryFile("docs/releases/v0.10.0.md"),
     ]);
 
     expect(readme).toContain(
-      "[v0.9.4 release notes](docs/releases/v0.9.4.md)",
+      "[v0.10.0 release notes](docs/releases/v0.10.0.md)",
     );
     expect(readme).not.toMatch(/release candidate/iu);
-    expect(releaseNotes).toContain("# Shubi Shot Director v0.9.4");
-    expect(releaseNotes).toMatch(/StaticBlockingPlan/iu);
-    expect(releaseNotes).toMatch(/surface-resting/iu);
-    expect(releaseNotes).toMatch(/body-site[\s\S]*orientation/iu);
-    expect(releaseNotes).toMatch(/SceneSpec/iu);
+    expect(releaseNotes).toContain("# Shubi Shot Director v0.10.0");
+    expect(releaseNotes).toMatch(/Graybox Craftsman/iu);
+    expect(releaseNotes).toMatch(/passive\/resting static blocking/iu);
+    expect(releaseNotes).toMatch(/proximal attachment/iu);
+    expect(releaseNotes).toMatch(/authoritative analytical projection/iu);
+    expect(releaseNotes).toMatch(/reference-guided scene reconstruction/iu);
+    expect(releaseNotes).toMatch(/transient evidence/iu);
+    expect(releaseNotes).toMatch(/lived-in density/iu);
+    expect(releaseNotes).toMatch(/semantic shot[\s\S]*PR #7[\s\S]*not\s+included/iu);
+    expect(releaseNotes).toMatch(/SceneSpec[\s\S]*schema version:\s*6/iu);
     expect(releaseNotes).toMatch(/workspace routing:\s*1/iu);
-    expect(releaseNotes).toContain("actor.pose-joints");
-    expect(releaseNotes).toMatch(/schema version:\s*6/iu);
     expect(releaseNotes).toMatch(/capability contract:\s*2/iu);
+    expect(releaseNotes).toMatch(/model-free[\s\S]*structured-only[\s\S]*loopback-only/iu);
   });
 
   it("locks the public package metadata without enabling npm publication", async () => {
@@ -175,7 +179,7 @@ describe("public onboarding", () => {
 
     expect(packageJson).toMatchObject({
       name: "shubi-shot-director",
-      version: "0.9.4",
+      version: "0.10.0",
       private: true,
       license: "MIT",
     });
