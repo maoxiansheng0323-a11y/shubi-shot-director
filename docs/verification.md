@@ -4,6 +4,57 @@ Shubi Shot Director is accepted feature-by-feature in the real local browser,
 not only through schema or unit tests. This document is the repeatable Stage F
 checklist for the first usable graybox workflow.
 
+## v0.10.0 Graybox Craftsman release gates
+
+Run the focused release, compatibility, and included-feature checks before the
+complete gate:
+
+```powershell
+pnpm exec vitest run tests/runtime-capabilities.test.ts tests/skill-compatibility.test.ts tests/skill-scripts.test.ts tests/public-onboarding.test.ts tests/public-release-audit.test.ts
+pnpm exec vitest run tests/structured-runtime-e2e.test.ts
+pnpm exec vitest run tests/static-blocking.test.ts tests/mannequin-asset.test.ts tests/reference-guided-reconstruction.test.ts
+pnpm install --frozen-lockfile
+pnpm verify
+node .agents/skills/shubi-shot-director/scripts/audit-generic-output.mjs
+pnpm audit:public
+git diff --check
+```
+
+Require application 0.10.0 with capability contract 2, bridge protocol 1,
+workspace routing 1, and SceneSpec/ScenePatch/IntentReport schema version 6.
+The runtime remains model-free, structured-only, credential-forbidden, and
+loopback-only. Application semver remains diagnostic metadata rather than a
+compatibility gate.
+
+The release contract covers the passive/resting static-blocking improvement,
+refined mannequin proximal-attachment calibration, and the Host-only
+reference-guided scene reconstruction workflow. Explicitly supplied reference
+images remain transient Host evidence: neither images nor their paths enter
+runtime input or persistent scene data. The reconstruction uses existing v6
+spatial and primitive authoring, while camera selection remains user-directed.
+
+The Draft semantic-shot and automatic-camera experiment in PR #7 is excluded
+from v0.10.0. Do not merge it, mark it ready, tag v1.0.0, or treat its transient
+planning contracts as part of this release. Publish only after the release
+branch gate passes and the complete gate is repeated against the exact merged
+`origin/main` commit.
+
+### Release-candidate evidence - 2026-08-11
+
+The focused version, Skill, onboarding, and public-release group passed 5 files
+with 445 tests. The isolated structured-runtime E2E file passed 8 tests, and the
+included-feature regression group passed 3 files with 53 tests. Frozen install
+completed without lockfile changes.
+
+The complete `pnpm verify` gate then passed schema generation, TypeScript, 101
+regular test files with 2,006 tests, the separate workspace E2E file with 1
+test, ESLint, and the production Vite build. The public audit scanned 309 files
+with zero findings and reported only Apache-2.0, BSD-3-Clause, ISC, and MIT
+dependency license names. The separate generic-output audit also scanned 309
+files with zero findings, and `git diff --check` reported no whitespace errors.
+The known non-blocking Vite large-chunk advisory remains unchanged. This entire
+gate must run again on the exact merged main commit before tagging.
+
 ## v0.9.4 static blocking and resting-arm gates
 
 Run the focused solver and release-contract checks before the complete gate:

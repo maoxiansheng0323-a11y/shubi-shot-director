@@ -256,7 +256,7 @@ describe("runtime capability manifest", () => {
     ) as { version: string };
     const manifest = getRuntimeCapabilityManifest();
 
-    expect(packageMetadata.version).toBe("0.9.4");
+    expect(packageMetadata.version).toBe("0.10.0");
     expect(APPLICATION_VERSION).toBe(packageMetadata.version);
     expect(runtimeCapabilities).toMatchObject({
       CAPABILITIES_CONTRACT_VERSION: 2,
